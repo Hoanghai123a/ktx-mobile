@@ -10,7 +10,6 @@ import {
   LogOut,
   Search,
   FileDown,
-  FileUp,
   Filter,
   Home,
   BarChart3,
@@ -35,11 +34,13 @@ import {
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient";
 
+
 // ---------------------------
 // Data model
 // ---------------------------
 // NLĐ = Worker
 // Room stays store check-in/out.
+
 
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
@@ -52,6 +53,7 @@ function todayISO() {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
 
 // ---------------------------
 // UI helpers
@@ -224,6 +226,7 @@ export default function App() {
   const [q, setQ] = useState("");
   const [floorId, setFloorId] = useState(() => state.floors?.[0]?.id || "");
 
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -235,11 +238,13 @@ export default function App() {
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [])
 
   useEffect(() => {
     loadAllFromDb();
   }, []);
+;
+
   const [initModal, setInitModal] = useState({
     open: false,
     floors: 3,
@@ -263,20 +268,13 @@ export default function App() {
   const [addWorkerModal, setAddWorkerModal] = useState(false);
   const [loginModal, setLoginModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
-
-  const [importModal, setImportModal] = useState({
-    open: false,
-    busy: false,
-    result: null, // { total, workersInserted, workersUpdated, staysInserted, skipped, errors: [] }
-  });
-
-  const importFileRef = useRef(null);
   const [confirm, setConfirm] = useState({ open: false });
   const [recruiterModal, setRecruiterModal] = useState({
     open: false,
     recruiter: null,
   });
-  const importRef = useRef(null);
+
+
 
   useEffect(() => {
     // keep selected floor valid
@@ -290,35 +288,14 @@ export default function App() {
     const R = Number(roomsPerFloor);
     const S = Number(startNo);
 
-    // 0) Validate
-    if (!Number.isInteger(F) || F <= 0 || F > 100) {
-      alert("Số tầng không hợp lệ.");
-      return false;
-    }
-    if (!Number.isInteger(R) || R <= 0 || R > 300) {
-      alert("Số phòng/tầng không hợp lệ.");
-      return false;
-    }
-    if (!Number.isInteger(S) || S <= 0) {
-      alert("Số bắt đầu không hợp lệ.");
-      return false;
-    }
+    if (!Number.isInteger(F) || F <= 0 || F > 100)
+      return alert("Số tầng không hợp lệ.");
+    if (!Number.isInteger(R) || R <= 0 || R > 300)
+      return alert("Số phòng/tầng không hợp lệ.");
+    if (!Number.isInteger(S) || S <= 0)
+      return alert("Số bắt đầu không hợp lệ.");
 
-    // 1) Chặn tạo trùng nếu DB đã có dữ liệu
-    // (Nếu bạn muốn cho phép tạo lại thì dùng Reset DB trước)
-    const floorsCheck = await supabase.from("floors").select("id").limit(1);
-    if (floorsCheck.error) {
-      alert(
-        "Không kiểm tra được dữ liệu hiện có: " + floorsCheck.error.message,
-      );
-      return false;
-    }
-    if ((floorsCheck.data || []).length > 0) {
-      alert("KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại.");
-      return false;
-    }
-
-    // 2) Tạo floors
+    // 1) Tạo floors
     const floorsPayload = Array.from({ length: F }, (_, i) => ({
       name: `Tầng ${i + 1}`,
       sort: i + 1,
@@ -328,17 +305,12 @@ export default function App() {
       .from("floors")
       .insert(floorsPayload)
       .select("id,sort");
+    if (insFloors.error)
+      return alert("Tạo tầng lỗi: " + insFloors.error.message);
 
-    if (insFloors.error) {
-      alert("Tạo tầng lỗi: " + insFloors.error.message);
-      return false;
-    }
+    const floorIdBySort = new Map(insFloors.data.map((x) => [x.sort, x.id]));
 
-    const floorIdBySort = new Map(
-      (insFloors.data || []).map((x) => [x.sort, x.id]),
-    );
-
-    // 3) Tạo rooms theo thứ tự tăng dần
+    // 2) Tạo rooms theo thứ tự tăng dần
     const totalRooms = F * R;
     const roomsPayload = [];
     for (let i = 0; i < totalRooms; i++) {
@@ -353,21 +325,16 @@ export default function App() {
       });
     }
 
-    // 4) Insert rooms (chia lô để tránh payload quá lớn)
-    const BATCH = 500;
-    for (let i = 0; i < roomsPayload.length; i += BATCH) {
-      const batch = roomsPayload.slice(i, i + BATCH);
-      const insRooms = await supabase.from("rooms").insert(batch);
-      if (insRooms.error) {
-        alert("Tạo phòng lỗi: " + insRooms.error.message);
-        return false;
-      }
-    }
+    const insRooms = await supabase.from("rooms").insert(roomsPayload);
+    if (insRooms.error)
+      return alert("Tạo phòng lỗi: " + insRooms.error.message);
 
-    // 5) Load lại để UI cập nhật + đóng modal ở nơi gọi
-    await loadAllFromDb();
-    alert("Khởi tạo KTX thành công!");
-    return true;
+    alert(
+      `Đã khởi tạo ${F} tầng, ${totalRooms} phòng. (Từ ${S} → ${S + totalRooms - 1})`,
+    );
+
+    setInitModal((m) => ({ ...m, open: false }));
+    await loadAllFromDb(); // <-- bạn gọi hàm load DB của bạn ở đây
   }
 
   const workerById = useMemo(() => {
@@ -380,21 +347,6 @@ export default function App() {
     () => state.floors.find((f) => f.id === floorId) || state.floors[0],
     [state.floors, floorId],
   );
-
-  async function wipeDatabase() {
-    // Xóa theo thứ tự tránh lỗi khóa ngoại
-    const a = await supabase.from("stays").delete().not("id", "is", null);
-    if (a.error) throw new Error("stays: " + a.error.message);
-
-    const b = await supabase.from("workers").delete().not("id", "is", null);
-    if (b.error) throw new Error("workers: " + b.error.message);
-
-    const c = await supabase.from("rooms").delete().not("id", "is", null);
-    if (c.error) throw new Error("rooms: " + c.error.message);
-
-    const d = await supabase.from("floors").delete().not("id", "is", null);
-    if (d.error) throw new Error("floors: " + d.error.message);
-  }
 
   const globalMatches = useMemo(() => {
     const query = q.trim().toLowerCase();
@@ -417,6 +369,7 @@ export default function App() {
 
     return { workerIds: workerIdSet, roomIds: roomIdSet };
   }, [q, state.workers, state.floors]);
+
 
   async function loadAllFromDb() {
     const floorsRes = await supabase
@@ -499,329 +452,24 @@ export default function App() {
 
     setState((s) => ({ ...s, floors, workers }));
     if (!floorId && floors[0]?.id) setFloorId(floors[0].id);
+  
+  async function wipeDatabase() {
+    // Delete child tables first to avoid FK issues
+    const delStays = await supabase.from("stays").delete().neq("id", "");
+    if (delStays.error) return alert("Xóa stays lỗi: " + delStays.error.message);
 
-    async function wipeDatabase() {
-      // Delete child tables first to avoid FK issues
-      const delStays = await supabase.from("stays").delete().neq("id", "");
-      if (delStays.error)
-        return alert("Xóa stays lỗi: " + delStays.error.message);
+    const delWorkers = await supabase.from("workers").delete().neq("id", "");
+    if (delWorkers.error) return alert("Xóa workers lỗi: " + delWorkers.error.message);
 
-      const delWorkers = await supabase.from("workers").delete().neq("id", "");
-      if (delWorkers.error)
-        return alert("Xóa workers lỗi: " + delWorkers.error.message);
+    const delRooms = await supabase.from("rooms").delete().neq("id", "");
+    if (delRooms.error) return alert("Xóa rooms lỗi: " + delRooms.error.message);
 
-      const delRooms = await supabase.from("rooms").delete().neq("id", "");
-      if (delRooms.error)
-        return alert("Xóa rooms lỗi: " + delRooms.error.message);
+    const delFloors = await supabase.from("floors").delete().neq("id", "");
+    if (delFloors.error) return alert("Xóa floors lỗi: " + delFloors.error.message);
 
-      const delFloors = await supabase.from("floors").delete().neq("id", "");
-      if (delFloors.error)
-        return alert("Xóa floors lỗi: " + delFloors.error.message);
-
-      await loadAllFromDb();
-    }
+    await loadAllFromDb();
   }
-
-  // ---------------------------
-  // Excel Import (Admin)
-  // ---------------------------
-  function normHeader(s) {
-    return String(s || "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .replace(/[._-]/g, " ");
-  }
-
-  function excelSerialToISO(n) {
-    // Excel serial date -> JS date (Excel epoch 1899-12-30)
-    const utc = new Date(Math.round((n - 25569) * 86400 * 1000));
-    const y = utc.getUTCFullYear();
-    const m = String(utc.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(utc.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-
-  function parseDateToISO(v) {
-    if (!v && v !== 0) return "";
-    if (typeof v === "number") {
-      // likely excel serial
-      if (v > 20000 && v < 60000) return excelSerialToISO(v);
-      return "";
-    }
-    const s = String(v).trim();
-    if (!s) return "";
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    // DD/MM/YYYY or D/M/YYYY
-    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-    if (m) {
-      const dd = String(m[1]).padStart(2, "0");
-      const mm = String(m[2]).padStart(2, "0");
-      return `${m[3]}-${mm}-${dd}`;
-    }
-    // Try Date.parse
-    const t = Date.parse(s);
-    if (!Number.isNaN(t)) {
-      const d = new Date(t);
-      const y = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      return `${y}-${mm}-${dd}`;
-    }
-    return "";
-  }
-
-  function normalizePhone(v) {
-    const s = String(v || "").trim();
-    if (!s) return "";
-    return s.replace(/\s+/g, "");
-  }
-
-  async function importExcelFile(file) {
-    if (!file) return;
-    if (!auth.isAdmin) {
-      setLoginModal(true);
-      return;
-    }
-
-    setImportModal((m) => ({ ...m, busy: true, result: null }));
-
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
-
-      const sheetName = wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
-
-      // Build header map (supports Vietnamese variations)
-      const pick = (row, keys) => {
-        for (const k of keys) {
-          const kk = normHeader(k);
-          for (const col of Object.keys(row)) {
-            if (normHeader(col) === kk) return row[col];
-          }
-        }
-        return "";
-      };
-
-      const total = rows.length;
-
-      // Preload rooms & workers & stays
-      const roomsRes = await supabase.from("rooms").select("id,code");
-      if (roomsRes.error) throw new Error(roomsRes.error.message);
-      const roomIdByCode = new Map(
-        (roomsRes.data || []).map((r) => [String(r.code).trim(), r.id]),
-      );
-
-      const workersRes = await supabase
-        .from("workers")
-        .select("id,full_name,dob,phone,hometown,recruiter");
-      if (workersRes.error) throw new Error(workersRes.error.message);
-
-      const keyOfWorker = (fullName, dob, phone) =>
-        `${String(fullName || "")
-          .trim()
-          .toLowerCase()}|${String(dob || "").trim()}|${String(phone || "").trim()}`;
-
-      const existing = new Map();
-      for (const w of workersRes.data || []) {
-        existing.set(keyOfWorker(w.full_name, w.dob || "", w.phone || ""), w);
-      }
-
-      const staysRes = await supabase
-        .from("stays")
-        .select("id,worker_id,room_id,date_out");
-      if (staysRes.error) throw new Error(staysRes.error.message);
-
-      const activeStayByWorker = new Map();
-      for (const st of staysRes.data || []) {
-        if (!st.date_out) activeStayByWorker.set(st.worker_id, st);
-      }
-
-      let workersInserted = 0;
-      let workersUpdated = 0;
-      let staysInserted = 0;
-      let skipped = 0;
-      const errors = [];
-
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const line = i + 2; // header is row 1
-
-        const fullName = String(
-          pick(row, ["Họ tên", "Ho ten", "Full name", "Tên", "Name"]),
-        ).trim();
-
-        if (!fullName) {
-          skipped++;
-          continue;
-        }
-
-        const dob = parseDateToISO(
-          pick(row, ["Ngày sinh", "Ngay sinh", "DOB", "Birth", "Birthdate"]),
-        );
-
-        const phone = normalizePhone(
-          pick(row, ["Số điện thoại", "So dien thoai", "Phone", "SDT", "Sdt"]),
-        );
-
-        const hometown = String(
-          pick(row, ["Quê quán", "Que quan", "Hometown", "Que"]),
-        ).trim();
-
-        const recruiter = String(
-          pick(row, ["Người tuyển", "Nguoi tuyen", "Recruiter", "Tuyen"]),
-        ).trim();
-
-        const roomCode = String(
-          pick(row, ["Phòng", "Phong", "Room", "Room code"]),
-        ).trim();
-
-        const dateIn = parseDateToISO(
-          pick(row, ["Ngày vào", "Ngay vao", "Date in", "Check in"]),
-        );
-
-        const dateOut = parseDateToISO(
-          pick(row, [
-            "Ngày rời",
-            "Ngay roi",
-            "Ngày ra",
-            "Ngay ra",
-            "Date out",
-            "Check out",
-          ]),
-        );
-
-        // 1) Upsert worker
-        const k = keyOfWorker(fullName, dob, phone);
-        let worker = existing.get(k);
-        let workerId = worker?.id || null;
-
-        if (!workerId) {
-          const ins = await supabase
-            .from("workers")
-            .insert([
-              {
-                full_name: fullName,
-                dob: dob || null,
-                phone: phone || null,
-                hometown: hometown || null,
-                recruiter: recruiter || null,
-              },
-            ])
-            .select("id")
-            .single();
-
-          if (ins.error) {
-            errors.push({
-              line,
-              reason: `Tạo NLĐ lỗi: ${ins.error.message}`,
-              fullName,
-            });
-            continue;
-          }
-          workerId = ins.data.id;
-          workersInserted++;
-          worker = {
-            id: workerId,
-            full_name: fullName,
-            dob,
-            phone,
-            hometown,
-            recruiter,
-          };
-          existing.set(k, worker);
-        } else {
-          // update missing fields (don't overwrite if excel empty)
-          const patch = {};
-          if (hometown && !worker.hometown) patch.hometown = hometown;
-          if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
-          if (dob && !worker.dob) patch.dob = dob;
-          if (phone && !worker.phone) patch.phone = phone;
-
-          if (Object.keys(patch).length) {
-            const up = await supabase
-              .from("workers")
-              .update(patch)
-              .eq("id", workerId);
-            if (!up.error) workersUpdated++;
-          }
-        }
-
-        // 2) stays (optional)
-        if (roomCode && dateIn) {
-          const roomId = roomIdByCode.get(roomCode);
-          if (!roomId) {
-            errors.push({
-              line,
-              reason: `Phòng không tồn tại: ${roomCode}`,
-              fullName,
-            });
-            continue;
-          }
-
-          const active = activeStayByWorker.get(workerId);
-          if (active) {
-            // If already staying somewhere, do not auto-move
-            errors.push({
-              line,
-              reason: `NLĐ đang ở phòng khác (không tự chuyển)`,
-              fullName,
-            });
-            continue;
-          }
-
-          const insStay = await supabase.from("stays").insert([
-            {
-              room_id: roomId,
-              worker_id: workerId,
-              date_in: dateIn,
-              date_out: dateOut || null,
-            },
-          ]);
-
-          if (insStay.error) {
-            errors.push({
-              line,
-              reason: `Tạo lịch sử ở lỗi: ${insStay.error.message}`,
-              fullName,
-            });
-            continue;
-          }
-          staysInserted++;
-          if (!dateOut)
-            activeStayByWorker.set(workerId, {
-              worker_id: workerId,
-              room_id: roomId,
-              date_out: null,
-            });
-        }
-      }
-
-      setImportModal((m) => ({
-        ...m,
-        busy: false,
-        result: {
-          total,
-          workersInserted,
-          workersUpdated,
-          staysInserted,
-          skipped,
-          errors,
-        },
-      }));
-      await loadAllFromDb();
-      alert("Nhập Excel thành công!");
-      setImportModal((m) => ({ ...m, open: false })); // nếu bạn có modal import riêng
-      setSettingsModal(false); // nếu import nằm trong settings
-      setTab("ktx"); // hoặc "home" theo tên tab của bạn
-    } catch (e) {
-      setImportModal((m) => ({ ...m, busy: false }));
-      alert("Nhập Excel lỗi: " + (e?.message || String(e)));
-    }
-  }
+}
 
   // ---------------------------
   // Mutations
@@ -869,9 +517,9 @@ export default function App() {
     const sort = (floor?.rooms?.length || 0) + 1;
     const roomCode = (code || "").trim() || String(sort);
 
-    const res = await supabase
-      .from("rooms")
-      .insert([{ floor_id: floorId, code: roomCode, sort }]);
+    const res = await supabase.from("rooms").insert([
+      { floor_id: floorId, code: roomCode, sort },
+    ]);
 
     if (res.error) {
       alert("Tạo phòng lỗi: " + res.error.message);
@@ -886,10 +534,7 @@ export default function App() {
     const nextCode = (newCode || "").trim();
     if (!nextCode) return alert("Tên phòng không được để trống.");
 
-    const res = await supabase
-      .from("rooms")
-      .update({ code: nextCode })
-      .eq("id", roomId);
+    const res = await supabase.from("rooms").update({ code: nextCode }).eq("id", roomId);
     if (res.error) {
       alert("Sửa tên phòng lỗi: " + res.error.message);
       return;
@@ -906,36 +551,6 @@ export default function App() {
     await loadAllFromDb();
   }
 
-  async function resetDb() {
-    if (!auth.isAdmin) {
-      setLoginModal(true);
-      return;
-    }
-
-    const ok = confirm("Reset DB? Sẽ xóa toàn bộ tầng/phòng/NLĐ/lịch sử.");
-    if (!ok) return;
-
-    // Xóa theo thứ tự an toàn
-    const a = await supabase.from("stays").delete().neq("id", ""); // delete all
-    if (a.error) return alert("Reset lỗi (stays): " + a.error.message);
-
-    const b = await supabase.from("workers").delete().neq("id", "");
-    if (b.error) return alert("Reset lỗi (workers): " + b.error.message);
-
-    const c = await supabase.from("rooms").delete().neq("id", "");
-    if (c.error) return alert("Reset lỗi (rooms): " + c.error.message);
-
-    const d = await supabase.from("floors").delete().neq("id", "");
-    if (d.error) return alert("Reset lỗi (floors): " + d.error.message);
-
-    alert("Đã reset DB.");
-    await loadAllFromDb();
-
-    // đóng settings về trang chủ nếu muốn
-    setSettingsModal(false); // nếu bạn có state này
-    setTab("ktx");
-  }
-
   async function addWorker(worker) {
     const payload = {
       full_name: (worker.fullName || "").trim(),
@@ -945,11 +560,7 @@ export default function App() {
       phone: (worker.phone || "").trim(),
     };
 
-    const res = await supabase
-      .from("workers")
-      .insert([payload])
-      .select("id")
-      .single();
+    const res = await supabase.from("workers").insert([payload]).select("id").single();
     if (res.error) {
       alert("Tạo NLĐ lỗi: " + res.error.message);
       return null;
@@ -965,10 +576,7 @@ export default function App() {
     if (patch.dob !== undefined) payload.dob = patch.dob ? patch.dob : null;
     if (patch.phone !== undefined) payload.phone = (patch.phone || "").trim();
 
-    const res = await supabase
-      .from("workers")
-      .update(payload)
-      .eq("id", workerId);
+    const res = await supabase.from("workers").update(payload).eq("id", workerId);
     if (res.error) {
       alert("Cập nhật NLĐ lỗi: " + res.error.message);
       return;
@@ -1001,6 +609,7 @@ export default function App() {
 
     await loadAllFromDb();
   }
+
   async function checkOutStay({ floorId, roomId, stayId, dateOut }) {
     const res = await supabase
       .from("stays")
@@ -2518,8 +2127,8 @@ export default function App() {
           <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
             <div className="text-sm font-semibold">Quyền Admin</div>
             <div className="mt-1 text-xs text-slate-600">
-              Đăng nhập để thêm / xóa / chỉnh sửa. Nếu không, bạn chỉ xem được
-              dữ liệu.
+              Đăng nhập để thêm / xóa / chỉnh sửa. Nếu không, bạn chỉ xem được dữ
+              liệu.
             </div>
           </div>
 
@@ -2587,184 +2196,6 @@ export default function App() {
     );
   }
 
-  function ImportExcelModal() {
-    const result = importModal.result;
-    return (
-      <Modal
-        open={importModal.open}
-        title="Nhập Excel"
-        onClose={() =>
-          setImportModal((m) => ({
-            ...m,
-            open: false,
-            busy: false,
-            result: null,
-          }))
-        }
-      >
-        <div className="space-y-4">
-          <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
-            <div className="text-sm font-semibold">Hướng dẫn</div>
-            <div className="mt-1 text-xs text-slate-600">
-              File Excel (sheet đầu tiên) nên có các cột: Họ tên, Ngày sinh, Số
-              điện thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.{" "}
-              <br />
-              Nếu không có Phòng/Ngày vào thì chỉ tạo NLĐ.
-            </div>
-          </div>
-
-          <input
-            ref={importFileRef}
-            type="file"
-            accept=".xlsx,.xls"
-            className="block w-full text-sm"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) importExcelFile(f);
-              // allow pick same file again
-              e.target.value = "";
-            }}
-            disabled={importModal.busy}
-          />
-
-          {importModal.busy ? (
-            <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-slate-100">
-              Đang nhập dữ liệu…
-            </div>
-          ) : null}
-
-          {result ? (
-            <div className="space-y-2">
-              <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-                <div className="text-sm font-semibold">Kết quả</div>
-                <div className="mt-2 grid grid-cols-2 gap-2 text-sm text-slate-700">
-                  <div>
-                    Tổng dòng: <b>{result.total}</b>
-                  </div>
-                  <div>
-                    Bỏ qua: <b>{result.skipped}</b>
-                  </div>
-                  <div>
-                    NLĐ tạo mới: <b>{result.workersInserted}</b>
-                  </div>
-                  <div>
-                    NLĐ cập nhật: <b>{result.workersUpdated}</b>
-                  </div>
-                  <div>
-                    Lịch sử ở tạo: <b>{result.staysInserted}</b>
-                  </div>
-                  <div>
-                    Lỗi: <b>{result.errors.length}</b>
-                  </div>
-                </div>
-              </div>
-
-              {result.errors.length ? (
-                <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-                  <div className="text-sm font-semibold">
-                    Danh sách lỗi (tối đa 50)
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {result.errors.slice(0, 50).map((er, idx) => (
-                      <div
-                        key={idx}
-                        className="rounded-2xl bg-slate-50 p-3 text-xs text-slate-700 ring-1 ring-slate-100"
-                      >
-                        <div className="font-semibold">
-                          Dòng {er.line}: {er.fullName}
-                        </div>
-                        <div className="mt-1">{er.reason}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      </Modal>
-    );
-  }
-
-  function InitKtxModal() {
-    const [busy, setBusy] = useState(false);
-
-    return (
-      <Modal
-        open={initModal.open}
-        title="Khởi tạo cấu trúc KTX"
-        onClose={() => !busy && setInitModal((m) => ({ ...m, open: false }))}
-      >
-        <div className="space-y-3">
-          <TextField
-            label="Số tầng"
-            type="number"
-            value={String(initModal.floors)}
-            onChange={(v) =>
-              setInitModal((m) => ({ ...m, floors: Number(v || 0) }))
-            }
-            placeholder="VD: 3"
-          />
-
-          <TextField
-            label="Số phòng / tầng"
-            type="number"
-            value={String(initModal.roomsPerFloor)}
-            onChange={(v) =>
-              setInitModal((m) => ({ ...m, roomsPerFloor: Number(v || 0) }))
-            }
-            placeholder="VD: 7"
-          />
-
-          <TextField
-            label="Số bắt đầu"
-            type="number"
-            value={String(initModal.startNo)}
-            onChange={(v) =>
-              setInitModal((m) => ({ ...m, startNo: Number(v || 0) }))
-            }
-            placeholder="VD: 101"
-          />
-
-          <button
-            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-            disabled={busy}
-            onClick={() =>
-              requireAdmin(async () => {
-                try {
-                  setBusy(true);
-
-                  // nếu DB đã có tầng/phòng thì chặn để tránh tạo trùng
-                  if (state.floors.length > 0) {
-                    alert(
-                      "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại.",
-                    );
-                    return;
-                  }
-
-                  const ok = await initKtxFromInputs(initModal); // ✅ hàm trả true/false
-                  if (ok) {
-                    setInitModal((m) => ({ ...m, open: false })); // ✅ đóng modal
-                    // nếu bạn có state tab / trang chủ thì bật lại ở đây:
-                    // setTab("ktx"); // hoặc "home" tùy tên tab của bạn
-                  }
-                } finally {
-                  setBusy(false);
-                }
-              })
-            }
-          >
-            {busy ? "Đang tạo..." : "Tạo tầng & phòng"}
-          </button>
-
-          <div className="text-xs text-slate-500">
-            Mã phòng sẽ tăng dần: start, start+1, start+2...
-          </div>
-        </div>
-      </Modal>
-    );
-  }
-
   function SettingsModal() {
     const [siteName, setSiteName] = useState(state.settings.siteName);
     const [adminPassword, setAdminPassword] = useState(
@@ -2820,39 +2251,6 @@ export default function App() {
                 placeholder=""
                 type="password"
               />
-            </div>
-          </div>
-
-          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold">Dữ liệu</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  (Admin) Nhập dữ liệu NLĐ từ Excel.
-                </div>
-              </div>
-              <Pill icon={FileUp} text="Excel" tone="sky" />
-            </div>
-
-            <div className="mt-3">
-              <button
-                className={clsx(
-                  "w-full rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-                  auth.isAdmin
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-500",
-                )}
-                onClick={() =>
-                  requireAdmin(() => {
-                    importRef.current?.click();
-                  })
-                }
-              >
-                <span className="inline-flex items-center justify-center gap-2">
-                  <FileUp className="h-4 w-4" />
-                  Nhập Excel
-                </span>
-              </button>
             </div>
           </div>
 
@@ -2917,16 +2315,9 @@ export default function App() {
                         "Reset sẽ xóa toàn bộ dữ liệu hiện tại và tạo dữ liệu mẫu lại từ đầu.",
                       confirmText: "Reset",
                       onConfirm: async () => {
-                        try {
-                          await wipeDatabase();
-                          await loadAllFromDb(); // ✅ cập nhật UI sau reset
-                          setConfirm({ open: false });
-                          setSettingsModal(false);
-                          alert("Đã reset dữ liệu.");
-                        } catch (e) {
-                          console.error(e);
-                          alert("Reset lỗi: " + (e?.message || e));
-                        }
+                        await wipeDatabase();
+                        setConfirm({ open: false });
+                        setSettingsModal(false);
                       },
                     }),
                   )
@@ -3075,77 +2466,10 @@ export default function App() {
         <WorkerModalContent />
       </Modal>
 
-      <Modal
-        open={initModal.open}
-        title="Khởi tạo cấu trúc KTX"
-        onClose={() => setInitModal((m) => ({ ...m, open: false }))}
-      >
-        <div className="space-y-3">
-          <TextField
-            label="Số tầng"
-            type="number"
-            value={String(initModal.floors)}
-            onChange={(v) => setInitModal((m) => ({ ...m, floors: Number(v) }))}
-            placeholder="VD: 3"
-          />
-
-          <TextField
-            label="Số phòng / tầng"
-            type="number"
-            value={String(initModal.roomsPerFloor)}
-            onChange={(v) =>
-              setInitModal((m) => ({ ...m, roomsPerFloor: Number(v) }))
-            }
-            placeholder="VD: 7"
-          />
-
-          <TextField
-            label="Số bắt đầu"
-            type="number"
-            value={String(initModal.startNo)}
-            onChange={(v) =>
-              setInitModal((m) => ({ ...m, startNo: Number(v) }))
-            }
-            placeholder="VD: 101"
-          />
-
-          <button
-            className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-            onClick={() => initKtxFromInputs(initModal)}
-          >
-            Tạo tầng & phòng
-          </button>
-
-          <div className="text-xs text-slate-500">
-            Mã phòng sẽ tăng dần: start, start+1, start+2...
-          </div>
-        </div>
-      </Modal>
-
-      <input
-        ref={importRef}
-        type="file"
-        accept=".xlsx,.xls"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-
-          // để chọn lại cùng 1 file vẫn trigger
-          e.target.value = "";
-
-          console.log("Excel selected:", file.name, file.size);
-
-          await importExcelFile(file); // <- hàm import của bạn
-        }}
-      />
-
       <AddFloorModal />
       <AddRoomModal />
       <AddWorkerModal />
-      <InitKtxModal />
       <LoginModal />
-      <ImportExcelModal />
       <SettingsModal />
 
       <Confirm
