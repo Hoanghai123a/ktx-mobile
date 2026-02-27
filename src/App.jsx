@@ -16,12 +16,18 @@ import {
   BarChart3,
   UserRound,
   ChevronDown,
-  ChevronLeft,
   Calendar,
   UserPlus,
   UserMinus,
   Shield,
   Pencil,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Clock,
+  ShieldCheck,
+  CreditCard,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -145,6 +151,7 @@ function TextField({
   onFocus,
   onBlur,
   onKeyDown,
+  disabled = false,
 }) {
   return (
     <label className="block space-y-1">
@@ -153,6 +160,7 @@ function TextField({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
         ref={inputRef}
         onFocus={onFocus}
         onBlur={onBlur}
@@ -326,6 +334,11 @@ export default function App() {
         hotline: "0343.751.753",
         email: "",
         website: "",
+        mapUrl: "",
+        workingHours: "",
+        services: [],
+        rules: "",
+        bankInfo: "",
         description: "",
         adminNotice: "",
       },
@@ -345,6 +358,11 @@ export default function App() {
         hotline: "",
         email: "",
         website: "",
+        mapUrl: "",
+        workingHours: "",
+        services: [],
+        rules: "",
+        bankInfo: "",
         description: "",
         adminNotice: "",
       },
@@ -1541,6 +1559,208 @@ export default function App() {
     );
   }
 
+  function AboutView() {
+    const about = state?.settings?.about || DEFAULT_SETTINGS.about;
+
+    const items = [
+      about.address?.trim()
+        ? {
+            label: "Địa chỉ",
+            value: about.address,
+            icon: MapPin,
+            href: about.mapUrl?.trim() || null,
+          }
+        : null,
+      about.hotline?.trim()
+        ? {
+            label: "Hotline",
+            value: about.hotline,
+            icon: Phone,
+            href: `tel:${about.hotline.replace(/\s/g, "")}`,
+          }
+        : null,
+      about.email?.trim()
+        ? {
+            label: "Email",
+            value: about.email,
+            icon: Mail,
+            href: `mailto:${about.email}`,
+          }
+        : null,
+      about.website?.trim()
+        ? {
+            label: "Website",
+            value: about.website,
+            icon: Globe,
+            href: about.website.startsWith("http")
+              ? about.website
+              : `https://${about.website}`,
+          }
+        : null,
+      about.workingHours?.trim()
+        ? {
+            label: "Giờ làm việc",
+            value: about.workingHours,
+            icon: Clock,
+            href: null,
+          }
+        : null,
+    ].filter(Boolean);
+
+    const services = Array.isArray(about.services)
+      ? about.services.filter((x) => String(x).trim())
+      : [];
+    const hasRules = !!about.rules?.trim();
+    const hasBank = !!about.bankInfo?.trim();
+
+    return (
+      <div className="mx-auto w-full max-w-md px-4 pb-24">
+        {/* Thông báo Admin */}
+        {about.adminNotice?.trim() ? (
+          <div className="mb-3 rounded-3xl bg-amber-50 p-4 ring-1 ring-amber-100">
+            <div className="text-xs font-semibold text-amber-900">
+              Thông báo
+            </div>
+            <div className="mt-1 whitespace-pre-line text-sm text-amber-900">
+              {about.adminNotice}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Header */}
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-lg font-semibold text-slate-900">
+                {about.companyName || "Về chúng tôi"}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                Thông tin liên hệ & nội quy ký túc xá
+              </div>
+            </div>
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-100">
+              <Building2 className="h-5 w-5 text-slate-700" />
+            </div>
+          </div>
+
+          {/* Description */}
+          {about.description?.trim() ? (
+            <div className="mt-3 whitespace-pre-line text-sm text-slate-700">
+              {about.description}
+            </div>
+          ) : (
+            <div className="mt-3 text-sm text-slate-500">
+              Chưa có nội dung. Admin có thể vào Cài đặt để cập nhật.
+            </div>
+          )}
+
+          {/* Contact list */}
+          {items.length ? (
+            <div className="mt-4 divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-100">
+              {items.map((it, idx) => {
+                const Icon = it.icon;
+                const Row = (
+                  <div className="flex items-start gap-3 p-4">
+                    <div className="mt-0.5 grid h-9 w-9 place-items-center rounded-2xl bg-slate-100">
+                      <Icon className="h-4.5 w-4.5 text-slate-700" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-medium text-slate-500">
+                        {it.label}
+                      </div>
+                      <div className="mt-0.5 break-words text-sm font-semibold text-slate-900">
+                        {it.value}
+                      </div>
+                    </div>
+                    {it.href ? (
+                      <div className="mt-1 text-xs font-semibold text-slate-500">
+                        Mở
+                      </div>
+                    ) : null}
+                  </div>
+                );
+
+                return it.href ? (
+                  <a
+                    key={idx}
+                    href={it.href}
+                    target={it.href?.startsWith("http") ? "_blank" : undefined}
+                    rel={it.href?.startsWith("http") ? "noreferrer" : undefined}
+                    className="block active:opacity-70"
+                  >
+                    {Row}
+                  </a>
+                ) : (
+                  <div key={idx}>{Row}</div>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {/* Services */}
+          {services.length ? (
+            <div className="mt-4">
+              <div className="text-sm font-semibold text-slate-900">
+                Tiện ích
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {services.map((s, i) => (
+                  <span
+                    key={i}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700"
+                  >
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Rules */}
+          {hasRules ? (
+            <div className="mt-4 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-slate-700" />
+                <div className="text-sm font-semibold text-slate-900">
+                  Nội quy
+                </div>
+              </div>
+              <div className="mt-2 whitespace-pre-line text-sm text-slate-700">
+                {about.rules}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Payment */}
+          {hasBank ? (
+            <div className="mt-3 rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
+              <div className="flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-slate-700" />
+                <div className="text-sm font-semibold text-slate-900">
+                  Thanh toán
+                </div>
+              </div>
+              <div className="mt-2 whitespace-pre-line text-sm text-slate-700">
+                {about.bankInfo}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Action */}
+          <div className="mt-5">
+            <button
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
+              onClick={() => setSettingsModal(true)}
+            >
+              {auth.isAdmin
+                ? "Chỉnh sửa trong Cài đặt"
+                : "Xem thông tin trong Cài đặt"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   function KtxView() {
     const cols = Math.min(4, Math.max(2, state.settings.roomGridCols || 3));
     if (state.floors.length === 0) {
@@ -2879,6 +3099,24 @@ export default function App() {
     );
     const [cols, setCols] = useState(String(state.settings.roomGridCols || 3));
 
+    const [aboutDraft, setAboutDraft] = useState(() => ({
+      ...DEFAULT_SETTINGS.about,
+      ...(state.settings.about || {}),
+    }));
+
+    // Khi mở modal, đồng bộ draft theo state hiện tại (tránh bị stale)
+    useEffect(() => {
+      if (!settingsModal) return;
+      setAboutDraft({
+        ...DEFAULT_SETTINGS.about,
+        ...(state.settings.about || {}),
+      });
+      setSiteName(state.settings.siteName);
+      setAdminPassword(state.settings.adminPassword);
+      setCols(String(state.settings.roomGridCols || 3));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [settingsModal]);
+
     return (
       <Modal
         open={settingsModal}
@@ -2928,6 +3166,203 @@ export default function App() {
                 placeholder="2-4"
                 type="number"
               />
+
+              <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">Về chúng tôi</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {auth.isAdmin
+                        ? "Admin có thể cập nhật thông tin hiển thị ở tab Về chúng tôi."
+                        : "Bạn đang ở chế độ xem. Đăng nhập Admin để chỉnh sửa."}
+                    </div>
+                  </div>
+                  <Pill
+                    icon={Pencil}
+                    text={auth.isAdmin ? "Chỉnh sửa" : "Xem"}
+                    tone={auth.isAdmin ? "violet" : "slate"}
+                  />
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  <TextField
+                    label="Tên đơn vị / KTX"
+                    value={aboutDraft.companyName || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, companyName: v }))
+                    }
+                    placeholder="VD: KTX ABC"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Mô tả
+                    </div>
+                    <textarea
+                      value={aboutDraft.description || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          description: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={4}
+                      placeholder="Giới thiệu ngắn về ký túc xá..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <TextField
+                    label="Địa chỉ"
+                    value={aboutDraft.address || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, address: v }))
+                    }
+                    placeholder=""
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Link bản đồ (Google Maps)"
+                    value={aboutDraft.mapUrl || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, mapUrl: v }))
+                    }
+                    placeholder="https://maps.google.com/..."
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Hotline"
+                    value={aboutDraft.hotline || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, hotline: v }))
+                    }
+                    placeholder="VD: 0343 751 753"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Email"
+                    value={aboutDraft.email || ""}
+                    onChange={(v) => setAboutDraft((a) => ({ ...a, email: v }))}
+                    placeholder=""
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Website"
+                    value={aboutDraft.website || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, website: v }))
+                    }
+                    placeholder="ktx-abc.com"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Giờ làm việc"
+                    value={aboutDraft.workingHours || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, workingHours: v }))
+                    }
+                    placeholder="VD: 08:00 - 17:00 (T2-T7)"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Tiện ích (ngăn cách bằng dấu phẩy)
+                    </div>
+                    <input
+                      value={(aboutDraft.services || []).join(", ")}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          services: e.target.value
+                            .split(",")
+                            .map((x) => x.trim())
+                            .filter(Boolean),
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      placeholder="WiFi, Giặt sấy, Căn tin..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Nội quy
+                    </div>
+                    <textarea
+                      value={aboutDraft.rules || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({ ...a, rules: e.target.value }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={4}
+                      placeholder="Nội quy ký túc xá..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Thông tin thanh toán
+                    </div>
+                    <textarea
+                      value={aboutDraft.bankInfo || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          bankInfo: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={3}
+                      placeholder="Số tài khoản / QR / ghi chú..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Thông báo Admin (hiển thị nổi bật)
+                    </div>
+                    <textarea
+                      value={aboutDraft.adminNotice || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          adminNotice: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={3}
+                      placeholder="VD: Tuần này sửa chữa khu A..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
           </div>
           <button
@@ -2939,17 +3374,27 @@ export default function App() {
             )}
             onClick={() =>
               requireAdmin(async () => {
-                const nCols = Math.min(4, Math.max(2, Number(cols || 3)));
-                setState((s) => ({
-                  ...s,
-                  settings: {
-                    ...s.settings,
+                try {
+                  const nCols = Math.min(4, Math.max(2, Number(cols || 3)));
+                  const nextSettings = {
+                    ...state.settings,
                     siteName: siteName || "Quản lý KTX",
                     adminPassword: adminPassword || "123456",
                     roomGridCols: nCols,
-                  },
-                }));
-                setSettingsModal(false);
+                    about: {
+                      ...DEFAULT_SETTINGS.about,
+                      ...(aboutDraft || {}),
+                    },
+                  };
+
+                  await saveSettingsToDb(nextSettings);
+                  setState((s) => ({ ...s, settings: nextSettings }));
+                  setSettingsModal(false);
+                  alert("Đã lưu cài đặt.");
+                } catch (e) {
+                  console.error(e);
+                  alert("Lưu cài đặt lỗi: " + (e?.message || e));
+                }
               })
             }
           >
