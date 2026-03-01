@@ -1,4 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import Pill from "./components/ui/Pill.jsx";
 import {
   Building2,
   DoorClosed,
@@ -16,30 +24,46 @@ import {
   BarChart3,
   UserRound,
   ChevronDown,
-  ChevronLeft,
   Calendar,
   UserPlus,
   UserMinus,
   Shield,
   Pencil,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Clock,
+  ShieldCheck,
+  CreditCard,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  Tooltip,
-  CartesianGrid,
-  LabelList,
-} from "recharts";
-import * as XLSX from "xlsx";
-import { supabase } from "./supabaseClient";
+
+import { supabase } from "./services/supabaseClient";
+import TabButton from "./components/ui/TabButton.jsx";
+import Modal from "./components/ui/Modal.jsx";
+import SelectField from "./components/ui/SelectField.jsx";
+import Empty from "./components/ui/Empty.jsx";
+import TextField from "./components/ui/TextField.jsx";
+import Confirm from "./components/ui/Confirm.jsx";
+
+async function getXLSX() {
+  const mod = await import("xlsx");
+  return mod;
+}
 
 // ---------------------------
 // Data model
 // ---------------------------
 // NLĐ = Worker
 // Room stays store check-in/out.
+const AboutView = React.lazy(() => import("./features/about/AboutView.jsx"));
+const KtxView = React.lazy(() => import("./features/ktx/KtxView.jsx"));
+const StatsView = React.lazy(() => import("./features/stats/StatsView.jsx"));
+const WorkersView = React.lazy(
+  () => import("./features/workers/WorkersView.jsx"),
+);
+const LoginModal = React.lazy(() => import("./features/auth/LoginModal.jsx"));
+const RoomModal = lazy(() => import("./features/ktx/RoomModal.jsx"));
 
 function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`;
@@ -60,252 +84,45 @@ function clsx(...arr) {
   return arr.filter(Boolean).join(" ");
 }
 
-function Pill({ icon: Icon, text, tone = "slate" }) {
-  const toneMap = {
-    slate: "bg-slate-100 text-slate-700",
-    green: "bg-emerald-100 text-emerald-700",
-    amber: "bg-amber-100 text-amber-700",
-    red: "bg-rose-100 text-rose-700",
-    sky: "bg-sky-100 text-sky-700",
-    violet: "bg-violet-100 text-violet-700",
-  };
-  return (
-    <span
-      className={clsx(
-        "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
-        toneMap[tone] || toneMap.slate,
-      )}
-    >
-      {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
-      <span>{text}</span>
-    </span>
-  );
-}
-
-function Modal({ open, title, children, onClose }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="text-base font-semibold">{title}</div>
-          <button
-            className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100"
-            onClick={onClose}
-          >
-            Đóng
-          </button>
-        </div>
-        <div className="max-h-[78vh] overflow-auto px-4 pb-5">{children}</div>
-        <div className="h-2" />
-      </div>
-    </div>
-  );
-}
-
-function Confirm({
+function DeletePasswordModal({
   open,
-  title = "Xác nhận",
+  title,
   message,
-  confirmText = "Xóa",
-  onCancel,
+  password,
+  setPassword,
+  onClose,
   onConfirm,
 }) {
   return (
-    <Modal open={open} title={title} onClose={onCancel}>
+    <Modal open={open} title={title || "Xác nhận xóa"} onClose={onClose}>
       <div className="space-y-3">
-        <p className="text-sm text-slate-600">{message}</p>
-        <div className="flex gap-2">
+        <div className="text-sm text-slate-700">{message}</div>
+
+        <label className="block text-sm font-medium text-slate-700">
+          Nhập mật khẩu Admin để xác nhận
+        </label>
+        <input
+          type="password"
+          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Mật khẩu Admin"
+        />
+
+        <div className="flex gap-2 pt-2">
           <button
-            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
-            onClick={onCancel}
+            className="flex-1 rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
+            onClick={onClose}
           >
             Hủy
           </button>
           <button
-            className="flex-1 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white"
+            className="flex-1 rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white"
             onClick={onConfirm}
           >
-            {confirmText}
+            Xóa
           </button>
         </div>
-      </div>
-    </Modal>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  inputRef,
-  onFocus,
-  onBlur,
-  onKeyDown,
-}) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        ref={inputRef}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
-      />
-    </label>
-  );
-}
-
-function SelectField({ label, value, onChange, options }) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-slate-400"
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      </div>
-    </label>
-  );
-}
-
-function Empty({ title, hint, action }) {
-  return (
-    <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm">
-      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-slate-100">
-        <DoorOpen className="h-6 w-6 text-slate-500" />
-      </div>
-      <div className="text-sm font-semibold">{title}</div>
-      <div className="mt-1 text-xs text-slate-600">{hint}</div>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-function TabButton({ icon: Icon, label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={clsx(
-        "flex flex-1 flex-col items-center justify-center gap-1 py-2",
-        active ? "text-slate-900" : "text-slate-500",
-      )}
-    >
-      <Icon className={clsx("h-5 w-5", active ? "" : "opacity-80")} />
-      <span
-        className={clsx("text-[11px] font-medium", active ? "" : "opacity-90")}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
-function LoginModal({
-  open,
-  onClose,
-  authIsAdmin,
-  loginEmail,
-  setLoginEmail,
-  loginPassword,
-  setLoginPassword,
-}) {
-  const emailRef = React.useRef(null);
-  const passRef = React.useRef(null);
-  const lastFieldRef = React.useRef("email");
-
-  return (
-    <Modal open={open} title="Đăng nhập" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
-          <div className="text-sm font-semibold">Quyền Admin</div>
-          <div className="mt-1 text-xs text-slate-600">
-            Đăng nhập để thêm / xóa / chỉnh sửa. Nếu không, bạn chỉ xem được dữ
-            liệu.
-          </div>
-        </div>
-
-        <TextField
-          label="Email"
-          value={loginEmail}
-          onChange={(v) => setLoginEmail(v)}
-          placeholder="admin@..."
-          type="email"
-          inputRef={emailRef}
-          onFocus={() => (lastFieldRef.current = "email")}
-        />
-
-        <TextField
-          label="Mật khẩu"
-          value={loginPassword}
-          onChange={(v) => setLoginPassword(v)}
-          placeholder="Nhập mật khẩu"
-          type="password"
-          inputRef={passRef}
-          onFocus={() => (lastFieldRef.current = "password")}
-        />
-
-        <button
-          className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-          onClick={async () => {
-            const email = (loginEmail || "").trim();
-            const password = loginPassword || "";
-            if (!email || !password) {
-              alert("Vui lòng nhập email và mật khẩu.");
-              return;
-            }
-            const { error } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-            if (error) {
-              alert("Đăng nhập thất bại: " + error.message);
-              return;
-            }
-            onClose();
-          }}
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            <LogIn className="h-4 w-4" />
-            Đăng nhập
-          </span>
-        </button>
-
-        {authIsAdmin ? (
-          <button
-            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
-            onClick={async () => {
-              const { error } = await supabase.auth.signOut();
-              if (error) {
-                alert("Đăng xuất lỗi: " + error.message);
-                return;
-              }
-              onClose();
-            }}
-          >
-            <span className="inline-flex items-center justify-center gap-2">
-              <LogOut className="h-4 w-4" />
-              Đăng xuất
-            </span>
-          </button>
-        ) : null}
       </div>
     </Modal>
   );
@@ -320,12 +137,20 @@ export default function App() {
       siteName: "KTX",
       roomGridCols: 3,
       adminPassword: "123456",
+      canDeleteStructure: false, // bật/tắt xóa tầng/phòng
+      requirePasswordOnDelete: true, // bắt nhập mật khẩu trước khi xóa
+
       about: {
         companyName: "Ký túc xá",
         address: "",
         hotline: "0343.751.753",
         email: "",
         website: "",
+        mapUrl: "",
+        workingHours: "",
+        services: [],
+        rules: "",
+        bankInfo: "",
         description: "",
         adminNotice: "",
       },
@@ -335,29 +160,44 @@ export default function App() {
   const [state, setState] = useState(() => ({
     floors: [],
     workers: [],
-    settings: {
-      siteName: "KTX",
-      roomGridCols: 3,
-      adminPassword: "123456",
-      about: {
-        companyName: "Ký túc xá",
-        address: "",
-        hotline: "",
-        email: "",
-        website: "",
-        description: "",
-        adminNotice: "",
-      },
-    },
+    settings: DEFAULT_SETTINGS,
   }));
+
   const [auth, setAuth] = useState({ isAdmin: false });
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
-  const [tab, setTab] = useState("ktx"); // ktx | stats | workers | settings
+  const [tab, setTab] = useState("ktx");
+
+  // ---------------------------
+  // Modal state (one place)
+  // ---------------------------
+  const [modal, setModal] = useState({
+    login: false,
+    settings: false,
+    addFloor: false,
+    room: { open: false, floorId: null, roomId: null },
+    worker: { open: false, workerId: null, roomCtx: null },
+    import: { open: false, busy: false, result: null },
+    recruiter: { open: false, recruiter: "" },
+    init: { open: false, floors: 3, roomsPerFloor: 7, startNo: 101 },
+  });
 
   const [q, setQ] = useState("");
   const [floorId, setFloorId] = useState(() => state.floors?.[0]?.id || "");
 
+  const [deletePassModal, setDeletePassModal] = useState({
+    open: false,
+    title: "",
+    message: "",
+    onDelete: null,
+  });
+  const [deletePass, setDeletePass] = useState("");
+
+  const workerById = useMemo(() => {
+    const m = new Map();
+    for (const w of state.workers || []) m.set(w.id, w);
+    return m;
+  }, [state.workers]);
   // ---------------------------
   // Settings persistence (Supabase)
   // Table: app_settings (id=1, data=jsonb)
@@ -387,6 +227,23 @@ export default function App() {
     }
 
     const incoming = res.data?.data || {};
+
+    // ✅ migration: nếu lỡ lưu nhầm trong about (phiên bản cũ) thì kéo lên top-level
+    const legacyCanDelete = incoming?.about?.canDeleteStructure;
+    const legacyRequirePass = incoming?.about?.requirePasswordOnDelete;
+
+    if (
+      typeof incoming.canDeleteStructure !== "boolean" &&
+      typeof legacyCanDelete === "boolean"
+    ) {
+      incoming.canDeleteStructure = legacyCanDelete;
+    }
+    if (
+      typeof incoming.requirePasswordOnDelete !== "boolean" &&
+      typeof legacyRequirePass === "boolean"
+    ) {
+      incoming.requirePasswordOnDelete = legacyRequirePass;
+    }
 
     // Merge để không bị mất default fields
     setState((s) => ({
@@ -427,42 +284,12 @@ export default function App() {
     loadSettingsFromDb();
     loadAllFromDb();
   }, []);
-  const [initModal, setInitModal] = useState({
-    open: false,
-    floors: 3,
-    roomsPerFloor: 7,
-    startNo: 101,
-  });
 
-  // dialogs
-  const [roomModal, setRoomModal] = useState({
-    open: false,
-    floorId: null,
-    roomId: null,
-  });
-  const [workerModal, setWorkerModal] = useState({
-    open: false,
-    workerId: null,
-    roomCtx: null,
-  });
-  const [addFloorModal, setAddFloorModal] = useState(false);
-  const [addRoomModal, setAddRoomModal] = useState(false);
-  const [addWorkerModal, setAddWorkerModal] = useState(false);
-  const [loginModal, setLoginModal] = useState(false);
-  const [settingsModal, setSettingsModal] = useState(false);
-
-  const [importModal, setImportModal] = useState({
-    open: false,
-    busy: false,
-    result: null, // { total, workersInserted, workersUpdated, staysInserted, skipped, errors: [] }
-  });
+  const open = (key, value = true) => setModal((m) => ({ ...m, [key]: value }));
+  const close = (key) => setModal((m) => ({ ...m, [key]: false }));
 
   const importFileRef = useRef(null);
   const [confirm, setConfirm] = useState({ open: false });
-  const [recruiterModal, setRecruiterModal] = useState({
-    open: false,
-    recruiter: null,
-  });
   const importRef = useRef(null);
 
   useEffect(() => {
@@ -556,12 +383,6 @@ export default function App() {
     alert("Khởi tạo KTX thành công!");
     return true;
   }
-
-  const workerById = useMemo(() => {
-    const map = new Map();
-    for (const w of state.workers) map.set(w.id, w);
-    return map;
-  }, [state.workers]);
 
   const floor = useMemo(
     () => state.floors.find((f) => f.id === floorId) || state.floors[0],
@@ -686,27 +507,6 @@ export default function App() {
 
     setState((s) => ({ ...s, floors, workers }));
     if (!floorId && floors[0]?.id) setFloorId(floors[0].id);
-
-    async function wipeDatabase() {
-      // Delete child tables first to avoid FK issues
-      const delStays = await supabase.from("stays").delete().neq("id", "");
-      if (delStays.error)
-        return alert("Xóa stays lỗi: " + delStays.error.message);
-
-      const delWorkers = await supabase.from("workers").delete().neq("id", "");
-      if (delWorkers.error)
-        return alert("Xóa workers lỗi: " + delWorkers.error.message);
-
-      const delRooms = await supabase.from("rooms").delete().neq("id", "");
-      if (delRooms.error)
-        return alert("Xóa rooms lỗi: " + delRooms.error.message);
-
-      const delFloors = await supabase.from("floors").delete().neq("id", "");
-      if (delFloors.error)
-        return alert("Xóa floors lỗi: " + delFloors.error.message);
-
-      await loadAllFromDb();
-    }
   }
 
   // ---------------------------
@@ -766,13 +566,17 @@ export default function App() {
   }
 
   async function importExcelFile(file) {
+    const XLSX = await getXLSX();
     if (!file) return;
     if (!auth.isAdmin) {
-      setLoginModal(true);
+      open("login");
       return;
     }
 
-    setImportModal((m) => ({ ...m, busy: true, result: null }));
+    setModal((m) => ({
+      ...m,
+      import: { ...m.import, busy: true, result: null },
+    }));
 
     try {
       const buf = await file.arrayBuffer();
@@ -1002,7 +806,7 @@ export default function App() {
       await loadAllFromDb();
       alert("Nhập Excel thành công!");
       setImportModal((m) => ({ ...m, open: false })); // nếu bạn có modal import riêng
-      setSettingsModal(false); // nếu import nằm trong settings
+      close("settings"); // nếu import nằm trong settings
       setTab("ktx"); // hoặc "home" theo tên tab của bạn
     } catch (e) {
       setImportModal((m) => ({ ...m, busy: false }));
@@ -1015,7 +819,7 @@ export default function App() {
   // ---------------------------
   function requireAdmin(action) {
     if (!auth.isAdmin) {
-      setLoginModal(true);
+      open("login");
       return;
     }
     // allow async actions too
@@ -1042,11 +846,21 @@ export default function App() {
   }
 
   async function deleteFloor(floorId) {
-    const res = await supabase.from("floors").delete().eq("id", floorId);
-    if (res.error) {
-      alert("Xóa tầng lỗi: " + res.error.message);
-      return;
+    // lấy rooms của floor
+    const floor = state.floors.find((f) => f.id === floorId);
+    const roomIds = (floor?.rooms || []).map((r) => r.id);
+
+    if (roomIds.length) {
+      const a = await supabase.from("stays").delete().in("room_id", roomIds);
+      if (a.error) return alert("Xóa tầng lỗi (stays): " + a.error.message);
+
+      const b = await supabase.from("rooms").delete().in("id", roomIds);
+      if (b.error) return alert("Xóa tầng lỗi (rooms): " + b.error.message);
     }
+
+    const c = await supabase.from("floors").delete().eq("id", floorId);
+    if (c.error) return alert("Xóa tầng lỗi (floor): " + c.error.message);
+
     await loadAllFromDb();
     setFloorId((prev) => (prev === floorId ? "" : prev));
   }
@@ -1085,17 +899,19 @@ export default function App() {
   }
 
   async function deleteRoom(floorId, roomId) {
-    const res = await supabase.from("rooms").delete().eq("id", roomId);
-    if (res.error) {
-      alert("Xóa phòng lỗi: " + res.error.message);
-      return;
-    }
+    // xóa stays trước
+    const a = await supabase.from("stays").delete().eq("room_id", roomId);
+    if (a.error) return alert("Xóa phòng lỗi (stays): " + a.error.message);
+
+    const b = await supabase.from("rooms").delete().eq("id", roomId);
+    if (b.error) return alert("Xóa phòng lỗi (room): " + b.error.message);
+
     await loadAllFromDb();
   }
 
   async function resetDb() {
     if (!auth.isAdmin) {
-      setLoginModal(true);
+      open("login");
       return;
     }
 
@@ -1119,7 +935,7 @@ export default function App() {
     await loadAllFromDb();
 
     // đóng settings về trang chủ nếu muốn
-    setSettingsModal(false); // nếu bạn có state này
+    close("settings"); // nếu bạn có state này
     setTab("ktx");
   }
 
@@ -1202,6 +1018,38 @@ export default function App() {
     await loadAllFromDb();
   }
 
+  async function transferWorker({ stayId, workerId, toRoomId, transferDate }) {
+    const d = transferDate || todayISO();
+
+    // 1) đóng stay hiện tại
+    const closeRes = await supabase
+      .from("stays")
+      .update({ date_out: d })
+      .eq("id", stayId);
+
+    if (closeRes.error) {
+      alert("Chuyển phòng lỗi (đóng phòng cũ): " + closeRes.error.message);
+      return;
+    }
+
+    // 2) tạo stay mới
+    const insRes = await supabase.from("stays").insert([
+      {
+        room_id: toRoomId,
+        worker_id: workerId,
+        date_in: d,
+        date_out: null,
+      },
+    ]);
+
+    if (insRes.error) {
+      alert("Chuyển phòng lỗi (tạo phòng mới): " + insRes.error.message);
+      // (tùy chọn) rollback: mở lại stay cũ nếu muốn
+      return;
+    }
+
+    await loadAllFromDb();
+  }
   // ---------------------------
   // Derived
   // ---------------------------
@@ -1295,81 +1143,77 @@ export default function App() {
   // ---------------------------
   // Export Excel
   // ---------------------------
-  function exportExcel() {
-    const roomsSheet = [];
-    for (const f of state.floors) {
-      for (const r of f.rooms) {
-        const current = r.stays.filter((s) => !s.dateOut);
-        roomsSheet.push({
-          Tầng: f.name,
-          Phòng: r.code,
-          "Số NLĐ đang ở": current.length,
-          "Danh sách NLĐ": current
-            .map((s) => workerById.get(s.workerId)?.fullName)
-            .filter(Boolean)
-            .join(", "),
-        });
-      }
+  async function exportExcel() {
+    try {
+      const roomsSheet = [];
+      // ... (phần bạn đang build sheet giữ nguyên)
+
+      const statsSheet = (Array.isArray(stats) ? stats : []).map((x) => ({
+        "Số người/phòng": x.occupancy,
+        "Số phòng": x.rooms,
+      }));
+
+      const XLSX = await getXLSX();
+      const wb = XLSX.utils.book_new();
+
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(roomsSheet),
+        "Phong",
+      );
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(statsSheet),
+        "Thong_ke",
+      );
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(workersSheet),
+        "NLD",
+      );
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(staysSheet),
+        "Lich_su_o",
+      );
+
+      const fileName = `KTX_${todayISO()}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      console.error("Export Excel failed:", e);
+      alert("Xuất Excel thất bại. Mở Console để xem lỗi chi tiết.");
+    }
+  }
+  function guardDelete({ title, message, onDelete }) {
+    if (!auth.isAdmin) return open("login");
+
+    if (!state.settings.canDeleteStructure) {
+      alert("Chức năng xóa tầng/phòng đang bị tắt trong Cài đặt.");
+      return;
     }
 
-    const workersSheet = state.workers.map((w) => ({
-      "Họ tên": w.fullName,
-      "Ngày sinh": w.dob || "",
-      "Quê quán": w.hometown,
-      "Số điện thoại": w.phone || "",
-      "Người tuyển": w.recruiter,
-    }));
-
-    const staysSheet = [];
-    for (const f of state.floors) {
-      for (const r of f.rooms) {
-        for (const st of r.stays) {
-          const w = workerById.get(st.workerId);
-          staysSheet.push({
-            Tầng: f.name,
-            Phòng: r.code,
-            "Họ tên": w?.fullName || "(không rõ)",
-            "Ngày sinh": w?.dob || "",
-            "Quê quán": w?.hometown || "",
-            "Số điện thoại": w?.phone || "",
-            "Người tuyển": w?.recruiter || "",
-            "Ngày vào": st.dateIn,
-            "Ngày rời": st.dateOut || "",
-            "Đang ở": st.dateOut ? "Không" : "Có",
-          });
-        }
-      }
+    // nếu không bắt password thì đi thẳng Confirm như cũ
+    if (!state.settings.requirePasswordOnDelete) {
+      setConfirm({
+        open: true,
+        title,
+        message,
+        confirmText: "Xóa",
+        onConfirm: async () => {
+          await onDelete();
+          setConfirm({ open: false });
+        },
+      });
+      return;
     }
 
-    const statsSheet = stats.map((x) => ({
-      "Số người/phòng": x.occupancy,
-      "Số phòng": x.rooms,
-    }));
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(roomsSheet),
-      "Phong",
-    );
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(statsSheet),
-      "Thong_ke",
-    );
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(workersSheet),
-      "NLD",
-    );
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.json_to_sheet(staysSheet),
-      "Lich_su_o",
-    );
-
-    const fileName = `KTX_${todayISO()}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+    // nếu bắt password: mở modal nhập mật khẩu
+    setDeletePassModal({
+      open: true,
+      title,
+      message,
+      onDelete,
+    });
   }
 
   // ---------------------------
@@ -1404,7 +1248,7 @@ export default function App() {
             {tab !== "settings" ? (
               <button
                 className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-sm"
-                onClick={() => setSettingsModal(true)}
+                onClick={() => open("settings")}
               >
                 Cài đặt
               </button>
@@ -1486,7 +1330,7 @@ export default function App() {
 
     return (
       <button
-        onClick={() => setRoomModal({ open: true, floorId, roomId: r.id })}
+        onClick={() => open("room", { open: true, floorId, roomId: r.id })}
         className={clsx(
           "relative rounded-3xl p-3 text-left shadow-sm ring-1 transition active:scale-[0.99]",
           tone,
@@ -1541,395 +1385,30 @@ export default function App() {
     );
   }
 
-  function KtxView() {
-    const cols = Math.min(4, Math.max(2, state.settings.roomGridCols || 3));
-    if (state.floors.length === 0) {
-      return (
-        <div className="mx-auto w-full max-w-md px-4 pb-24">
-          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
-            <div className="text-lg font-semibold text-slate-900">
-              Chưa có tầng/phòng
-            </div>
-
-            <div className="mt-1 text-sm text-slate-600">
-              {auth.isAdmin
-                ? "Hãy khởi tạo cấu trúc KTX để bắt đầu."
-                : "Bạn đang ở chế độ xem. Hãy đăng nhập Admin để khởi tạo."}
-            </div>
-
-            {auth.isAdmin ? (
-              <button
-                className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-                onClick={() => setInitModal((m) => ({ ...m, open: true }))}
-              >
-                Khởi tạo KTX
-              </button>
-            ) : null}
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div className="mx-auto w-full max-w-md px-4 pb-24">
-        <div className="flex items-center gap-2">
-          <SelectField
-            label="Chọn tầng"
-            value={floor?.id || ""}
-            onChange={(v) => setFloorId(v)}
-            options={state.floors.map((f) => ({
-              value: f.id,
-              label: `${f.name} (${f.rooms.length} phòng)`,
-            }))}
-          />
-        </div>
-
-        <div className="mt-3 flex gap-2">
-          <button
-            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold shadow-sm"
-            onClick={() => exportExcel()}
-          >
-            <span className="inline-flex items-center justify-center gap-2">
-              <FileDown className="h-4 w-4" />
-              Xuất Excel
-            </span>
-          </button>
-
-          <button
-            className={clsx(
-              "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-              auth.isAdmin
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-700",
-            )}
-            onClick={() =>
-              auth.isAdmin ? setAddRoomModal(true) : setLoginModal(true)
-            }
-          >
-            <span className="inline-flex items-center justify-center gap-2">
-              <Plus className="h-4 w-4" />
-              Phòng
-            </span>
-          </button>
-        </div>
-
-        <div
-          className="mt-4 grid gap-3"
-          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-        >
-          {floor?.rooms?.length ? (
-            floor.rooms.map((r) => (
-              <RoomCard key={r.id} r={r} floorId={floor.id} />
-            ))
-          ) : (
-            <div className="col-span-full">
-              <Empty
-                title="Chưa có phòng ở tầng này"
-                hint={
-                  auth.isAdmin
-                    ? "Thêm phòng để bắt đầu."
-                    : "Bạn đang ở chế độ xem. Hãy đăng nhập để thêm phòng."
-                }
-                action={
-                  <button
-                    onClick={() => requireAdmin(() => setAddRoomModal(true))}
-                    className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-                  >
-                    Thêm phòng
-                  </button>
-                }
-              />
-            </div>
-          )}
-        </div>
-
-        {auth.isAdmin ? (
-          <div className="mt-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold">Quản lý tầng</div>
-                <div className="text-xs text-slate-600">
-                  Thêm / xóa tầng nhanh
-                </div>
-              </div>
-              <button
-                className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
-                onClick={() => setAddFloorModal(true)}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Tầng
-                </span>
-              </button>
-            </div>
-            <div className="mt-3 space-y-2">
-              {state.floors.map((f) => (
-                <div
-                  key={f.id}
-                  className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"
-                >
-                  <button
-                    className="text-left"
-                    onClick={() => setFloorId(f.id)}
-                  >
-                    <div className="text-sm font-semibold text-slate-900">
-                      {f.name}
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      {
-                        f.rooms.filter((r) => r.stays.some((s) => !s.dateOut))
-                          .length
-                      }
-                      /{f.rooms.length} phòng
-                    </div>
-                  </button>
-                  <button
-                    className="rounded-2xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                    onClick={() =>
-                      setConfirm({
-                        open: true,
-                        title: "Xóa tầng",
-                        message: `Xóa ${f.name}? Tất cả phòng và lịch sử ở trong tầng này sẽ bị xóa.`,
-                        confirmText: "Xóa tầng",
-                        onConfirm: () => {
-                          deleteFloor(f.id);
-                          setConfirm({ open: false });
-                        },
-                      })
-                    }
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  function StatsView() {
-    return (
-      <div className="mx-auto w-full max-w-md px-4 pb-24">
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="text-sm font-semibold">
-                Thống kê theo số người/phòng
-              </div>
-              <div className="mt-1 text-xs text-slate-600">
-                Ví dụ: phòng trống, 1 người, 2 người, …
-              </div>
-            </div>
-            <button
-              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
-              onClick={() => exportExcel()}
-            >
-              <span className="inline-flex items-center gap-2">
-                <FileDown className="h-4 w-4" />
-                Excel
-              </span>
-            </button>
-          </div>
-
-          <div className="mt-4 h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="occupancy"
-                  tickFormatter={(value) => `${value} người`}
-                />
-                <Tooltip />
-                <Bar dataKey="rooms" fill="#93c5fd" radius={[10, 10, 0, 0]}>
-                  <LabelList dataKey="rooms" position="top" />
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {stats.map((s) => (
-              <div
-                key={s.occupancy}
-                className="rounded-2xl border border-slate-200 bg-white p-3"
-              >
-                <div className="text-xs text-slate-600">
-                  {s.occupancy === 0 ? "Phòng trống" : `${s.occupancy} người`}
-                </div>
-                <div className="mt-1 text-lg font-semibold">{s.rooms}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">
-                Thống kê NLĐ theo người tuyển (đang ở)
-              </div>
-              <div className="mt-1 text-xs text-slate-600">
-                Đếm NLĐ hiện đang ở theo cột “Người tuyển”.
-              </div>
-            </div>
-            <Pill
-              icon={Users}
-              text={`${recruiterStats.reduce((a, b) => a + b.workers, 0)} NLĐ`}
-              tone="green"
-            />
-          </div>
-
-          {recruiterStats.length ? (
-            <div className="mt-3 space-y-2">
-              {recruiterStats.map((x) => (
-                <button
-                  key={x.recruiter}
-                  className="w-full flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
-                  onClick={() =>
-                    setRecruiterModal({ open: true, recruiter: x.recruiter })
-                  }
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">
-                      {x.recruiter}
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      Bấm để xem danh sách NLĐ
-                    </div>
-                  </div>
-                  <Pill icon={UserRound} text={`${x.workers}`} tone="sky" />
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-3 text-sm text-slate-600">
-              Chưa có NLĐ đang ở.
-            </div>
-          )}
-        </div>
-
-        <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Gợi ý lọc</div>
-              <div className="mt-1 text-xs text-slate-600">
-                Dùng ô tìm kiếm ở trên để lọc theo tên NLĐ (tự làm mờ phòng
-                không khớp).
-              </div>
-            </div>
-            <Pill icon={Filter} text="Tìm nhanh" tone="sky" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function WorkersView() {
-    const query = q.trim().toLowerCase();
-    const list = query
-      ? state.workers.filter((w) => w.fullName.toLowerCase().includes(query))
-      : state.workers;
-
-    return (
-      <div className="mx-auto w-full max-w-md px-4 pb-24">
-        <div className="flex gap-2">
-          <button
-            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold shadow-sm"
-            onClick={() => exportExcel()}
-          >
-            <span className="inline-flex items-center gap-2">
-              <FileDown className="h-4 w-4" />
-              Xuất Excel
-            </span>
-          </button>
-          <button
-            className={clsx(
-              "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-              auth.isAdmin
-                ? "bg-slate-900 text-white"
-                : "bg-slate-100 text-slate-700",
-            )}
-            onClick={() => requireAdmin(() => setAddWorkerModal(true))}
-          >
-            <span className="inline-flex items-center gap-2">
-              <UserPlus className="h-4 w-4" />
-              Thêm NLĐ
-            </span>
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-2">
-          {list.length ? (
-            list
-              .sort((a, b) => a.fullName.localeCompare(b.fullName, "vi"))
-              .map((w) => (
-                <button
-                  key={w.id}
-                  className="w-full rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100"
-                  onClick={() =>
-                    setWorkerModal({
-                      open: true,
-                      workerId: w.id,
-                      roomCtx: null,
-                    })
-                  }
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-base font-semibold text-slate-900">
-                        {w.fullName}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-600">
-                        Quê quán: {w.hometown || "—"}
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-600">
-                        Người tuyển: {w.recruiter || "—"}
-                      </div>
-                    </div>
-                    <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100">
-                      <UserRound className="h-5 w-5 text-slate-600" />
-                    </div>
-                  </div>
-                </button>
-              ))
-          ) : (
-            <Empty
-              title="Không có NLĐ"
-              hint={
-                auth.isAdmin
-                  ? "Thêm NLĐ để bắt đầu."
-                  : "Bạn đang ở chế độ xem. Hãy đăng nhập để thêm NLĐ."
-              }
-              action={
-                <button
-                  onClick={() => requireAdmin(() => setAddWorkerModal(true))}
-                  className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-                >
-                  Thêm NLĐ
-                </button>
-              }
-            />
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // ---------------------------
   // Room modal
   // ---------------------------
   const roomCtx = useMemo(() => {
-    if (!roomModal.open) return null;
-    const f = state.floors.find((x) => x.id === roomModal.floorId);
-    const r = f?.rooms.find((x) => x.id === roomModal.roomId);
+    if (!modal.room.open) return null;
+
+    const f = state.floors.find((x) => x.id === modal.room.floorId);
+    const r = f?.rooms.find((x) => x.id === modal.room.roomId);
+
     return f && r ? { floor: f, room: r } : null;
-  }, [roomModal, state.floors]);
+  }, [modal.room.open, modal.room.floorId, modal.room.roomId, state.floors]);
 
   function RoomModalContent() {
     const ctx = roomCtx;
     const [roomCodeEdit, setRoomCodeEdit] = useState("");
     const [isEditingRoomCode, setIsEditingRoomCode] = useState(false);
-
+    const [transferModal, setTransferModal] = useState({
+      open: false,
+      stayId: null,
+      workerId: null,
+      fromRoomId: null,
+      toRoomId: "",
+      date: todayISO(),
+    });
     useEffect(() => {
       if (ctx?.room?.code) setRoomCodeEdit(ctx.room.code);
       setIsEditingRoomCode(false);
@@ -2018,7 +1497,7 @@ export default function App() {
               )}
               onClick={() =>
                 requireAdmin(async () => {
-                  setWorkerModal({
+                  open("worker", {
                     open: true,
                     workerId: null,
                     roomCtx: { floorId: floor.id, roomId: room.id },
@@ -2040,23 +1519,13 @@ export default function App() {
                   : "bg-slate-100 text-slate-500",
               )}
               onClick={() =>
-                requireAdmin(() =>
-                  setConfirm({
-                    open: true,
-                    title: "Xóa phòng",
-                    message: `Xóa phòng ${room.code}? Toàn bộ lịch sử ở phòng sẽ bị xóa.`,
-                    confirmText: "Xóa phòng",
-                    onConfirm: async () => {
-                      await await deleteRoom(floor.id, room.id);
-                      setConfirm({ open: false });
-                      setRoomModal({
-                        open: false,
-                        floorId: null,
-                        roomId: null,
-                      });
-                    },
-                  }),
-                )
+                guardDelete({
+                  title: "Xóa phòng",
+                  message: `Xóa ${f.name}? Tất cả phòng và lịch sử ở trong phòng này sẽ bị xóa.`,
+                  onDelete: async () => {
+                    await deleteFloor(f.id);
+                  },
+                })
               }
             >
               <Trash2 className="h-4 w-4" />
@@ -2069,87 +1538,213 @@ export default function App() {
             <div className="text-sm font-semibold">NLĐ trong phòng</div>
             <Pill icon={Calendar} text="Click NLĐ để xem" tone="sky" />
           </div>
-
           {current.length ? (
-            current.map((st) => {
-              const w = workerById.get(st.workerId);
-              const matched = q.trim()
-                ? globalMatches.workerIds.has(st.workerId)
-                : true;
-              return (
-                <div
-                  key={st.id}
-                  className={clsx(
-                    "rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100",
-                    matched ? "" : "opacity-40",
-                  )}
-                >
-                  <button
-                    className="w-full text-left"
-                    onClick={() =>
-                      setWorkerModal({
-                        open: true,
-                        workerId: st.workerId,
-                        roomCtx: {
-                          floorId: floor.id,
-                          roomId: room.id,
-                          stayId: st.id,
-                        },
-                      })
+            <>
+              {current.map((st) => {
+                const w = workerById.get(st.workerId);
+                const matched = q.trim()
+                  ? globalMatches.workerIds.has(st.workerId)
+                  : true;
+
+                return (
+                  <div
+                    key={st.id}
+                    className={clsx(
+                      "rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100",
+                      matched ? "" : "opacity-40",
+                    )}
+                  >
+                    <button
+                      className="w-full text-left"
+                      onClick={() =>
+                        open("worker", {
+                          open: true,
+                          workerId: st.workerId,
+                          roomCtx: {
+                            floorId: floor.id,
+                            roomId: room.id,
+                            stayId: st.id,
+                          },
+                        })
+                      }
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-base font-semibold text-slate-900">
+                            {w?.fullName || "(không rõ)"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-600">
+                            Ngày vào: {st.dateIn}
+                          </div>
+                        </div>
+                        <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100">
+                          <UserRound className="h-5 w-5 text-slate-600" />
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="mt-3 flex gap-2">
+                      {/* ✅ Chuyển phòng */}
+                      <button
+                        className={clsx(
+                          "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold",
+                          auth.isAdmin
+                            ? "bg-amber-50 text-amber-800 ring-1 ring-amber-100"
+                            : "bg-slate-100 text-slate-500",
+                        )}
+                        onClick={() =>
+                          requireAdmin(() => {
+                            setTransferModal({
+                              open: true,
+                              stayId: st.id,
+                              workerId: st.workerId,
+                              fromRoomId: room.id,
+                              toRoomId: "",
+                              date: todayISO(),
+                            });
+                          })
+                        }
+                      >
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <UserMinus className="h-4 w-4" />
+                          Chuyển phòng
+                        </span>
+                      </button>
+
+                      {/* ✅ Rời đi */}
+                      <button
+                        className={clsx(
+                          "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold",
+                          auth.isAdmin
+                            ? "bg-amber-50 text-amber-800 ring-1 ring-amber-100"
+                            : "bg-slate-100 text-slate-500",
+                        )}
+                        onClick={() =>
+                          requireAdmin(() =>
+                            setConfirm({
+                              open: true,
+                              title: "Cho NLĐ rời đi",
+                              message: `Xác nhận cho ${w?.fullName || "NLĐ"} rời phòng ${room.code} (ngày rời = hôm nay)?`,
+                              confirmText: "Rời đi",
+                              onConfirm: async () => {
+                                await checkOutStay({
+                                  floorId: floor.id,
+                                  roomId: room.id,
+                                  stayId: st.id,
+                                  dateOut: todayISO(),
+                                });
+                                setConfirm({ open: false });
+                              },
+                            }),
+                          )
+                        }
+                      >
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <UserMinus className="h-4 w-4" />
+                          Rời đi
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* ✅ Modal chuyển phòng: đặt OUTSIDE map */}
+              <Modal
+                open={transferModal.open}
+                title="Chuyển phòng"
+                onClose={() =>
+                  setTransferModal((m) => ({ ...m, open: false, toRoomId: "" }))
+                }
+              >
+                <div className="space-y-3">
+                  <div className="text-sm text-slate-600">
+                    Chọn phòng muốn chuyển tới và ngày chuyển.
+                  </div>
+
+                  <label className="block text-sm font-medium text-slate-700">
+                    Phòng chuyển tới
+                  </label>
+                  <select
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={transferModal.toRoomId}
+                    onChange={(e) =>
+                      setTransferModal((m) => ({
+                        ...m,
+                        toRoomId: e.target.value,
+                      }))
                     }
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="text-base font-semibold text-slate-900">
-                          {w?.fullName || "(không rõ)"}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-600">
-                          Ngày vào: {st.dateIn}
-                        </div>
-                      </div>
-                      <div className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-100">
-                        <UserRound className="h-5 w-5 text-slate-600" />
-                      </div>
-                    </div>
-                  </button>
+                    <option value="">-- Chọn phòng --</option>
+                    {allRooms
+                      .filter((x) => x.id !== room.id)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.floorName} - Phòng {x.code}
+                        </option>
+                      ))}
+                  </select>
 
-                  <div className="mt-3 flex gap-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Ngày chuyển
+                  </label>
+                  <input
+                    type="date"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={transferModal.date}
+                    onChange={(e) =>
+                      setTransferModal((m) => ({ ...m, date: e.target.value }))
+                    }
+                  />
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      className="flex-1 rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                      onClick={() =>
+                        setTransferModal((m) => ({
+                          ...m,
+                          open: false,
+                          toRoomId: "",
+                        }))
+                      }
+                    >
+                      Hủy
+                    </button>
+
                     <button
                       className={clsx(
                         "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold",
                         auth.isAdmin
-                          ? "bg-amber-50 text-amber-800 ring-1 ring-amber-100"
-                          : "bg-slate-100 text-slate-500",
+                          ? "bg-sky-600 text-white"
+                          : "bg-slate-200 text-slate-500",
                       )}
-                      onClick={() =>
-                        requireAdmin(() =>
-                          setConfirm({
-                            open: true,
-                            title: "Cho NLĐ rời đi",
-                            message: `Xác nhận cho ${w?.fullName || "NLĐ"} rời phòng ${room.code} (ngày rời = hôm nay)?`,
-                            confirmText: "Rời đi",
-                            onConfirm: async () => {
-                              await checkOutStay({
-                                floorId: floor.id,
-                                roomId: room.id,
-                                stayId: st.id,
-                                dateOut: todayISO(),
-                              });
-                              setConfirm({ open: false });
-                            },
-                          }),
-                        )
-                      }
+                      disabled={!auth.isAdmin}
+                      onClick={async () => {
+                        if (!transferModal.toRoomId) {
+                          alert("Bạn chưa chọn phòng chuyển tới.");
+                          return;
+                        }
+
+                        await transferWorker({
+                          stayId: transferModal.stayId,
+                          workerId: transferModal.workerId,
+                          toRoomId: transferModal.toRoomId,
+                          transferDate: transferModal.date || todayISO(),
+                        });
+
+                        setTransferModal((m) => ({
+                          ...m,
+                          open: false,
+                          toRoomId: "",
+                        }));
+                      }}
                     >
-                      <span className="inline-flex items-center justify-center gap-2">
-                        <UserMinus className="h-4 w-4" />
-                        Rời đi
-                      </span>
+                      Xác nhận chuyển
                     </button>
                   </div>
                 </div>
-              );
-            })
+              </Modal>
+            </>
           ) : (
             <Empty
               title="Phòng đang trống"
@@ -2162,7 +1757,7 @@ export default function App() {
                 <button
                   onClick={() =>
                     requireAdmin(() =>
-                      setWorkerModal({
+                      open("worker", {
                         open: true,
                         workerId: null,
                         roomCtx: { floorId: floor.id, roomId: room.id },
@@ -2189,7 +1784,7 @@ export default function App() {
                     key={st.id}
                     className="w-full rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100"
                     onClick={() =>
-                      setWorkerModal({
+                      open("worker", {
                         open: true,
                         workerId: st.workerId,
                         roomCtx: {
@@ -2228,56 +1823,64 @@ export default function App() {
   // Worker modal
   // ---------------------------
   const workerCtx = useMemo(() => {
-    if (!workerModal.open) return null;
-    const w = workerModal.workerId
-      ? workerById.get(workerModal.workerId)
-      : null;
+    if (!modal.worker.open) return null;
+
+    const workerId = modal.worker.workerId;
+    const w = workerId ? workerById.get(workerId) : null;
 
     // find current room for worker (if any)
     let currentRoom = null;
-    for (const f of state.floors) {
-      for (const r of f.rooms) {
-        const st = r.stays.find(
-          (s) => s.workerId === workerModal.workerId && !s.dateOut,
-        );
-        if (st) {
-          currentRoom = { floor: f, room: r, stay: st };
-          break;
+    if (workerId) {
+      for (const f of state.floors) {
+        for (const r of f.rooms) {
+          const st = r.stays.find((s) => s.workerId === workerId && !s.dateOut);
+          if (st) {
+            currentRoom = { floor: f, room: r, stay: st };
+            break;
+          }
         }
+        if (currentRoom) break;
       }
-      if (currentRoom) break;
     }
 
     return { worker: w, currentRoom };
-  }, [workerModal, workerById, state.floors]);
+  }, [modal.worker.open, modal.worker.workerId, workerById, state.floors]);
 
   function WorkerModalContent() {
     const ctx = workerCtx;
-    const roomCtx2 = workerModal.roomCtx;
+    const roomCtx2 = modal.roomCtx;
 
-    const [fullName, setFullName] = useState(ctx?.worker?.fullName || "");
-    const [dob, setDob] = useState(ctx?.worker?.dob || "");
-    const [hometown, setHometown] = useState(ctx?.worker?.hometown || "");
-    const [phone, setPhone] = useState(ctx?.worker?.phone || "");
-    const [recruiter, setRecruiter] = useState(ctx?.worker?.recruiter || "");
+    const [fullName, setFullName] = useState("");
+    const [dob, setDob] = useState("");
+    const [hometown, setHometown] = useState("");
+    const [phone, setPhone] = useState("");
+    const [recruiter, setRecruiter] = useState("");
     const [dateIn, setDateIn] = useState(todayISO());
-    const [pickWorkerId, setPickWorkerId] = useState(ctx?.worker?.id || "");
+    const [pickWorkerId, setPickWorkerId] = useState("");
 
     // Reset fields when opening for different worker
-    const lastIdRef = useRef(null);
     useEffect(() => {
-      const id = ctx?.worker?.id || "__new__";
-      if (lastIdRef.current !== id) {
-        lastIdRef.current = id;
-        setFullName(ctx?.worker?.fullName || "");
-        setDob(ctx?.worker?.dob || "");
-        setHometown(ctx?.worker?.hometown || "");
-        setPhone(ctx?.worker?.phone || "");
-        setRecruiter(ctx?.worker?.recruiter || "");
-        setPickWorkerId(ctx?.worker?.id || "");
-        setDateIn(todayISO());
+      // Khi modal mở ở chế độ xem/sửa NLĐ
+      if (ctx?.worker) {
+        setFullName(ctx.worker.fullName || "");
+        setDob(ctx.worker.dob || "");
+        setHometown(ctx.worker.hometown || "");
+        setPhone(ctx.worker.phone || "");
+        setRecruiter(ctx.worker.recruiter || "");
+        setPickWorkerId(ctx.worker.id || "");
+        return;
       }
-    }, [ctx?.worker?.id]);
+
+      // Khi modal mở để "Thêm NLĐ" vào phòng (roomCtx2 có dữ liệu)
+      // hoặc mở rỗng
+      setFullName("");
+      setDob("");
+      setHometown("");
+      setPhone("");
+      setRecruiter("");
+      setPickWorkerId("");
+      setDateIn(todayISO());
+    }, [ctx?.worker?.id, modal.worker.open]);
 
     if (!roomCtx2 && !ctx?.worker) {
       // should not happen
@@ -2389,7 +1992,7 @@ export default function App() {
                       workerId: w.id,
                       dateIn: dateIn || todayISO(),
                     });
-                    setWorkerModal({
+                    open("worker", {
                       open: false,
                       workerId: null,
                       roomCtx: null,
@@ -2468,7 +2071,7 @@ export default function App() {
                         phone: phone.trim(),
                         recruiter: recruiter.trim(),
                       });
-                      setWorkerModal((m) => ({ ...m }));
+                      open("worker", (m) => ({ ...m, open: false }));
                     })
                   }
                 >
@@ -2492,7 +2095,7 @@ export default function App() {
                         onConfirm: () => {
                           deleteWorker(ctx?.worker?.id);
                           setConfirm({ open: false });
-                          setWorkerModal({
+                          open("worker", {
                             open: false,
                             workerId: null,
                             roomCtx: null,
@@ -2521,16 +2124,16 @@ export default function App() {
           </div>
         ) : null}
 
-        {workerModal.roomCtx?.stayId
+        {modal.worker.roomCtx?.stayId
           ? (() => {
               const f = state.floors.find(
-                (x) => x.id === workerModal.roomCtx.floorId,
+                (x) => x.id === modal.worker.roomCtx.floorId,
               );
               const r = f?.rooms.find(
-                (x) => x.id === workerModal.roomCtx.roomId,
+                (x) => x.id === modal.worker.roomCtx.roomId,
               );
               const st = r?.stays.find(
-                (x) => x.id === workerModal.roomCtx.stayId,
+                (x) => x.id === modal.worker.roomCtx.stayId,
               );
               if (!f || !r || !st) return null;
               return (
@@ -2567,9 +2170,9 @@ export default function App() {
     const [name, setName] = useState("");
     return (
       <Modal
-        open={addFloorModal}
+        open={modal.addFloor}
         title="Thêm tầng"
-        onClose={() => setAddFloorModal(false)}
+        onClose={() => close("addFloor")}
       >
         <div className="space-y-3">
           <TextField
@@ -2583,7 +2186,7 @@ export default function App() {
             onClick={() =>
               requireAdmin(async () => {
                 addFloor(name);
-                setAddFloorModal(false);
+                close("addFloor");
               })
             }
           >
@@ -2599,12 +2202,15 @@ export default function App() {
 
   function AddRoomModal() {
     const [code, setCode] = useState("");
+
+    // đóng modal + reset input cho gọn
+    const closeAddRoom = () => {
+      close("addRoom");
+      setCode("");
+    };
+
     return (
-      <Modal
-        open={addRoomModal}
-        title="Thêm phòng"
-        onClose={() => setAddRoomModal(false)}
-      >
+      <Modal open={modal.addRoom} title="Thêm phòng" onClose={closeAddRoom}>
         <div className="space-y-3">
           <SelectField
             label="Tầng"
@@ -2612,18 +2218,20 @@ export default function App() {
             onChange={(v) => setFloorId(v)}
             options={state.floors.map((f) => ({ value: f.id, label: f.name }))}
           />
+
           <TextField
             label="Mã phòng"
             value={code}
             onChange={setCode}
             placeholder="VD: 106"
           />
+
           <button
             className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
             onClick={() =>
               requireAdmin(async () => {
                 addRoom(floor.id, code);
-                setAddRoomModal(false);
+                closeAddRoom();
               })
             }
           >
@@ -2644,9 +2252,9 @@ export default function App() {
 
     return (
       <Modal
-        open={addWorkerModal}
+        open={modal.addWorker}
         title="Thêm NLĐ"
-        onClose={() => setAddWorkerModal(false)}
+        onClose={() => close("addWorker")}
       >
         <div className="space-y-3">
           <TextField
@@ -2667,6 +2275,7 @@ export default function App() {
             onChange={setRecruiter}
             placeholder=""
           />
+
           <button
             className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
             onClick={() =>
@@ -2675,12 +2284,20 @@ export default function App() {
                   alert("Vui lòng nhập Họ tên.");
                   return;
                 }
+
                 addWorker({
                   fullName: fullName.trim(),
                   hometown: hometown.trim(),
                   recruiter: recruiter.trim(),
                 });
-                setAddWorkerModal(false);
+
+                // đóng modal
+                close("addWorker");
+
+                // (khuyên) reset input để lần sau mở modal không bị dính dữ liệu cũ
+                setFullName("");
+                setHometown("");
+                setRecruiter("");
               })
             }
           >
@@ -2695,26 +2312,27 @@ export default function App() {
   }
 
   function ImportExcelModal() {
-    const result = importModal.result;
+    const result = modal.import?.result;
+
+    const closeImport = () => {
+      setModal((m) => ({
+        ...m,
+        import: { ...(m.import || {}), open: false, busy: false, result: null },
+      }));
+    };
+
     return (
       <Modal
-        open={importModal.open}
+        open={!!modal.import?.open}
         title="Nhập Excel"
-        onClose={() =>
-          setImportModal((m) => ({
-            ...m,
-            open: false,
-            busy: false,
-            result: null,
-          }))
-        }
+        onClose={closeImport}
       >
         <div className="space-y-4">
           <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
             <div className="text-sm font-semibold">Hướng dẫn</div>
             <div className="mt-1 text-xs text-slate-600">
               File Excel (sheet đầu tiên) nên có các cột: Họ tên, Ngày sinh, Số
-              điện thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.{" "}
+              điện thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.
               <br />
               Nếu không có Phòng/Ngày vào thì chỉ tạo NLĐ.
             </div>
@@ -2728,13 +2346,12 @@ export default function App() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) importExcelFile(f);
-              // allow pick same file again
               e.target.value = "";
             }}
-            disabled={importModal.busy}
+            disabled={!!modal.import?.busy}
           />
 
-          {importModal.busy ? (
+          {modal.import?.busy ? (
             <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-slate-100">
               Đang nhập dữ liệu…
             </div>
@@ -2798,17 +2415,23 @@ export default function App() {
 
     return (
       <Modal
-        open={initModal.open}
+        open={modal.init.open}
         title="Khởi tạo cấu trúc KTX"
-        onClose={() => !busy && setInitModal((m) => ({ ...m, open: false }))}
+        onClose={() => {
+          if (busy) return;
+          setModal((m) => ({ ...m, init: { ...(m.init || {}), open: false } }));
+        }}
       >
         <div className="space-y-3">
           <TextField
             label="Số tầng"
             type="number"
-            value={String(initModal.floors)}
+            value={String(modal.init.floors ?? 0)}
             onChange={(v) =>
-              setInitModal((m) => ({ ...m, floors: Number(v || 0) }))
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), floors: Number(v || 0) },
+              }))
             }
             placeholder="VD: 3"
           />
@@ -2816,9 +2439,12 @@ export default function App() {
           <TextField
             label="Số phòng / tầng"
             type="number"
-            value={String(initModal.roomsPerFloor)}
+            value={String(modal.init.roomsPerFloor ?? 0)}
             onChange={(v) =>
-              setInitModal((m) => ({ ...m, roomsPerFloor: Number(v || 0) }))
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), roomsPerFloor: Number(v || 0) },
+              }))
             }
             placeholder="VD: 7"
           />
@@ -2826,9 +2452,12 @@ export default function App() {
           <TextField
             label="Số bắt đầu"
             type="number"
-            value={String(initModal.startNo)}
+            value={String(modal.init.startNo ?? 0)}
             onChange={(v) =>
-              setInitModal((m) => ({ ...m, startNo: Number(v || 0) }))
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), startNo: Number(v || 0) },
+              }))
             }
             placeholder="VD: 101"
           />
@@ -2841,7 +2470,6 @@ export default function App() {
                 try {
                   setBusy(true);
 
-                  // nếu DB đã có tầng/phòng thì chặn để tránh tạo trùng
                   if (state.floors.length > 0) {
                     alert(
                       "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại.",
@@ -2849,11 +2477,12 @@ export default function App() {
                     return;
                   }
 
-                  const ok = await initKtxFromInputs(initModal); // ✅ hàm trả true/false
+                  const ok = await initKtxFromInputs(modal.init);
                   if (ok) {
-                    setInitModal((m) => ({ ...m, open: false })); // ✅ đóng modal
-                    // nếu bạn có state tab / trang chủ thì bật lại ở đây:
-                    // setTab("ktx"); // hoặc "home" tùy tên tab của bạn
+                    setModal((m) => ({
+                      ...m,
+                      init: { ...(m.init || {}), open: false },
+                    }));
                   }
                 } finally {
                   setBusy(false);
@@ -2879,11 +2508,42 @@ export default function App() {
     );
     const [cols, setCols] = useState(String(state.settings.roomGridCols || 3));
 
+    const [canDeleteStructure, setCanDeleteStructure] = useState(
+      !!state.settings.canDeleteStructure,
+    );
+    const [requirePasswordOnDelete, setRequirePasswordOnDelete] = useState(
+      state.settings.requirePasswordOnDelete !== false, // mặc định true
+    );
+
+    const [aboutDraft, setAboutDraft] = useState(() => ({
+      ...DEFAULT_SETTINGS.about,
+      ...(state.settings.about || {}),
+    }));
+
+    // Khi mở modal, đồng bộ draft theo state hiện tại (tránh bị stale)
+    useEffect(() => {
+      if (!modal.settings) return;
+
+      setAboutDraft({
+        ...DEFAULT_SETTINGS.about,
+        ...(state.settings.about || {}),
+      });
+
+      setSiteName(state.settings.siteName || "");
+      setAdminPassword(state.settings.adminPassword || "");
+      setCols(String(state.settings.roomGridCols || 3));
+      setCanDeleteStructure(!!state.settings.canDeleteStructure);
+      setRequirePasswordOnDelete(
+        state.settings.requirePasswordOnDelete !== false,
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [modal.settings]);
+
     return (
       <Modal
-        open={settingsModal}
+        open={modal.settings}
         title="Cài đặt"
-        onClose={() => setSettingsModal(false)}
+        onClose={() => close("settings")}
       >
         <div className="space-y-4">
           <div className="w-full flex justify-end">
@@ -2891,8 +2551,8 @@ export default function App() {
               <button
                 className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-lg"
                 onClick={() => {
-                  setSettingsModal(false);
-                  setLoginModal(true);
+                  close("settings");
+                  open("login");
                 }}
               >
                 <LogIn className="h-4 w-4" />
@@ -2903,7 +2563,7 @@ export default function App() {
                 className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-xs font-semibold text-white shadow-lg"
                 onClick={async () => {
                   await supabase.auth.signOut();
-                  setSettingsModal(false);
+                  close("settings");
                 }}
               >
                 <LogOut className="h-4 w-4" />
@@ -2928,7 +2588,241 @@ export default function App() {
                 placeholder="2-4"
                 type="number"
               />
+
+              <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold">Về chúng tôi</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {auth.isAdmin
+                        ? "Admin có thể cập nhật thông tin hiển thị ở tab Về chúng tôi."
+                        : "Bạn đang ở chế độ xem. Đăng nhập Admin để chỉnh sửa."}
+                    </div>
+                  </div>
+                  <Pill
+                    icon={Pencil}
+                    text={auth.isAdmin ? "Chỉnh sửa" : "Xem"}
+                    tone={auth.isAdmin ? "violet" : "slate"}
+                  />
+                </div>
+
+                <div className="mt-3 space-y-3">
+                  <TextField
+                    label="Tên đơn vị / KTX"
+                    value={aboutDraft.companyName || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, companyName: v }))
+                    }
+                    placeholder="VD: KTX ABC"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Mô tả
+                    </div>
+                    <textarea
+                      value={aboutDraft.description || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          description: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={4}
+                      placeholder="Giới thiệu ngắn về ký túc xá..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <TextField
+                    label="Địa chỉ"
+                    value={aboutDraft.address || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, address: v }))
+                    }
+                    placeholder=""
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Link bản đồ (Google Maps)"
+                    value={aboutDraft.mapUrl || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, mapUrl: v }))
+                    }
+                    placeholder="https://maps.google.com/..."
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Hotline"
+                    value={aboutDraft.hotline || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, hotline: v }))
+                    }
+                    placeholder="VD: 0343 751 753"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Email"
+                    value={aboutDraft.email || ""}
+                    onChange={(v) => setAboutDraft((a) => ({ ...a, email: v }))}
+                    placeholder=""
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Website"
+                    value={aboutDraft.website || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, website: v }))
+                    }
+                    placeholder="ktx-abc.com"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <TextField
+                    label="Giờ làm việc"
+                    value={aboutDraft.workingHours || ""}
+                    onChange={(v) =>
+                      setAboutDraft((a) => ({ ...a, workingHours: v }))
+                    }
+                    placeholder="VD: 08:00 - 17:00 (T2-T7)"
+                    disabled={!auth.isAdmin}
+                  />
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Tiện ích (ngăn cách bằng dấu phẩy)
+                    </div>
+                    <input
+                      value={(aboutDraft.services || []).join(", ")}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          services: e.target.value
+                            .split(",")
+                            .map((x) => x.trim())
+                            .filter(Boolean),
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      placeholder="WiFi, Giặt sấy, Căn tin..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Nội quy
+                    </div>
+                    <textarea
+                      value={aboutDraft.rules || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({ ...a, rules: e.target.value }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={4}
+                      placeholder="Nội quy ký túc xá..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Thông tin thanh toán
+                    </div>
+                    <textarea
+                      value={aboutDraft.bankInfo || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          bankInfo: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={3}
+                      placeholder="Số tài khoản / QR / ghi chú..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">
+                      Thông báo Admin (hiển thị nổi bật)
+                    </div>
+                    <textarea
+                      value={aboutDraft.adminNotice || ""}
+                      onChange={(e) =>
+                        setAboutDraft((a) => ({
+                          ...a,
+                          adminNotice: e.target.value,
+                        }))
+                      }
+                      disabled={!auth.isAdmin}
+                      rows={3}
+                      placeholder="VD: Tuần này sửa chữa khu A..."
+                      className={clsx(
+                        "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400",
+                        !auth.isAdmin ? "opacity-70" : "",
+                      )}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!state.settings.canDeleteStructure}
+                onChange={(e) =>
+                  auth.isAdmin &&
+                  setState((s) => ({
+                    ...s,
+                    settings: {
+                      ...s.settings,
+                      canDeleteStructure: e.target.checked,
+                    },
+                  }))
+                }
+                disabled={!auth.isAdmin}
+              />
+              Cho phép xóa tầng/phòng
+            </label>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!state.settings.requirePasswordOnDelete}
+                onChange={(e) =>
+                  auth.isAdmin &&
+                  setState((s) => ({
+                    ...s,
+                    settings: {
+                      ...s.settings,
+                      requirePasswordOnDelete: e.target.checked,
+                    },
+                  }))
+                }
+                disabled={!auth.isAdmin || !state.settings.canDeleteStructure}
+              />
+              Bắt nhập mật khẩu trước khi xóa
+            </label>
           </div>
           <button
             className={clsx(
@@ -2939,17 +2833,31 @@ export default function App() {
             )}
             onClick={() =>
               requireAdmin(async () => {
-                const nCols = Math.min(4, Math.max(2, Number(cols || 3)));
-                setState((s) => ({
-                  ...s,
-                  settings: {
-                    ...s.settings,
+                try {
+                  const nCols = Math.min(4, Math.max(2, Number(cols || 3)));
+                  const nextSettings = {
+                    ...state.settings,
                     siteName: siteName || "Quản lý KTX",
                     adminPassword: adminPassword || "123456",
                     roomGridCols: nCols,
-                  },
-                }));
-                setSettingsModal(false);
+
+                    canDeleteStructure,
+                    requirePasswordOnDelete,
+
+                    about: {
+                      ...DEFAULT_SETTINGS.about,
+                      ...(aboutDraft || {}),
+                    },
+                  };
+
+                  await saveSettingsToDb(nextSettings);
+                  setState((s) => ({ ...s, settings: nextSettings }));
+                  close("settings");
+                  alert("Đã lưu cài đặt.");
+                } catch (e) {
+                  console.error(e);
+                  alert("Lưu cài đặt lỗi: " + (e?.message || e));
+                }
               })
             }
           >
@@ -3002,7 +2910,7 @@ export default function App() {
                 )}
                 onClick={() =>
                   requireAdmin(() => {
-                    importRef.current?.click();
+                    importFileRef.current?.click();
                   })
                 }
               >
@@ -3041,7 +2949,7 @@ export default function App() {
                           await wipeDatabase();
                           await loadAllFromDb(); // ✅ cập nhật UI sau reset
                           setConfirm({ open: false });
-                          setSettingsModal(false);
+                          close("settings");
                           alert("Đã reset dữ liệu.");
                         } catch (e) {
                           console.error(e);
@@ -3068,19 +2976,61 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {Header}
 
-      {tab === "ktx" ? (
-        <KtxView />
-      ) : tab === "stats" ? (
-        <StatsView />
-      ) : tab === "workers" ? (
-        <WorkersView />
-      ) : tab === "about" ? (
-        <AboutView />
-      ) : (
-        <div className="mx-auto w-full max-w-md px-4 pb-24">
-          Mở Cài đặt ở góc phải.
-        </div>
-      )}
+      <Suspense
+        fallback={
+          <div className="mx-auto w-full max-w-md px-4 pb-24">Đang tải…</div>
+        }
+      >
+        {tab === "ktx" ? (
+          <KtxView
+            state={state}
+            floor={floor}
+            setFloorId={setFloorId}
+            auth={auth}
+            exportExcel={exportExcel}
+            requireAdmin={requireAdmin}
+            onOpenInit={() => open("init", { open: true })}
+            onOpenAddRoom={() => setAddRoomModal(true)}
+            onOpenLogin={() => open("login")}
+            onOpenAddFloor={() => setAddFloorModal(true)}
+            guardDelete={guardDelete}
+            deleteFloor={deleteFloor}
+            RoomCard={RoomCard}
+          />
+        ) : tab === "stats" ? (
+          <StatsView
+            stats={stats}
+            recruiterStats={recruiterStats}
+            onExportExcel={exportExcel}
+            onOpenRecruiter={(recruiter) =>
+              setRecruiterModal({ open: true, recruiter })
+            }
+          />
+        ) : tab === "workers" ? (
+          <WorkersView
+            workers={state.workers}
+            q={q}
+            auth={auth}
+            onExportExcel={exportExcel}
+            requireAdmin={requireAdmin}
+            onOpenAddWorker={() => setAddWorkerModal(true)}
+            onOpenWorker={(workerId) =>
+              open("worker", { open: true, workerId, roomCtx: null })
+            }
+          />
+        ) : tab === "about" ? (
+          <AboutView
+            state={state}
+            DEFAULT_SETTINGS={DEFAULT_SETTINGS}
+            auth={auth}
+            onOpenSettings={() => open("settings")}
+          />
+        ) : (
+          <div className="mx-auto w-full max-w-md px-4 pb-24">
+            Mở Cài đặt ở góc phải.
+          </div>
+        )}
+      </Suspense>
 
       {/* bottom nav */}
       <div className="fixed inset-x-0 bottom-0 z-40">
@@ -3115,22 +3065,33 @@ export default function App() {
       </div>
 
       {/* Modals */}
+      <Suspense fallback={null}>
+        <RoomModal
+          open={modal.room.open}
+          onClose={() =>
+            open("room", { open: false, floorId: null, roomId: null })
+          }
+          state={state}
+          workerById={workerById}
+          floorId={modal.room.floorId}
+          roomId={modal.room.roomId}
+          isAdmin={auth.isAdmin}
+          onOpenWorker={(workerId) =>
+            open("worker", { open: true, workerId, roomCtx: null })
+          }
+          // 3 cái dưới nếu bạn chưa làm thì để null vẫn chạy
+          onAddStay={null}
+          onCheckoutStay={null}
+          onTransfer={null}
+        />
+      </Suspense>
       <Modal
-        open={roomModal.open}
-        title="Chi tiết phòng"
-        onClose={() =>
-          setRoomModal({ open: false, floorId: null, roomId: null })
-        }
-      >
-        <RoomModalContent />
-      </Modal>
-      <Modal
-        open={recruiterModal.open}
-        title={`NLĐ theo người tuyển: ${recruiterModal.recruiter || ""}`}
-        onClose={() => setRecruiterModal({ open: false, recruiter: null })}
+        open={modal.recruiter.open}
+        title={`NLĐ theo người tuyển: ${modal.recruiter.recruiter || ""}`}
+        onClose={() => open("recruiter", { open: false, recruiter: "" })}
       >
         {(() => {
-          const key = recruiterModal.recruiter;
+          const key = modal.recruiter.recruiter;
           const list = key ? recruiterWorkersMap.get(key) || [] : [];
 
           if (!key)
@@ -3159,8 +3120,7 @@ export default function App() {
                   key={it.workerId + it.roomCode}
                   className="w-full rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100"
                   onClick={() => {
-                    // mở modal NLĐ luôn (xem chi tiết)
-                    setWorkerModal({
+                    open("worker", {
                       open: true,
                       workerId: it.workerId,
                       roomCtx: null,
@@ -3188,41 +3148,49 @@ export default function App() {
         })()}
       </Modal>
       <Modal
-        open={workerModal.open}
+        open={modal.worker.open}
         title={
-          workerModal.workerId
+          modal.worker.workerId
             ? "Chi tiết NLĐ"
-            : workerModal.roomCtx
+            : modal.worker.roomCtx
               ? "Thêm NLĐ"
               : "NLĐ"
         }
         onClose={() =>
-          setWorkerModal({ open: false, workerId: null, roomCtx: null })
+          open("worker", { open: false, workerId: null, roomCtx: null })
         }
       >
         <WorkerModalContent />
       </Modal>
 
       <Modal
-        open={initModal.open}
+        open={modal.init.open}
         title="Khởi tạo cấu trúc KTX"
-        onClose={() => setInitModal((m) => ({ ...m, open: false }))}
+        onClose={() => open("init", { ...modal.init, open: false })}
       >
         <div className="space-y-3">
           <TextField
             label="Số tầng"
             type="number"
-            value={String(initModal.floors)}
-            onChange={(v) => setInitModal((m) => ({ ...m, floors: Number(v) }))}
+            value={String(modal.init.floors ?? 0)}
+            onChange={(v) =>
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), floors: Number(v) },
+              }))
+            }
             placeholder="VD: 3"
           />
 
           <TextField
             label="Số phòng / tầng"
             type="number"
-            value={String(initModal.roomsPerFloor)}
+            value={String(modal.init.roomsPerFloor ?? 0)}
             onChange={(v) =>
-              setInitModal((m) => ({ ...m, roomsPerFloor: Number(v) }))
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), roomsPerFloor: Number(v) },
+              }))
             }
             placeholder="VD: 7"
           />
@@ -3230,16 +3198,19 @@ export default function App() {
           <TextField
             label="Số bắt đầu"
             type="number"
-            value={String(initModal.startNo)}
+            value={String(modal.init.startNo ?? 0)}
             onChange={(v) =>
-              setInitModal((m) => ({ ...m, startNo: Number(v) }))
+              setModal((m) => ({
+                ...m,
+                init: { ...(m.init || {}), startNo: Number(v) },
+              }))
             }
             placeholder="VD: 101"
           />
 
           <button
             className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-            onClick={() => initKtxFromInputs(initModal)}
+            onClick={() => initKtxFromInputs(modal.init)}
           >
             Tạo tầng & phòng
           </button>
@@ -3267,19 +3238,71 @@ export default function App() {
           await importExcelFile(file); // <- hàm import của bạn
         }}
       />
+      <Suspense fallback={null}>
+        <LoginModal
+          open={modal.login}
+          onClose={() => close("login")}
+          onLogin={async ({ email, password }) => {
+            const res = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+            if (res.error) throw new Error(res.error.message);
+            close("login");
+          }}
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <RoomModal
+          open={modal.room.open}
+          onClose={() =>
+            open("room", { open: false, floorId: null, roomId: null })
+          }
+          state={state}
+          workerById={workerById}
+          floorId={modal.room.floorId}
+          roomId={modal.room.roomId}
+          isAdmin={auth.isAdmin}
+          onOpenWorker={(workerId) => {
+            open("worker", { open: true, workerId, roomCtx: null });
+          }}
+          onAddStay={null}
+          onCheckoutStay={null}
+          onTransfer={null}
+        />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <LoginModal
+          open={modal.login}
+          onClose={() => close("login")}
+          onLogin={async ({ email, password }) => {
+            // bạn đang dùng supabase session để xác định isAdmin
+            const res = await supabase.auth.signInWithPassword({
+              email,
+              password,
+            });
+            if (res.error) throw new Error(res.error.message);
+
+            // login xong đóng modal
+            close("login");
+          }}
+        />
+      </Suspense>
 
       <AddFloorModal />
       <AddRoomModal />
       <AddWorkerModal />
       <InitKtxModal />
       <LoginModal
-        open={loginModal}
-        onClose={() => setLoginModal(false)}
+        open={modal.login}
+        onClose={() => close("login")}
         loginEmail={loginEmail}
         setLoginEmail={setLoginEmail}
         loginPassword={loginPassword}
         setLoginPassword={setLoginPassword}
-        isAdmin={auth.isAdmin}
+        authIsAdmin={auth.isAdmin}
       />
       <ImportExcelModal />
       <SettingsModal />
@@ -3292,6 +3315,40 @@ export default function App() {
         onCancel={() => setConfirm({ open: false })}
         onConfirm={() => {
           confirm.onConfirm?.();
+        }}
+      />
+      <DeletePasswordModal
+        open={!!deletePassModal.open}
+        title={deletePassModal.title}
+        message={deletePassModal.message}
+        password={deletePass}
+        setPassword={setDeletePass}
+        onClose={() => {
+          setDeletePass("");
+          setDeletePassModal({
+            open: false,
+            title: "",
+            message: "",
+            onDelete: null,
+          });
+        }}
+        onConfirm={async () => {
+          if (deletePass !== state.settings.adminPassword) {
+            alert("Mật khẩu không đúng.");
+            return;
+          }
+
+          try {
+            await deletePassModal.onDelete?.();
+          } finally {
+            setDeletePass("");
+            setDeletePassModal({
+              open: false,
+              title: "",
+              message: "",
+              onDelete: null,
+            });
+          }
         }}
       />
 
