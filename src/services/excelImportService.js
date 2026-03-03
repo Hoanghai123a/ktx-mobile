@@ -231,16 +231,14 @@ export async function importExcelFileToDb(file) {
         continue;
       }
 
-      const insStay = await supabase
-        .from("stays")
-        .insert([
-          {
-            room_id: roomId,
-            worker_id: workerId,
-            date_in: dateIn,
-            date_out: dateOut || null,
-          },
-        ]);
+      const insStay = await supabase.from("stays").insert([
+        {
+          room_id: roomId,
+          worker_id: workerId,
+          date_in: dateIn,
+          date_out: dateOut || null,
+        },
+      ]);
 
       if (insStay.error) {
         errors.push({

@@ -471,10 +471,12 @@ export default function App() {
       const result = await importExcelFileToDb(file);
       setImportModal((m) => ({ ...m, busy: false, result }));
       await loadAllFromDb();
-      alert("Nhập Excel thành công!");
-      setImportModal((m) => ({ ...m, open: false }));
-      setSettingsModal(false);
+
       setTab("ktx");
+      setSettingsModal(false);
+      setImportModal((m) => ({ ...m, open: false, busy: false, result: null }));
+
+      alert("Nhập Excel thành công!");
     } catch (e) {
       setImportModal((m) => ({ ...m, busy: false }));
       alert("Nhập Excel lỗi: " + (e?.message || String(e)));

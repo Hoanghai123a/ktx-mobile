@@ -85,9 +85,14 @@ export default function ImportExcelModal({
                   Danh sách lỗi
                 </div>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-rose-900">
-                  {result.errors.slice(0, 20).map((x, i) => (
-                    <li key={i}>{x}</li>
-                  ))}
+                  {result.errors.slice(0, 20).map((x, i) => {
+                    const text =
+                      typeof x === "string"
+                        ? x
+                        : `Dòng ${x.line || "?"}: ${x.fullName || "(không có tên)"} - ${x.reason || ""}`;
+
+                    return <li key={i}>{text}</li>;
+                  })}
                 </ul>
                 {(result.errors || []).length > 20 ? (
                   <div className="mt-2 text-xs text-rose-900">
