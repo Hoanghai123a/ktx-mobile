@@ -1,9 +1,10 @@
 import React from "react";
 
-export default function Modal({ open, title, children, onClose }) {
+export default function Modal({ open, title, children, onClose, zIndex = "z-50" }) {
   if (!open) return null;
+
   return (
-    <div className="fixed inset-0 z-50">
+    <div className={`fixed inset-0 ${zIndex}`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-4 py-3">

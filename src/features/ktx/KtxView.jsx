@@ -1,30 +1,49 @@
-import React from "react";
-import { FileDown, Plus, Trash2 } from "lucide-react";
-import SelectField from "../../components/ui/SelectField.jsx";
-import Empty from "../../components/ui/Empty.jsx";
+import React, { useMemo } from "react";
+import {
+  FileDown,
+  Plus,
+  Trash2,
+  DoorClosed,
+  DoorOpen,
+  Users,
+} from "lucide-react";
 
-function clsx(...arr) {
-  return arr.filter(Boolean).join(" ");
-}
+import clsx from "../../components/ui/clsx";
+import SelectField from "../../components/ui/SelectField";
+import Empty from "../../components/ui/Empty";
+import Pill from "../../components/ui/Pill";
 
-export default React.memo(function KtxView({
+export default function KtxView({
   state,
-  floor,
-  setFloorId,
   auth,
+
+  floorId,
+  setFloorId,
+
+  q,
+  globalMatches,
+  workerById,
+
+  setRoomModal,
   exportExcel,
   requireAdmin,
-  onOpenInit,
-  onOpenAddRoom,
-  onOpenLogin,
-  onOpenAddFloor,
+
+  setInitModal,
+  setAddRoomModal,
+  setLoginModal,
+  setAddFloorModal,
+
   guardDelete,
   deleteFloor,
-  RoomCard, // truyền từ App xuống
 }) {
-  const cols = Math.min(4, Math.max(2, state.settings.roomGridCols || 3));
+  const floor = useMemo(() => {
+    const id = floorId || state?.floors?.[0]?.id || "";
+    return state.floors.find((f) => f.id === id) || null;
+  }, [state.floors, floorId]);
 
-  if (state.floors.length === 0) {
+  const cols = Math.min(4, Math.max(2, state?.settings?.roomGridCols || 3));
+
+  if (!state?.floors?.length) {
     return (
       <div className="mx-auto w-full max-w-md px-4 pb-24">
         <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
@@ -33,15 +52,17 @@ export default React.memo(function KtxView({
           </div>
 
           <div className="mt-1 text-sm text-slate-600">
-            {auth.isAdmin
+            {auth?.isAdmin
               ? "Hãy khởi tạo cấu trúc KTX để bắt đầu."
               : "Bạn đang ở chế độ xem. Hãy đăng nhập Admin để khởi tạo."}
           </div>
 
-          {auth.isAdmin ? (
+          {auth?.isAdmin ? (
             <button
               className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-              onClick={onOpenInit}
+              onClick={() =>
+                setInitModal((m) => ({ ...(m || {}), open: true }))
+              }
             >
               Khởi tạo KTX
             </button>
@@ -68,7 +89,7 @@ export default React.memo(function KtxView({
       <div className="mt-3 flex gap-2">
         <button
           className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold shadow-sm"
-          onClick={exportExcel}
+          onClick={() => exportExcel()}
         >
           <span className="inline-flex items-center justify-center gap-2">
             <FileDown className="h-4 w-4" />
@@ -79,13 +100,15 @@ export default React.memo(function KtxView({
         <button
           className={clsx(
             "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-            auth.isAdmin
+            auth?.isAdmin
               ? "bg-slate-900 text-white"
               : "bg-slate-100 text-slate-700",
           )}
-          onClick={() => (auth.isAdmin ? onOpenAddRoom() : onOpenLogin())}
+          onClick={() =>
+            auth?.isAdmin ? setAddRoomModal(true) : setLoginModal(true)
+          }
         >
-          <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center justify-center gap-2">
             <Plus className="h-4 w-4" />
             Phòng
           </span>
@@ -93,31 +116,33 @@ export default React.memo(function KtxView({
       </div>
 
       <div
-        className={clsx(
-          "mt-4 grid gap-2",
-          cols === 2
-            ? "grid-cols-2"
-            : cols === 3
-              ? "grid-cols-3"
-              : "grid-cols-4",
-        )}
+        className="mt-4 grid gap-3"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
         {floor?.rooms?.length ? (
           floor.rooms.map((r) => (
-            <RoomCard key={r.id} r={r} floorId={floor.id} />
+            <RoomCard
+              key={r.id}
+              r={r}
+              floorId={floor.id}
+              q={q}
+              globalMatches={globalMatches}
+              workerById={workerById}
+              setRoomModal={setRoomModal}
+            />
           ))
         ) : (
           <div className="col-span-full">
             <Empty
               title="Chưa có phòng ở tầng này"
               hint={
-                auth.isAdmin
+                auth?.isAdmin
                   ? "Thêm phòng để bắt đầu."
                   : "Bạn đang ở chế độ xem. Hãy đăng nhập để thêm phòng."
               }
               action={
                 <button
-                  onClick={() => requireAdmin(onOpenAddRoom)}
+                  onClick={() => requireAdmin(() => setAddRoomModal(true))}
                   className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
                 >
                   Thêm phòng
@@ -128,7 +153,7 @@ export default React.memo(function KtxView({
         )}
       </div>
 
-      {auth.isAdmin ? (
+      {auth?.isAdmin ? (
         <div className="mt-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
           <div className="flex items-center justify-between">
             <div>
@@ -139,7 +164,7 @@ export default React.memo(function KtxView({
             </div>
             <button
               className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
-              onClick={onOpenAddFloor}
+              onClick={() => setAddFloorModal(true)}
             >
               <span className="inline-flex items-center gap-2">
                 <Plus className="h-4 w-4" />
@@ -188,4 +213,87 @@ export default React.memo(function KtxView({
       ) : null}
     </div>
   );
-});
+}
+
+/** Tách từ App.jsx: function RoomCard({ r, floorId }) */
+function RoomCard({ r, floorId, q, globalMatches, workerById, setRoomModal }) {
+  const current = r.stays.filter((s) => !s.dateOut);
+  const count = current.length;
+
+  const isMatched = (q || "").trim() ? globalMatches?.roomIds?.has(r.id) : true;
+
+  const tone =
+    count === 0
+      ? "bg-white"
+      : count === 1
+        ? "bg-emerald-50"
+        : count === 2
+          ? "bg-sky-50"
+          : "bg-amber-50";
+
+  const ring =
+    count === 0
+      ? "ring-slate-100"
+      : count === 1
+        ? "ring-emerald-100"
+        : count === 2
+          ? "ring-sky-100"
+          : "ring-amber-100";
+
+  return (
+    <button
+      onClick={() => setRoomModal({ open: true, floorId, roomId: r.id })}
+      className={clsx(
+        "relative rounded-3xl p-3 text-left shadow-sm ring-1 transition active:scale-[0.99]",
+        tone,
+        ring,
+        isMatched ? "" : "opacity-35",
+      )}
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="text-xs font-medium text-slate-500">Phòng</div>
+          <div className="mt-0.5 text-base font-semibold text-slate-900">
+            {r.code}
+          </div>
+        </div>
+
+        <div className="grid h-9 w-9 place-items-center rounded-2xl bg-white/70 ring-1 ring-slate-200">
+          {count === 0 ? (
+            <DoorClosed className="h-5 w-5 text-slate-500" />
+          ) : (
+            <DoorOpen className="h-5 w-5 text-slate-700" />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        <Pill
+          icon={Users}
+          text={`${count} NLĐ`}
+          tone={
+            count === 0
+              ? "slate"
+              : count === 1
+                ? "green"
+                : count === 2
+                  ? "sky"
+                  : "amber"
+          }
+        />
+        <div className="text-xs font-medium text-slate-500">
+          {count === 0 ? "Trống" : "Đang ở"}
+        </div>
+      </div>
+
+      {(q || "").trim() && isMatched ? (
+        <div className="mt-2 line-clamp-2 text-xs text-slate-600">
+          {current
+            .map((s) => workerById?.get(s.workerId)?.fullName)
+            .filter(Boolean)
+            .join(", ")}
+        </div>
+      ) : null}
+    </button>
+  );
+}

@@ -1,8 +1,5 @@
 import React from "react";
-
-function clsx(...arr) {
-  return arr.filter(Boolean).join(" ");
-}
+import clsx from "./clsx";
 
 export default function Pill({ icon: Icon, text, tone = "slate" }) {
   const toneMap = {

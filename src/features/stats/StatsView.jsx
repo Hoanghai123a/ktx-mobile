@@ -1,5 +1,5 @@
 import React from "react";
-import { FileDown, Users, UserRound, Filter } from "lucide-react";
+import { FileDown, Filter, Users, UserRound } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
@@ -10,24 +10,14 @@ import {
   LabelList,
 } from "recharts";
 
-// Pill bạn đang có ở components/ui (nếu file của bạn khác path thì sửa lại)
-import Pill from "../../components/ui/Pill.jsx";
+import Pill from "../../components/ui/Pill";
 
-export default React.memo(function StatsView({
+export default function StatsView({
   stats,
   recruiterStats,
-  onExportExcel,
-  onOpenRecruiter,
+  setRecruiterModal,
+  exportExcel,
 }) {
-  const safeStats = Array.isArray(stats) ? stats : [];
-  const safeRecruiterStats = Array.isArray(recruiterStats)
-    ? recruiterStats
-    : [];
-  const totalWorkers = safeRecruiterStats.reduce(
-    (a, b) => a + (Number(b?.workers) || 0),
-    0,
-  );
-
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
       <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
@@ -42,7 +32,7 @@ export default React.memo(function StatsView({
           </div>
           <button
             className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
-            onClick={onExportExcel}
+            onClick={() => exportExcel?.()}
           >
             <span className="inline-flex items-center gap-2">
               <FileDown className="h-4 w-4" />
@@ -53,9 +43,12 @@ export default React.memo(function StatsView({
 
         <div className="mt-4 h-56">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={safeStats}>
+            <BarChart data={stats}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="occupancy" tickFormatter={(v) => `${v} người`} />
+              <XAxis
+                dataKey="occupancy"
+                tickFormatter={(value) => `${value} người`}
+              />
               <Tooltip />
               <Bar dataKey="rooms" fill="#93c5fd" radius={[10, 10, 0, 0]}>
                 <LabelList dataKey="rooms" position="top" />
@@ -65,7 +58,7 @@ export default React.memo(function StatsView({
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
-          {safeStats.map((s) => (
+          {stats.map((s) => (
             <div
               key={s.occupancy}
               className="rounded-2xl border border-slate-200 bg-white p-3"
@@ -89,16 +82,22 @@ export default React.memo(function StatsView({
               Đếm NLĐ hiện đang ở theo cột “Người tuyển”.
             </div>
           </div>
-          <Pill icon={Users} text={`${totalWorkers} NLĐ`} tone="green" />
+          <Pill
+            icon={Users}
+            text={`${recruiterStats.reduce((a, b) => a + b.workers, 0)} NLĐ`}
+            tone="green"
+          />
         </div>
 
-        {safeRecruiterStats.length ? (
+        {recruiterStats.length ? (
           <div className="mt-3 space-y-2">
-            {safeRecruiterStats.map((x) => (
+            {recruiterStats.map((x) => (
               <button
                 key={x.recruiter}
                 className="w-full flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left hover:bg-slate-50"
-                onClick={() => onOpenRecruiter(x.recruiter)}
+                onClick={() =>
+                  setRecruiterModal?.({ open: true, recruiter: x.recruiter })
+                }
               >
                 <div>
                   <div className="text-sm font-semibold text-slate-900">
@@ -131,4 +130,4 @@ export default React.memo(function StatsView({
       </div>
     </div>
   );
-});
+}

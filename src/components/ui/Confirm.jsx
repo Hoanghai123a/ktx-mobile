@@ -1,36 +1,27 @@
 import React from "react";
-import Modal from "./Modal.jsx";
+import Modal from "./Modal";
 
 export default function Confirm({
   open,
   title = "Xác nhận",
   message,
   confirmText = "Xóa",
-  cancelText = "Hủy",
-  danger = true,
   onCancel,
   onConfirm,
 }) {
   return (
     <Modal open={open} title={title} onClose={onCancel}>
-      <div className="space-y-4">
-        <div className="text-sm text-slate-700 whitespace-pre-line">
-          {message}
-        </div>
-
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600">{message}</p>
         <div className="flex gap-2">
           <button
-            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+            className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
             onClick={onCancel}
           >
-            {cancelText}
+            Hủy
           </button>
-
           <button
-            className={[
-              "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold text-white",
-              danger ? "bg-rose-600" : "bg-slate-900",
-            ].join(" ")}
+            className="flex-1 rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white"
             onClick={onConfirm}
           >
             {confirmText}

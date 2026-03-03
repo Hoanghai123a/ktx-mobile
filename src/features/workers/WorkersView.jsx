@@ -1,35 +1,31 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { FileDown, UserPlus, UserRound } from "lucide-react";
-import Empty from "../../components/ui/Empty.jsx";
 
-function clsx(...arr) {
-  return arr.filter(Boolean).join(" ");
-}
+import clsx from "../../components/ui/clsx";
+import Empty from "../../components/ui/Empty";
 
-export default React.memo(function WorkersView({
-  workers,
+export default function WorkersView({
+  state,
   q,
   auth,
-  onExportExcel,
+  exportExcel,
   requireAdmin,
-  onOpenAddWorker,
-  onOpenWorker,
+  setAddWorkerModal,
+  setWorkerModal,
 }) {
-  const list = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    return query
-      ? workers.filter((w) => w.fullName.toLowerCase().includes(query))
-      : workers;
-  }, [workers, q]);
+  const query = q.trim().toLowerCase();
+  const list = query
+    ? state.workers.filter((w) => w.fullName.toLowerCase().includes(query))
+    : state.workers;
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
       <div className="flex gap-2">
         <button
           className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold shadow-sm"
-          onClick={onExportExcel}
+          onClick={() => exportExcel?.()}
         >
-          <span className="inline-flex items-center justify-center gap-2">
+          <span className="inline-flex items-center gap-2">
             <FileDown className="h-4 w-4" />
             Xuất Excel
           </span>
@@ -42,7 +38,7 @@ export default React.memo(function WorkersView({
               ? "bg-slate-900 text-white"
               : "bg-slate-100 text-slate-700",
           )}
-          onClick={() => requireAdmin(onOpenAddWorker)}
+          onClick={() => requireAdmin?.(() => setAddWorkerModal?.(true))}
         >
           <span className="inline-flex items-center gap-2">
             <UserPlus className="h-4 w-4" />
@@ -60,7 +56,13 @@ export default React.memo(function WorkersView({
               <button
                 key={w.id}
                 className="w-full rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100"
-                onClick={() => onOpenWorker(w.id)}
+                onClick={() =>
+                  setWorkerModal?.({
+                    open: true,
+                    workerId: w.id,
+                    roomCtx: null,
+                  })
+                }
               >
                 <div className="flex items-start justify-between">
                   <div>
@@ -90,7 +92,7 @@ export default React.memo(function WorkersView({
             }
             action={
               <button
-                onClick={() => requireAdmin(onOpenAddWorker)}
+                onClick={() => requireAdmin?.(() => setAddWorkerModal?.(true))}
                 className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
               >
                 Thêm NLĐ
@@ -101,4 +103,4 @@ export default React.memo(function WorkersView({
       </div>
     </div>
   );
-});
+}

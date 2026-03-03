@@ -6,21 +6,26 @@ export default function TextField({
   onChange,
   placeholder,
   type = "text",
+  inputRef,
+  onFocus,
+  onBlur,
+  onKeyDown,
   disabled = false,
 }) {
   return (
-    <label className="block w-full">
-      {label ? (
-        <div className="mb-1 text-xs font-semibold text-slate-600">{label}</div>
-      ) : null}
-
+    <label className="block space-y-1">
+      <div className="text-xs font-medium text-slate-600">{label}</div>
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange?.(e.target.value)}
-        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+        ref={inputRef}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
       />
     </label>
   );
