@@ -88,33 +88,65 @@ export default function AboutView({ about }) {
         ) : null}
 
         {items.length ? (
-          <div className="mt-4 space-y-2">
-            {items.map((it) => {
+          /* Khối bao ngoài: Tạo khung, bo góc và đường kẻ giữa các hàng */
+          <div className="mt-4 divide-y divide-slate-100 rounded-2xl ring-1 ring-slate-100 overflow-hidden">
+            {items.map((it, idx) => {
               const Icon = it.icon;
-              const inner = (
-                <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
-                  <div className="mt-0.5 grid h-8 w-8 place-items-center rounded-xl bg-white ring-1 ring-slate-100">
-                    <Icon className="h-4 w-4 text-slate-700" />
+
+              // Nội dung hàng (Row)
+              const Row = (
+                <div className="flex items-center gap-3 p-4 bg-white hover:bg-slate-50 transition-colors">
+                  {/* Khối Icon bên trái */}
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-100">
+                    <Icon className="h-4.5 w-4.5 text-slate-700" />
                   </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-900">
+
+                  {/* Nội dung ở giữa - Cần min-w-0 để không vỡ layout */}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-slate-500">
                       {it.label}
                     </div>
-                    <div className="text-sm text-slate-700">{it.value}</div>
+                    <div className="mt-0.5 truncate text-sm font-semibold text-slate-900">
+                      {it.value}
+                    </div>
                   </div>
+
+                  {/* Chữ "Mở" ở góc phải (Chỉ hiện nếu có href) */}
+                  {it.href && (
+                    <div className="flex items-center gap-1 text-xs font-bold text-[#68b8ff]">
+                      Mở
+                      {/* Optional: Thêm một icon mũi tên nhỏ nếu muốn giống UI hiện đại */}
+                      <svg
+                        className="h-3 w-3"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={3}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               );
+
+              // Render dạng link hoặc div dựa trên sự tồn tại của href
               return it.href ? (
                 <a
-                  key={it.label}
+                  key={idx}
                   href={it.href}
-                  target="_blank"
-                  rel="noreferrer"
+                  target={it.href?.startsWith("http") ? "_blank" : undefined}
+                  rel={it.href?.startsWith("http") ? "noreferrer" : undefined}
+                  className="block active:opacity-70"
                 >
-                  {inner}
+                  {Row}
                 </a>
               ) : (
-                <div key={it.label}>{inner}</div>
+                <div key={idx}>{Row}</div>
               );
             })}
           </div>

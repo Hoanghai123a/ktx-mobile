@@ -74,7 +74,7 @@ export default function KtxView({
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
-      <div className="flex items-center gap-2">
+      <div className="flex items-end gap-2">
         <SelectField
           label="Chọn tầng"
           value={floor?.id || ""}

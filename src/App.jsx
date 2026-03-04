@@ -1063,6 +1063,8 @@ export default function App() {
           requireAdmin={requireAdmin}
           setAddWorkerModal={setAddWorkerModal}
           setWorkerModal={setWorkerModal}
+          floors={state.floors}
+          roomById={roomById}
         />
       ) : null}
       {tab === "stats" ? (
