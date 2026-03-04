@@ -56,6 +56,7 @@ import AddFloorModal from "./features/ktx/AddFloorModal";
 import AddRoomModal from "./features/ktx/AddRoomModal";
 import ImportExcelModal from "./features/ktx/ImportExcelModal";
 import InitKtxModal from "./features/ktx/InitKtxModal";
+import StaysHistoryModal from "./features/ktx/StaysHistoryModal";
 
 import WorkersView from "./features/workers/WorkersView";
 import AddWorkerModal from "./features/workers/AddWorkerModal";
@@ -366,6 +367,7 @@ export default function App() {
   const [addWorkerModal, setAddWorkerModal] = useState(false);
   const [loginModal, setLoginModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
+  const [staysHistoryOpen, setStaysHistoryOpen] = useState(false);
 
   // Picker check-in (được RoomModal gọi qua actions.openCheckInPicker)
   const [checkInPicker, setCheckInPicker] = useState({
@@ -702,6 +704,14 @@ export default function App() {
       }
     }
     return m;
+  }, [state.floors]);
+
+  const allStays = useMemo(() => {
+    return state.floors.flatMap((f) =>
+      f.rooms.flatMap((r) =>
+        (r.stays || []).map((s) => ({ ...s, roomId: s.roomId || r.id })),
+      ),
+    );
   }, [state.floors]);
 
   const recruiterStats = useMemo(() => {
@@ -1061,6 +1071,7 @@ export default function App() {
           recruiterStats={recruiterStats}
           setRecruiterModal={setRecruiterModal}
           exportExcel={exportExcel}
+          openStaysHistory={() => setStaysHistoryOpen(true)}
         />
       ) : null}
       {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
@@ -1387,6 +1398,14 @@ export default function App() {
         setImportModal={setImportModal}
         importFileRef={importFileRef}
         importExcelFile={importExcelFile}
+      />
+      <StaysHistoryModal
+        open={staysHistoryOpen}
+        onClose={() => setStaysHistoryOpen(false)}
+        stays={allStays}
+        roomById={roomById}
+        workerById={workerById}
+        onExport={exportExcel}
       />
       <RecruiterModal
         recruiterModal={recruiterModal}

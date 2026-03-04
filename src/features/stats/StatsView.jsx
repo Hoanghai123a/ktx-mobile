@@ -17,6 +17,7 @@ export default function StatsView({
   recruiterStats,
   setRecruiterModal,
   exportExcel,
+  openStaysHistory,
 }) {
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
@@ -30,15 +31,23 @@ export default function StatsView({
               Ví dụ: phòng trống, 1 người, 2 người, …
             </div>
           </div>
-          <button
-            className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
-            onClick={() => exportExcel?.()}
-          >
-            <span className="inline-flex items-center gap-2">
-              <FileDown className="h-4 w-4" />
-              Excel
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+              onClick={() => openStaysHistory?.()}
+            >
+              Lịch sử
+            </button>
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+              onClick={() => exportExcel?.()}
+            >
+              <span className="inline-flex items-center gap-2">
+                <FileDown className="h-4 w-4" />
+                Excel
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 h-56">
