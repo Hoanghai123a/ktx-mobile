@@ -295,17 +295,34 @@ export default function RoomModal({
         message={`Bạn chắc chắn muốn xóa phòng ${room.code}?`}
         confirmText="Xóa"
         onCancel={() => setConfirmDel(false)}
-        onConfirm={() =>
+        onConfirm={() => {
+          setConfirmDel(false);
+          if (typeof actions?.guardDelete === "function") {
+            actions.guardDelete({
+              title: "Xóa phòng",
+              message: `Xóa phòng ${room.code}? Tất cả lịch sử ở phòng này sẽ bị xóa.`,
+              onDelete: async () => {
+                if (!actions?.deleteRoom) {
+                  alert("Chưa nối actions.deleteRoom");
+                  return;
+                }
+                await actions.deleteRoom({ roomId: room.id });
+                onClose?.();
+              },
+            });
+            return;
+          }
+
+          // Fallback: require admin then delete
           requireAdmin(async () => {
-            setConfirmDel(false);
             if (!actions?.deleteRoom) {
               alert("Chưa nối actions.deleteRoom");
               return;
             }
             await actions.deleteRoom({ roomId: room.id });
             onClose?.();
-          })
-        }
+          });
+        }}
       />
     </>
   );

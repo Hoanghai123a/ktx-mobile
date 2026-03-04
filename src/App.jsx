@@ -1142,6 +1142,7 @@ export default function App() {
           onViewWorker: (workerId) => {
             setWorkerModal({ open: true, workerId, roomCtx: null });
           },
+          guardDelete,
           transfer: ({ stayId, workerId }) => {
             // open transfer modal with current room context
             const fromRoomId = roomCtx?.room?.id || roomModal.roomId;

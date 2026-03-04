@@ -73,17 +73,34 @@ export default function KtxView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-24">
+    <div className="mx-auto max-w-md px-4 pb-24">
       <div className="flex items-end gap-2">
-        <SelectField
-          label="Chọn tầng"
-          value={floor?.id || ""}
-          onChange={(v) => setFloorId(v)}
-          options={state.floors.map((f) => ({
-            value: f.id,
-            label: `${f.name} (${f.rooms.length} phòng)`,
-          }))}
-        />
+        <div className="">
+          <SelectField
+            label="Chọn tầng"
+            value={floor?.id || ""}
+            onChange={(v) => setFloorId(v)}
+            options={state.floors.map((f) => ({
+              value: f.id,
+              label: `${f.name} (${f.rooms.length} phòng)`,
+            }))}
+          />
+        </div>
+        <button
+          className={clsx(
+            "rounded-2xl px-3 py-2 text-sm font-semibold shadow-sm",
+            auth?.isAdmin
+              ? "bg-slate-900 text-white"
+              : "bg-slate-100 text-slate-700",
+          )}
+          onClick={() => {
+            const el = document.getElementById("floor-management");
+            if (el && el.scrollIntoView)
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
+        >
+          Quản lý
+        </button>
       </div>
 
       <div className="mt-3 flex gap-2">
@@ -153,15 +170,16 @@ export default function KtxView({
         )}
       </div>
 
-      {auth?.isAdmin ? (
-        <div className="mt-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Quản lý tầng</div>
-              <div className="text-xs text-slate-600">
-                Thêm / xóa tầng nhanh
-              </div>
-            </div>
+      <div
+        id="floor-management"
+        className="mt-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold">Quản lý tầng</div>
+            <div className="text-xs text-slate-600">Thêm / xóa tầng nhanh</div>
+          </div>
+          {auth?.isAdmin ? (
             <button
               className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
               onClick={() => setAddFloorModal(true)}
@@ -171,27 +189,36 @@ export default function KtxView({
                 Tầng
               </span>
             </button>
-          </div>
+          ) : (
+            <button
+              className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700"
+              onClick={() => setLoginModal(true)}
+            >
+              Đăng nhập
+            </button>
+          )}
+        </div>
 
-          <div className="mt-3 space-y-2">
-            {state.floors.map((f) => (
-              <div
-                key={f.id}
-                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"
-              >
-                <button className="text-left" onClick={() => setFloorId(f.id)}>
-                  <div className="text-sm font-semibold text-slate-900">
-                    {f.name}
-                  </div>
-                  <div className="text-xs text-slate-600">
-                    {
-                      f.rooms.filter((r) => r.stays.some((s) => !s.dateOut))
-                        .length
-                    }
-                    /{f.rooms.length} phòng
-                  </div>
-                </button>
+        <div className="mt-3 space-y-2">
+          {state.floors.map((f) => (
+            <div
+              key={f.id}
+              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"
+            >
+              <button className="text-left" onClick={() => setFloorId(f.id)}>
+                <div className="text-sm font-semibold text-slate-900">
+                  {f.name}
+                </div>
+                <div className="text-xs text-slate-600">
+                  {
+                    f.rooms.filter((r) => r.stays.some((s) => !s.dateOut))
+                      .length
+                  }
+                  /{f.rooms.length} phòng
+                </div>
+              </button>
 
+              {auth?.isAdmin ? (
                 <button
                   className="rounded-2xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50"
                   onClick={() =>
@@ -206,11 +233,20 @@ export default function KtxView({
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
-              </div>
-            ))}
-          </div>
+              ) : (
+                <button
+                  className="rounded-2xl px-3 py-2 text-xs font-semibold text-rose-300 opacity-50 cursor-not-allowed"
+                  onClick={() => setLoginModal(true)}
+                  title="Đăng nhập để xóa tầng"
+                  disabled
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }
