@@ -62,6 +62,7 @@ import WorkersView from "./features/workers/WorkersView";
 import AddWorkerModal from "./features/workers/AddWorkerModal";
 import StatsView from "./features/stats/StatsView";
 import RecruiterModal from "./features/stats/RecruiterModal";
+import ElectricityHistoryModal from "./features/ktx/ElectricityHistoryModal";
 import AboutView from "./features/about/AboutView";
 
 // Services
@@ -84,6 +85,8 @@ import {
   checkInWorker as checkInWorkerSvc,
   checkOutStay as checkOutStaySvc,
   transferWorker as transferWorkerSvc,
+  upsertElectricity as upsertElectricitySvc,
+  markElectricityPaid as markElectricityPaidSvc,
 } from "./services/ktxMutationsService";
 
 import {
@@ -267,6 +270,9 @@ export default function App() {
       adminPassword: "123456",
       canDeleteStructure: false, // bật/tắt xóa tầng/phòng
       requirePasswordOnDelete: true, // bắt nhập mật khẩu trước khi xóa
+      // electricity billing
+      electricityPrice: 0, // tiền điện / số
+      billingMonth: new Date().toISOString().slice(0, 7), // YYYY-MM
 
       about: {
         companyName: "Ký túc xá",
@@ -368,6 +374,17 @@ export default function App() {
   const [loginModal, setLoginModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
   const [staysHistoryOpen, setStaysHistoryOpen] = useState(false);
+  const [electricityHistoryOpen, setElectricityHistoryOpen] = useState(false);
+  const [electricityHistoryMode, setElectricityHistoryMode] = useState("all"); // "paid"|"pending"
+  const billingMonth = state.settings?.electricityMonth; // hoặc key tháng bạn đang dùng
+  // nếu settings bạn tên khác (vd electricityBillingMonth) thì đổi lại cho đúng
+
+  const openHistory = (mode) => {
+    setElectricityHistoryMode(mode);
+    setElectricityHistoryOpen(true);
+  };
+  const [electricityHistoryFilter, setElectricityHistoryFilter] =
+    useState(null); // 'pending' | 'paid' | null
 
   // Picker check-in (được RoomModal gọi qua actions.openCheckInPicker)
   const [checkInPicker, setCheckInPicker] = useState({
@@ -706,6 +723,16 @@ export default function App() {
     return m;
   }, [state.floors]);
 
+  const electricityByRoomId = useMemo(() => {
+    const m = new Map();
+    for (const f of state.floors) {
+      for (const r of f.rooms) {
+        if (r.electricity) m.set(r.id, r.electricity);
+      }
+    }
+    return m;
+  }, [state.floors]);
+
   const allStays = useMemo(() => {
     return state.floors.flatMap((f) =>
       f.rooms.flatMap((r) =>
@@ -713,6 +740,51 @@ export default function App() {
       ),
     );
   }, [state.floors]);
+
+  // electricity records flattened
+  const allElectricity = useMemo(() => {
+    return state.floors.flatMap((f) =>
+      f.rooms.map((r) => ({
+        roomId: r.id,
+        roomCode: r.code,
+        electricity: r.electricity,
+      })),
+    );
+  }, [state.floors]);
+
+  const pendingElectricity = useMemo(() => {
+    return allElectricity.filter((x) => {
+      const e = x.electricity;
+      return (
+        e &&
+        !e.paid &&
+        e.month === state.settings.billingMonth &&
+        e.start != null &&
+        e.end != null
+      );
+    });
+  }, [allElectricity, state.settings.billingMonth]);
+
+  const paidElectricity = useMemo(() => {
+    return allElectricity.filter((x) => {
+      const e = x.electricity;
+      return e && e.paid && e.month === state.settings.billingMonth;
+    });
+  }, [allElectricity, state.settings.billingMonth]);
+
+  const pendingElectricityCount = pendingElectricity.length;
+  const pendingElectricityAmount = pendingElectricity.reduce((sum, x) => {
+    const e = x.electricity;
+    const used = Number(e.end || 0) - Number(e.start || 0);
+    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
+  }, 0);
+
+  const paidElectricityCount = paidElectricity.length;
+  const paidElectricityAmount = paidElectricity.reduce((sum, x) => {
+    const e = x.electricity;
+    const used = Number(e.end || 0) - Number(e.start || 0);
+    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
+  }, 0);
 
   const recruiterStats = useMemo(() => {
     const counts = new Map();
@@ -1028,6 +1100,11 @@ export default function App() {
     return { worker: w, currentRoom };
   }, [workerModal, workerById, state.floors]);
 
+  function openElectricityHistory(type) {
+    setElectricityHistoryFilter(type); // "paid" | "pending"
+    setElectricityHistoryOpen(true);
+  }
+
   // ---------------------------
   // Render
   // ---------------------------
@@ -1074,6 +1151,14 @@ export default function App() {
           setRecruiterModal={setRecruiterModal}
           exportExcel={exportExcel}
           openStaysHistory={() => setStaysHistoryOpen(true)}
+          pendingElectricityCount={pendingElectricityCount}
+          pendingElectricityAmount={pendingElectricityAmount}
+          paidElectricityCount={paidElectricityCount}
+          paidElectricityAmount={paidElectricityAmount}
+          openElectricityHistory={(filter) => {
+            setElectricityHistoryFilter(filter);
+            setElectricityHistoryOpen(true);
+          }}
         />
       ) : null}
       {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
@@ -1154,6 +1239,16 @@ export default function App() {
               toRoomId: "",
               date: todayISO(),
             });
+          },
+          electricityPrice: state.settings.electricityPrice,
+          billingMonth: state.settings.billingMonth,
+          upsertElectricity: async (rec) => {
+            await upsertElectricitySvc(rec);
+            await loadAllFromDb();
+          },
+          markElectricityPaid: async (rec) => {
+            await markElectricityPaidSvc(rec);
+            await loadAllFromDb();
           },
         }}
       />
@@ -1401,6 +1496,83 @@ export default function App() {
         setImportModal={setImportModal}
         importFileRef={importFileRef}
         importExcelFile={importExcelFile}
+      />
+      <ElectricityHistoryModal
+        open={electricityHistoryOpen}
+        onClose={() => setElectricityHistoryOpen(false)}
+        records={allElectricity
+          .filter((x) => x.electricity)
+          .filter((x) => {
+            const e = x.electricity || {};
+            const paid = !!e.paid;
+
+            if (
+              !electricityHistoryFilter ||
+              electricityHistoryFilter === "all"
+            ) {
+              return true;
+            }
+
+            if (electricityHistoryFilter === "paid") {
+              return paid;
+            }
+
+            if (electricityHistoryFilter === "pending") {
+              return !paid;
+            }
+
+            return true;
+          })
+          .sort((a, b) => {
+            const eA = a.electricity || {};
+            const eB = b.electricity || {};
+
+            const paidA = !!eA.paid;
+            const paidB = !!eB.paid;
+
+            const paidTimeA = eA.paid_at ? new Date(eA.paid_at).getTime() : 0;
+            const paidTimeB = eB.paid_at ? new Date(eB.paid_at).getTime() : 0;
+
+            // Filter Đã thu
+            if (electricityHistoryFilter === "paid") {
+              return paidTimeB - paidTimeA; // mới nhất lên trên
+            }
+
+            // Filter Chờ thu
+            if (electricityHistoryFilter === "pending") {
+              const monthCompare = String(eB.month || "").localeCompare(
+                String(eA.month || ""),
+              );
+              if (monthCompare !== 0) return monthCompare;
+
+              return String(a.roomCode || "").localeCompare(
+                String(b.roomCode || ""),
+              );
+            }
+
+            // Filter Tất cả
+            // Ưu tiên record đã thu lên trước
+            if (paidA !== paidB) {
+              return Number(paidB) - Number(paidA);
+            }
+
+            // Nếu đều đã thu thì sort theo paid_at mới nhất
+            if (paidA && paidB && paidTimeA !== paidTimeB) {
+              return paidTimeB - paidTimeA;
+            }
+
+            // Nếu chưa thu hoặc thời gian bằng nhau thì sort theo tháng mới nhất
+            const monthCompare = String(eB.month || "").localeCompare(
+              String(eA.month || ""),
+            );
+            if (monthCompare !== 0) return monthCompare;
+
+            // Cuối cùng sort theo mã phòng để ổn định
+            return String(a.roomCode || "").localeCompare(
+              String(b.roomCode || ""),
+            );
+          })}
+        pricePerUnit={state.settings.electricityPrice}
       />
       <StaysHistoryModal
         open={staysHistoryOpen}

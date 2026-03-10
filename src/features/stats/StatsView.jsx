@@ -18,6 +18,11 @@ export default function StatsView({
   setRecruiterModal,
   exportExcel,
   openStaysHistory,
+  pendingElectricityCount,
+  pendingElectricityAmount,
+  paidElectricityCount,
+  paidElectricityAmount,
+  openElectricityHistory, // now a function that accepts a filter string
 }) {
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
@@ -135,6 +140,46 @@ export default function StatsView({
             </div>
           </div>
           <Pill icon={Filter} text="Tìm nhanh" tone="sky" />
+        </div>
+      </div>
+
+      {/* electricity stats */}
+      <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold">
+              Tiền điện tháng hiện tại
+            </div>
+            <div className="mt-1 text-xs text-slate-600">
+              Phòng có số đầu+số sau: chờ thu; đã bấm thu: đã thu.
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div
+            className="rounded-2xl border border-slate-200 bg-white p-3 cursor-pointer hover:bg-slate-50"
+            onClick={() => openElectricityHistory?.("pending")}
+          >
+            <div className="text-xs text-slate-600">Chờ thu</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">
+              {pendingElectricityAmount.toLocaleString()}₫
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {pendingElectricityCount} phòng
+            </div>
+          </div>
+          <div
+            className="rounded-2xl border border-slate-200 bg-white p-3 cursor-pointer hover:bg-slate-50"
+            onClick={() => openElectricityHistory?.("paid")}
+          >
+            <div className="text-xs text-slate-600">Đã thu</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">
+              {paidElectricityAmount.toLocaleString()}₫
+            </div>
+            <div className="mt-0.5 text-xs text-slate-500">
+              {paidElectricityCount} phòng
+            </div>
+          </div>
         </div>
       </div>
     </div>

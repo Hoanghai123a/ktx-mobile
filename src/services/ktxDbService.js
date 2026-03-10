@@ -35,10 +35,40 @@ export async function loadAllFromDb() {
   if (staysRes.error)
     throw new Error("load stays error: " + staysRes.error.message);
 
+  // load electricity records if table exists; tolerate missing-table errors gracefully
+  let elecData = [];
+  const elecRes = await supabase
+    .from("electricities")
+    // request all columns; older start/end fields (if present) will be
+    // handled by our normalization logic below
+    .select("*")
+    .order("month", { ascending: false });
+
+  if (elecRes.error) {
+    const msg = elecRes.error.message || "";
+    const isMissingTable =
+      elecRes.error.code === "42P01" ||
+      msg.includes("Could not find the table") ||
+      /relation "electricities" does not exist/i.test(msg) ||
+      /table "electricities" does not exist/i.test(msg);
+
+    if (!isMissingTable) {
+      throw new Error("load electricity error: " + elecRes.error.message);
+    }
+    console.warn(
+      "electricities table not found, continuing without billing data",
+    );
+    // otherwise just leave elecData empty and continue
+  } else {
+    elecData = elecRes.data || [];
+  }
+
   const roomsByFloor = new Map();
   for (const r of roomsRes.data || []) {
     if (!roomsByFloor.has(r.floor_id)) roomsByFloor.set(r.floor_id, []);
-    roomsByFloor.get(r.floor_id).push({ id: r.id, code: r.code, stays: [] });
+    roomsByFloor
+      .get(r.floor_id)
+      .push({ id: r.id, code: r.code, stays: [], electricity: null });
   }
 
   const staysByRoom = new Map();
@@ -53,10 +83,25 @@ export async function loadAllFromDb() {
     });
   }
 
+  const elecByRoom = new Map();
+  for (const e of elecData || []) {
+    // keep latest per room or simple last one
+    elecByRoom.set(e.room_id, {
+      id: e.id,
+      month: e.month,
+      // normalize column names from database to internal fields
+      start: e.start_reading != null ? e.start_reading : e.start,
+      end: e.end_reading != null ? e.end_reading : e.end,
+      paid: e.paid,
+      paidAt: e.paid_at,
+    });
+  }
+
   const floors = (floorsRes.data || []).map((f) => {
     const rooms = (roomsByFloor.get(f.id) || []).map((r) => ({
       ...r,
       stays: staysByRoom.get(r.id) || [],
+      electricity: elecByRoom.get(r.id) || null,
     }));
     return { id: f.id, name: f.name, rooms };
   });

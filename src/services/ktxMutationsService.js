@@ -82,19 +82,74 @@ export async function transferWorker({
   }
 
   // 2) create new stay
-  const insRes = await supabase
-    .from("stays")
-    .insert([
-      {
-        room_id: toRoomId,
-        worker_id: workerId,
-        date_in: transferDate,
-        date_out: null,
-      },
-    ]);
+  const insRes = await supabase.from("stays").insert([
+    {
+      room_id: toRoomId,
+      worker_id: workerId,
+      date_in: transferDate,
+      date_out: null,
+    },
+  ]);
   if (insRes.error) {
     throw new Error(
       "Chuyển phòng lỗi (tạo phòng mới): " + insRes.error.message,
+    );
+  }
+}
+
+export async function upsertElectricity({
+  roomId,
+  month,
+  start_reading,
+  end_reading,
+  paid = false,
+}) {
+  const start = Number(start_reading);
+  const end = Number(end_reading);
+
+  if (!roomId) throw new Error("roomId is required");
+  if (!month) throw new Error("month is required");
+  if (!Number.isFinite(start))
+    throw new Error("start_reading must be a number");
+  if (!Number.isFinite(end)) throw new Error("end_reading must be a number");
+  if (end < start) throw new Error("end_reading must be >= start_reading");
+
+  const payload = {
+    room_id: roomId,
+    month,
+    start_reading: start,
+    end_reading: end,
+    paid: !!paid,
+    paid_at: paid ? new Date().toISOString() : null,
+  };
+
+  const { data, error } = await supabase
+    .from("electricities")
+    .upsert([payload], { onConflict: ["room_id", "month"] })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("upsertElectricity error:", error, payload);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function markElectricityPaid({ roomId, month }) {
+  const updateRes = await supabase
+    .from("electricities")
+    .update({
+      paid: true,
+      paid_at: new Date().toISOString(),
+    })
+    .eq("room_id", roomId)
+    .eq("month", month);
+
+  if (updateRes.error) {
+    throw new Error(
+      "Cập nhật điện năng (đã thu) lỗi: " + updateRes.error.message,
     );
   }
 }
