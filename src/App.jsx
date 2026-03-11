@@ -263,6 +263,8 @@ function Empty({ title, hint, action }) {
 // Main App
 // ---------------------------
 export default function App() {
+  const date = new Date();
+  date.setMonth(date.getMonth() + 1); // Tăng thêm 1 tháng
   const DEFAULT_SETTINGS = useMemo(
     () => ({
       siteName: "KTX",
@@ -273,7 +275,7 @@ export default function App() {
       // electricity billing
       electricityPrice: 0, // tiền điện / số
       billingMonth: new Date().toISOString().slice(0, 7), // YYYY-MM
-
+      // billingMonth: date.toISOString().slice(0, 7), // YYYY-MM
       about: {
         companyName: "Ký túc xá",
         address: "",
@@ -296,7 +298,6 @@ export default function App() {
     workers: [],
     settings: DEFAULT_SETTINGS,
   }));
-
   const [auth, setAuth] = useState({ isAdmin: false });
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -346,7 +347,13 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const nextSettings = await loadSettingsFromDb(DEFAULT_SETTINGS);
-      setState((s) => ({ ...s, settings: nextSettings }));
+      setState((s) => ({
+        ...s,
+        settings: {
+          ...nextSettings,
+          // billingMonth: date.toISOString().slice(0, 7),
+        },
+      }));
     })();
   }, []);
 
@@ -477,6 +484,7 @@ export default function App() {
 
   async function loadAllFromDb() {
     const { floors, workers } = await loadAllFromDbSvc();
+    console.log(floors);
     setState((s) => ({ ...s, floors, workers }));
     if (!floorId && floors[0]?.id) setFloorId(floors[0].id);
   }
@@ -1243,8 +1251,28 @@ export default function App() {
           electricityPrice: state.settings.electricityPrice,
           billingMonth: state.settings.billingMonth,
           upsertElectricity: async (rec) => {
-            await upsertElectricitySvc(rec);
-            await loadAllFromDb();
+            const updated = await upsertElectricitySvc(rec);
+            console.log(updated, state.floors);
+            setState((s) => {
+              const floors = s.floors.map((f) => {
+                if (f.id !== roomCtx?.floor?.id) return f;
+                return {
+                  ...f,
+                  rooms: f.rooms.map((r) => {
+                    if (r.id !== roomCtx?.room?.id) return r;
+                    return {
+                      ...r,
+                      electricity: [
+                        ...r?.electricity?.filter((e) => e?.id !== updated?.id),
+                        updated,
+                      ],
+                    };
+                  }),
+                };
+              });
+              console.log(floors);
+              return { ...s, floors };
+            });
           },
           markElectricityPaid: async (rec) => {
             await markElectricityPaidSvc(rec);

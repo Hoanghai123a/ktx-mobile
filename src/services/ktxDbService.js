@@ -101,7 +101,7 @@ export async function loadAllFromDb() {
     const rooms = (roomsByFloor.get(f.id) || []).map((r) => ({
       ...r,
       stays: staysByRoom.get(r.id) || [],
-      electricity: elecByRoom.get(r.id) || null,
+      electricity: elecRes.data?.filter((e) => e?.room_id === r?.id) || null,
     }));
     return { id: f.id, name: f.name, rooms };
   });

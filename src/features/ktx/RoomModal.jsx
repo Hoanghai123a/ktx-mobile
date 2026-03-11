@@ -10,17 +10,13 @@ import ElectricityModal from "./ElectricityModal";
 export default function RoomModal({
   open,
   onClose,
-
   // data
   floor,
   room, // { id, code, stays:[{id, workerId, dateIn, dateOut}], electricity? }
-
   workerById, // Map(workerId -> worker)
-
   // permissions
   auth, // { isAdmin: boolean }
   requireAdmin, // (fn)=>void
-
   // actions (bạn nối từ App.jsx)
   // note: may supply onViewWorker to allow clicking a name to open worker details
   // available callbacks: updateRoom, deleteRoom, checkOut, addWorker, checkIn,
