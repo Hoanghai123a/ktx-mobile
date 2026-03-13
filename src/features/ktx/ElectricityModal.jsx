@@ -74,7 +74,6 @@ export default function ElectricityModal({
     onClose();
   }
   useEffect(() => {
-    console.log(electricity, thisElectricity);
     setStart(
       thisElectricity?.month === billingMonth
         ? (thisElectricity?.start_reading ?? 0)
@@ -85,7 +84,7 @@ export default function ElectricityModal({
         ? (thisElectricity?.end_reading ?? 0)
         : (thisElectricity?.end_reading ?? 0),
     );
-  }, [open, electricity, thisElectricity]);
+  }, [open]);
   const isSameMonth = thisElectricity?.month === billingMonth;
   return (
     <Modal open={open} title="Tiền điện" onClose={handleClose}>
