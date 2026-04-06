@@ -36,7 +36,14 @@ export default function RoomModal({
   const [newHometown, setNewHometown] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newRecruiter, setNewRecruiter] = useState("");
+  const [newNote, setNewNote] = useState("");
   const [newDateIn, setNewDateIn] = useState(todayISO());
+  const [checkOutCtx, setCheckOutCtx] = useState({
+    open: false,
+    stayId: null,
+    workerName: "",
+    dateOut: todayISO(),
+  });
 
   const current = useMemo(() => {
     const stays = room?.stays || [];
@@ -163,6 +170,12 @@ export default function RoomModal({
                       onChange={setNewRecruiter}
                       placeholder="VD: Chị Lan"
                     />
+                    <TextField
+                      label="Ghi chú"
+                      value={newNote}
+                      onChange={setNewNote}
+                      placeholder="Ghi chú thêm về NLĐ"
+                    />
                   </div>
                 </div>
 
@@ -188,6 +201,7 @@ export default function RoomModal({
                           phone: newPhone.trim(),
                           recruiter: newRecruiter.trim(),
                           dob: newDob,
+                          note: newNote.trim(),
                         });
                         await actions.checkIn({
                           floorId: floor.id,
@@ -202,6 +216,7 @@ export default function RoomModal({
                         setNewHometown("");
                         setNewPhone("");
                         setNewRecruiter("");
+                        setNewNote("");
                         setNewDateIn(todayISO());
                       });
                     }}
@@ -237,6 +252,11 @@ export default function RoomModal({
                         <div className="text-xs text-slate-600">
                           Vào: {s.dateIn ? String(s.dateIn).slice(0, 10) : "-"}
                         </div>
+                        {w?.note ? (
+                          <div className="text-xs text-slate-600">
+                            Ghi chú: {w.note}
+                          </div>
+                        ) : null}
                       </button>
 
                       <div className="flex gap-2">
@@ -266,7 +286,12 @@ export default function RoomModal({
                                 alert("Chưa nối actions.checkOut");
                                 return;
                               }
-                              await actions.checkOut({ stayId: s.id });
+                              setCheckOutCtx({
+                                open: true,
+                                stayId: s.id,
+                                workerName: w?.fullName || "",
+                                dateOut: todayISO(),
+                              });
                             })
                           }
                         >
@@ -285,6 +310,64 @@ export default function RoomModal({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={checkOutCtx.open}
+        title="Chọn ngày rời đi"
+        onClose={() =>
+          setCheckOutCtx((prev) => ({ ...prev, open: false, stayId: null }))
+        }
+      >
+        <div className="space-y-3">
+          <div className="text-sm text-slate-700">
+            {checkOutCtx.workerName
+              ? `NLĐ: ${checkOutCtx.workerName}`
+              : "Xác nhận thông tin rời đi"}
+          </div>
+          <TextField
+            label="Ngày rời đi"
+            value={checkOutCtx.dateOut}
+            onChange={(v) => setCheckOutCtx((prev) => ({ ...prev, dateOut: v }))}
+            type="date"
+          />
+          <div className="flex gap-2">
+            <button
+              className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              onClick={() =>
+                setCheckOutCtx((prev) => ({ ...prev, open: false, stayId: null }))
+              }
+            >
+              Hủy
+            </button>
+            <button
+              className="flex-1 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              onClick={() =>
+                requireAdmin(async () => {
+                  if (!actions?.checkOut) {
+                    alert("Chưa nối actions.checkOut");
+                    return;
+                  }
+                  if (!checkOutCtx.dateOut) {
+                    alert("Vui lòng chọn ngày rời đi.");
+                    return;
+                  }
+                  await actions.checkOut({
+                    stayId: checkOutCtx.stayId,
+                    dateOut: checkOutCtx.dateOut,
+                  });
+                  setCheckOutCtx((prev) => ({
+                    ...prev,
+                    open: false,
+                    stayId: null,
+                  }));
+                })
+              }
+            >
+              Xác nhận
+            </button>
           </div>
         </div>
       </Modal>

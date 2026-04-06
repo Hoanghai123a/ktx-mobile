@@ -1,0 +1,21 @@
+export const DEFAULT_SETTINGS = {
+  siteName: "KTX",
+  roomGridCols: 3,
+  adminPassword: "123456",
+  canDeleteStructure: false,
+  requirePasswordOnDelete: true,
+  about: {
+    companyName: "Ký túc xá",
+    address: "",
+    hotline: "0343.751.753",
+    email: "",
+    website: "",
+    mapUrl: "",
+    workingHours: "",
+    services: [],
+    rules: "",
+    bankInfo: "",
+    description: "",
+    adminNotice: "",
+  },
+};

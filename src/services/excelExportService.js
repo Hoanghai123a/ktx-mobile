@@ -24,6 +24,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
     "Quê quán": w.hometown,
     "Số điện thoại": w.phone || "",
     "Người tuyển": w.recruiter,
+    "Ghi chú": w.note || "",
   }));
 
   const staysSheet = [];
@@ -39,6 +40,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
           "Quê quán": w?.hometown || "",
           "Số điện thoại": w?.phone || "",
           "Người tuyển": w?.recruiter || "",
+          "Ghi chú": w?.note || "",
           "Ngày vào": st.dateIn,
           "Ngày rời": st.dateOut || "",
           "Đang ở": st.dateOut ? "Không" : "Có",

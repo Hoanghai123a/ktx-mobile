@@ -23,6 +23,7 @@ export default function WorkerModal({
   const [hometown, setHometown] = useState(worker?.hometown || "");
   const [recruiter, setRecruiter] = useState(worker?.recruiter || "");
   const [phone, setPhone] = useState(worker?.phone || "");
+  const [note, setNote] = useState(worker?.note || "");
   const [confirmDel, setConfirmDel] = useState(false);
 
   useEffect(() => {
@@ -31,7 +32,16 @@ export default function WorkerModal({
     setHometown(worker?.hometown || "");
     setRecruiter(worker?.recruiter || "");
     setPhone(worker?.phone || "");
-  }, [worker?.id]);
+    setNote(worker?.note || "");
+  }, [
+    worker?.id,
+    worker?.fullName,
+    worker?.dob,
+    worker?.hometown,
+    worker?.recruiter,
+    worker?.phone,
+    worker?.note,
+  ]);
 
   const title = worker ? worker.fullName || "NLĐ" : "NLĐ";
 
@@ -86,6 +96,13 @@ export default function WorkerModal({
                   placeholder="09xxxxxxx"
                   disabled={!auth?.isAdmin}
                 />
+                <TextField
+                  label="Ghi chú"
+                  value={note}
+                  onChange={setNote}
+                  placeholder="Ghi chú thêm về NLĐ"
+                  disabled={!auth?.isAdmin}
+                />
               </div>
 
               <div className="mt-3 flex gap-2">
@@ -112,6 +129,7 @@ export default function WorkerModal({
                           hometown: hometown || "",
                           recruiter: recruiter || "",
                           phone: phone || "",
+                          note: note || "",
                         },
                       });
                     })

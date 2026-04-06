@@ -1,17 +1,55 @@
-# React + Vite
+# ktx-mobile
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Ứng dụng quản lý KTX/NLĐ chạy trên React + Vite, dùng Supabase làm backend.
 
-Currently, two official plugins are available:
+## Stack chính
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19 + Vite
+- Supabase (`@supabase/supabase-js`)
+- Tailwind CSS
+- Recharts
+- XLSX (import/export Excel)
 
-## React Compiler
+## Yêu cầu
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Node.js 20+
+- npm 10+
 
-## Expanding the ESLint configuration
+## Cài đặt
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
-"# ktx-mobile" 
+```bash
+npm install
+```
+
+## Cấu hình môi trường
+
+Tạo file `.env` ở thư mục gốc:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+## Chạy dự án
+
+```bash
+npm run dev
+```
+
+## Scripts
+
+- `npm run dev`: chạy local dev server
+- `npm run build`: build production
+- `npm run preview`: preview bản build
+- `npm run lint`: kiểm tra ESLint
+
+## Cấu trúc thư mục
+
+- `src/features`: các màn hình và modal theo domain nghiệp vụ
+- `src/services`: lớp thao tác dữ liệu Supabase + import/export
+- `src/components/ui`: UI components dùng lại
+
+## Ghi chú
+
+- Không commit file `.env`.
+- Khi thay đổi logic import/export hoặc mutation dữ liệu, nên chạy `npm run lint` trước khi commit.

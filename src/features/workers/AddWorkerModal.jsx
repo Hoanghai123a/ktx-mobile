@@ -12,12 +12,14 @@ export default function AddWorkerModal({
   const [fullName, setFullName] = useState("");
   const [hometown, setHometown] = useState("");
   const [recruiter, setRecruiter] = useState("");
+  const [note, setNote] = useState("");
 
   useEffect(() => {
     if (open) {
       setFullName("");
       setHometown("");
       setRecruiter("");
+      setNote("");
     }
   }, [open]);
 
@@ -42,6 +44,12 @@ export default function AddWorkerModal({
           onChange={setRecruiter}
           placeholder=""
         />
+        <TextField
+          label="Ghi chú"
+          value={note}
+          onChange={setNote}
+          placeholder=""
+        />
         <button
           className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
           onClick={() =>
@@ -54,6 +62,7 @@ export default function AddWorkerModal({
                 fullName: fullName.trim(),
                 hometown: hometown.trim(),
                 recruiter: recruiter.trim(),
+                note: note.trim(),
               });
               onClose?.();
             })

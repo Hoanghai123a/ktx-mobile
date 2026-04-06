@@ -13,7 +13,6 @@ export default function WorkersView({
   setAddWorkerModal,
   setWorkerModal,
   floors = [],
-  roomById = new Map(),
 }) {
   // Filter to only workers currently staying
   const occupiedWorkerIds = new Set();
@@ -96,6 +95,9 @@ export default function WorkersView({
                       </div>
                       <div className="mt-0.5 text-xs text-slate-600">
                         Quê quán: {w.hometown || "—"}
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-600">
+                        Ghi chú: {w.note || "—"}
                       </div>
                     </div>
                     <div className="w-1/3 overflow-ellipsis">

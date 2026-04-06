@@ -1,10 +1,15 @@
 // src/services/ktxDbService.js
 import { supabase } from "./supabaseClient";
 
+function isMissingWorkerNoteColumn(error) {
+  const msg = String(error?.message || "").toLowerCase();
+  return msg.includes("workers.note") || msg.includes('column "note"');
+}
+
 /**
  * Trả về shape giống App.jsx đang dùng:
  * floors: [{id,name,rooms:[{id,code,stays:[{id,workerId,roomId,dateIn,dateOut}]}]}]
- * workers: [{id,fullName,hometown,recruiter,dob,phone}]
+ * workers: [{id,fullName,hometown,recruiter,dob,phone,note}]
  */
 export async function loadAllFromDb() {
   const floorsRes = await supabase
@@ -21,12 +26,21 @@ export async function loadAllFromDb() {
   if (roomsRes.error)
     throw new Error("load rooms error: " + roomsRes.error.message);
 
-  const workersRes = await supabase
+  let workersRes = await supabase
     .from("workers")
-    .select("id,full_name,hometown,recruiter,dob,phone")
+    .select("id,full_name,hometown,recruiter,dob,phone,note")
     .order("full_name", { ascending: true });
-  if (workersRes.error)
+
+  if (workersRes.error && isMissingWorkerNoteColumn(workersRes.error)) {
+    workersRes = await supabase
+      .from("workers")
+      .select("id,full_name,hometown,recruiter,dob,phone")
+      .order("full_name", { ascending: true });
+  }
+
+  if (workersRes.error) {
     throw new Error("load workers error: " + workersRes.error.message);
+  }
 
   const staysRes = await supabase
     .from("stays")
@@ -68,6 +82,7 @@ export async function loadAllFromDb() {
     recruiter: w.recruiter || "",
     dob: w.dob || "",
     phone: w.phone || "",
+    note: w.note || "",
   }));
 
   return { floors, workers };

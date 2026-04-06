@@ -2,6 +2,11 @@
 import * as XLSX from "xlsx";
 import { supabase } from "./supabaseClient";
 
+function isMissingWorkerNoteColumn(error) {
+  const msg = String(error?.message || "").toLowerCase();
+  return msg.includes("workers.note") || msg.includes('column "note"');
+}
+
 function normHeader(s) {
   return String(s || "")
     .trim()
@@ -28,7 +33,7 @@ function parseDateToISO(v) {
   if (!s) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (m) {
     const dd = String(m[1]).padStart(2, "0");
     const mm = String(m[2]).padStart(2, "0");
@@ -80,9 +85,17 @@ export async function importExcelFileToDb(file) {
   );
 
   // preload workers
-  const workersRes = await supabase
+  let workersRes = await supabase
     .from("workers")
-    .select("id,full_name,dob,phone,hometown,recruiter");
+    .select("id,full_name,dob,phone,hometown,recruiter,note");
+  let supportsWorkerNote = true;
+
+  if (workersRes.error && isMissingWorkerNoteColumn(workersRes.error)) {
+    supportsWorkerNote = false;
+    workersRes = await supabase
+      .from("workers")
+      .select("id,full_name,dob,phone,hometown,recruiter");
+  }
   if (workersRes.error) throw new Error(workersRes.error.message);
 
   const keyOfWorker = (fullName, dob, phone) =>
@@ -136,6 +149,7 @@ export async function importExcelFileToDb(file) {
     const recruiter = String(
       pick(row, ["Người tuyển", "Nguoi tuyen", "Recruiter", "Tuyen"]),
     ).trim();
+    const note = String(pick(row, ["Ghi chú", "Ghi chu", "Note", "Notes"])).trim();
     const roomCode = String(
       pick(row, ["Phòng", "Phong", "Room", "Room code"]),
     ).trim();
@@ -159,17 +173,18 @@ export async function importExcelFileToDb(file) {
     let workerId = worker?.id || null;
 
     if (!workerId) {
+      const workerPayload = {
+        full_name: fullName,
+        dob: dob || null,
+        phone: phone || null,
+        hometown: hometown || null,
+        recruiter: recruiter || null,
+      };
+      if (supportsWorkerNote) workerPayload.note = note || null;
+
       const ins = await supabase
         .from("workers")
-        .insert([
-          {
-            full_name: fullName,
-            dob: dob || null,
-            phone: phone || null,
-            hometown: hometown || null,
-            recruiter: recruiter || null,
-          },
-        ])
+        .insert([workerPayload])
         .select("id")
         .single();
 
@@ -191,6 +206,7 @@ export async function importExcelFileToDb(file) {
         phone,
         hometown,
         recruiter,
+        note,
       };
       existing.set(k, worker);
     } else {
@@ -199,6 +215,7 @@ export async function importExcelFileToDb(file) {
       if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
       if (dob && !worker.dob) patch.dob = dob;
       if (phone && !worker.phone) patch.phone = phone;
+      if (supportsWorkerNote && note && !worker.note) patch.note = note;
 
       if (Object.keys(patch).length) {
         const up = await supabase

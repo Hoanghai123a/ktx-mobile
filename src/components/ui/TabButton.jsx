@@ -2,6 +2,9 @@ import React from "react";
 import clsx from "./clsx";
 
 export default function TabButton({ icon: Icon, label, active, onClick }) {
+  const iconClassName = clsx("h-5 w-5", active ? "" : "opacity-80");
+  const labelClassName = clsx("text-[11px] font-medium", active ? "" : "opacity-90");
+
   return (
     <button
       onClick={onClick}
@@ -10,10 +13,8 @@ export default function TabButton({ icon: Icon, label, active, onClick }) {
         active ? "text-slate-900" : "text-slate-500",
       )}
     >
-      <Icon className={clsx("h-5 w-5", active ? "" : "opacity-80")} />
-      <span
-        className={clsx("text-[11px] font-medium", active ? "" : "opacity-90")}
-      >
+      <Icon className={iconClassName} />
+      <span className={labelClassName}>
         {label}
       </span>
     </button>
