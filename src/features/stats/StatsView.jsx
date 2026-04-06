@@ -162,10 +162,10 @@ export default function StatsView({
           >
             <div className="text-xs text-slate-600">Chờ thu</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">
-              {pendingElectricityAmount.toLocaleString()}₫
+              {(pendingElectricityAmount || 0).toLocaleString()}₫
             </div>
             <div className="mt-0.5 text-xs text-slate-500">
-              {pendingElectricityCount} phòng
+              {pendingElectricityCount || 0} phòng
             </div>
           </div>
           <div
@@ -174,10 +174,10 @@ export default function StatsView({
           >
             <div className="text-xs text-slate-600">Đã thu</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">
-              {paidElectricityAmount.toLocaleString()}₫
+              {(paidElectricityAmount || 0).toLocaleString()}₫
             </div>
             <div className="mt-0.5 text-xs text-slate-500">
-              {paidElectricityCount} phòng
+              {paidElectricityCount || 0} phòng
             </div>
           </div>
         </div>

@@ -50,28 +50,11 @@ import {
 import Confirm from "./components/ui/Confirm";
 import TabButton from "./components/ui/TabButton";
 
-// Features
-import LoginModal from "./features/auth/LoginModal";
-import DeleteGuardModal from "./features/settings/DeleteGuardModal";
-import SettingsModal from "./features/settings/SettingsModal";
-
-import KtxView from "./features/ktx/KtxView";
-import RoomModal from "./features/ktx/RoomModal";
-import WorkerModal from "./features/ktx/WorkerModal";
-import AddFloorModal from "./features/ktx/AddFloorModal";
-import AddRoomModal from "./features/ktx/AddRoomModal";
-import ImportExcelModal from "./features/ktx/ImportExcelModal";
-import InitKtxModal from "./features/ktx/InitKtxModal";
-import StaysHistoryModal from "./features/ktx/StaysHistoryModal";
-
-import WorkersView from "./features/workers/WorkersView";
-import AddWorkerModal from "./features/workers/AddWorkerModal";
-import StatsView from "./features/stats/StatsView";
-import RecruiterModal from "./features/stats/RecruiterModal";
-import AboutView from "./features/about/AboutView";
-
 // Services
-import { saveSettingsToDb } from "./services/settingsService";
+import {
+  saveSettingsToDb,
+  loadSettingsFromDb,
+} from "./services/settingsService";
 
 import {
   loadAllFromDb as loadAllFromDbSvc,
@@ -284,31 +267,6 @@ function LazyFallback() {
 // Main App
 // ---------------------------
 export default function App() {
-  const DEFAULT_SETTINGS = useMemo(
-    () => ({
-      siteName: "KTX",
-      roomGridCols: 3,
-      adminPassword: "123456",
-      canDeleteStructure: false, // bật/tắt xóa tầng/phòng
-      requirePasswordOnDelete: true, // bắt nhập mật khẩu trước khi xóa
-
-      about: {
-        companyName: "Ký túc xá",
-        address: "",
-        hotline: "0343.751.753",
-        email: "",
-        website: "",
-        mapUrl: "",
-        workingHours: "",
-        services: [],
-        rules: "",
-        bankInfo: "",
-        description: "",
-        adminNotice: "",
-      },
-    }),
-    [],
-  );
   const [state, setState] = useState(() => ({
     floors: [],
     workers: [],
@@ -340,25 +298,12 @@ export default function App() {
     setFloorId((prev) => prev || floors[0]?.id || "");
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        await loadAllFromDb();
-      } catch (e) {
-        console.error(e);
-        alert(
-          "Không tải được dữ liệu từ Supabase: " + (e?.message || String(e)),
-        );
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      const nextSettings = await loadSettingsFromDb(DEFAULT_SETTINGS);
-      setState((s) => ({ ...s, settings: nextSettings }));
-    })();
-  }, []);
+  useAppBootstrap({
+    loadAllFromDb,
+    setState,
+    setAuth,
+    defaultSettings: DEFAULT_SETTINGS,
+  });
 
   const [initModal, setInitModal] = useState({
     open: false,
@@ -480,11 +425,6 @@ export default function App() {
     return { workerIds: workerIdSet, roomIds: roomIdSet };
   }, [q, state.workers, state.floors]);
 
-  async function loadAllFromDb() {
-    const { floors, workers } = await loadAllFromDbSvc();
-    setState((s) => ({ ...s, floors, workers }));
-    if (!floorId && floors[0]?.id) setFloorId(floors[0].id);
-  }
   async function importExcelFile(file) {
     if (!file) return;
     if (!auth.isAdmin) return setLoginModal(true);
@@ -898,9 +838,26 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {auth.isAdmin ? (
+              <button
+                className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+                onClick={() => setLoginModal(true)}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Đăng xuất
+              </button>
+            ) : (
+              <button
+                className="flex items-center gap-1.5 rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                onClick={() => setLoginModal(true)}
+              >
+                <LogIn className="h-3.5 w-3.5" />
+                Đăng nhập
+              </button>
+            )}
             {tab !== "settings" ? (
               <button
-                className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200"
                 onClick={() => setSettingsModal(true)}
               >
                 Cài đặt
@@ -1086,49 +1043,56 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {Header}
-      {tab === "ktx" ? (
-        <KtxView
-          state={state}
-          auth={auth}
-          floorId={floorId}
-          setFloorId={setFloorId}
-          q={q}
-          globalMatches={globalMatches}
-          workerById={workerById}
-          setRoomModal={setRoomModal}
-          exportExcel={exportExcel}
-          requireAdmin={requireAdmin}
-          setInitModal={setInitModal}
-          setAddRoomModal={setAddRoomModal}
-          setLoginModal={setLoginModal}
-          setAddFloorModal={setAddFloorModal}
-          guardDelete={guardDelete}
-          deleteFloor={deleteFloor}
-        />
-      ) : null}
-      {tab === "workers" ? (
-        <WorkersView
-          state={state}
-          q={q}
-          auth={auth}
-          exportExcel={exportExcel}
-          requireAdmin={requireAdmin}
-          setAddWorkerModal={setAddWorkerModal}
-          setWorkerModal={setWorkerModal}
-          floors={state.floors}
-          roomById={roomById}
-        />
-      ) : null}
-      {tab === "stats" ? (
-        <StatsView
-          stats={stats}
-          recruiterStats={recruiterStats}
-          setRecruiterModal={setRecruiterModal}
-          exportExcel={exportExcel}
-          openStaysHistory={() => setStaysHistoryOpen(true)}
-        />
-      ) : null}
-      {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
+      <Suspense fallback={<LazyFallback />}>
+        {tab === "ktx" ? (
+          <KtxView
+            state={state}
+            auth={auth}
+            floorId={floorId}
+            setFloorId={setFloorId}
+            q={q}
+            globalMatches={globalMatches}
+            workerById={workerById}
+            setRoomModal={setRoomModal}
+            exportExcel={exportExcel}
+            requireAdmin={requireAdmin}
+            setInitModal={setInitModal}
+            setAddRoomModal={setAddRoomModal}
+            setLoginModal={setLoginModal}
+            setAddFloorModal={setAddFloorModal}
+            guardDelete={guardDelete}
+            deleteFloor={deleteFloor}
+          />
+        ) : null}
+        {tab === "workers" ? (
+          <WorkersView
+            state={state}
+            q={q}
+            auth={auth}
+            exportExcel={exportExcel}
+            requireAdmin={requireAdmin}
+            setAddWorkerModal={setAddWorkerModal}
+            setWorkerModal={setWorkerModal}
+            floors={state.floors}
+            roomById={roomById}
+          />
+        ) : null}
+        {tab === "stats" ? (
+          <StatsView
+            stats={stats}
+            recruiterStats={recruiterStats}
+            setRecruiterModal={setRecruiterModal}
+            exportExcel={exportExcel}
+            openStaysHistory={() => setStaysHistoryOpen(true)}
+            pendingElectricityCount={pendingElectricityCount}
+            pendingElectricityAmount={pendingElectricityAmount}
+            paidElectricityCount={paidElectricityCount}
+            paidElectricityAmount={paidElectricityAmount}
+            openElectricityHistory={openHistory}
+          />
+        ) : null}
+        {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
+      </Suspense>
       {/* bottom nav */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div className="mx-auto w-full max-w-md px-4 pb-4">
@@ -1517,6 +1481,11 @@ export default function App() {
             importFileRef={importFileRef}
             importExcelFile={importExcelFile}
           />
+        </Suspense>
+      ) : null}
+
+      {staysHistoryOpen ? (
+        <Suspense fallback={null}>
           <StaysHistoryModal
             open={staysHistoryOpen}
             onClose={() => setStaysHistoryOpen(false)}
