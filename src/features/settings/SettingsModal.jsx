@@ -247,6 +247,57 @@ export default function SettingsModal({
                 }))
               }
             />
+            <TextField
+              label="Tiền điện / số"
+              type="number"
+              value={String(mergedDraft.electricityPrice || 0)}
+              onChange={(v) =>
+                setDraft((s) => ({
+                  ...s,
+                  electricityPrice: Number(v),
+                }))
+              }
+            />
+            <TextField
+              label="Tháng đang thu"
+              type="month"
+              value={mergedDraft.billingMonth || ""}
+              onChange={(v) =>
+                setDraft((s) => ({
+                  ...s,
+                  billingMonth: v,
+                }))
+              }
+            />
+
+            <div className="mt-2 text-xs text-slate-600">
+              <strong>Nếu gặp lỗi 400 khi lưu số điện:</strong>
+              <div className="mt-1 space-y-1">
+                <div>
+                  1️⃣ Bảng cần có unique constraint trên (room_id, month):
+                </div>
+                <pre className="rounded bg-slate-100 p-2 text-xs">
+                  {`alter table electricities add unique (room_id, month);`}
+                </pre>
+                <div>2️⃣ Hoặc nếu chưa tạo bảng, dùng SQL này:</div>
+                <pre className="rounded bg-slate-100 p-2 text-xs">
+                  {`create table electricities (
+  id uuid primary key default uuid_generate_v4(),
+  room_id uuid references rooms(id),
+  month text,
+  start_reading numeric,
+  end_reading numeric,
+  paid boolean default false,
+  paid_at timestamp,
+  unique(room_id, month)
+);`}
+                </pre>
+                <div>
+                  3️⃣ Kiểm tra RLS policy - cho phép INSERT/UPDATE trên role của
+                  bạn.
+                </div>
+              </div>
+            </div>
 
             <div className="rounded-2xl bg-slate-50 p-3">
               <div className="text-xs font-semibold text-slate-900">
@@ -305,7 +356,9 @@ export default function SettingsModal({
             <button
               className={clsx(
                 "w-full rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-                auth.isAdmin ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500",
+                auth.isAdmin
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-100 text-slate-500",
               )}
               onClick={() =>
                 requireAdmin(() => {

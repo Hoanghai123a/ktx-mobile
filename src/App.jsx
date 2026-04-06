@@ -50,6 +50,26 @@ import {
 import Confirm from "./components/ui/Confirm";
 import TabButton from "./components/ui/TabButton";
 
+// Features
+import LoginModal from "./features/auth/LoginModal";
+import DeleteGuardModal from "./features/settings/DeleteGuardModal";
+import SettingsModal from "./features/settings/SettingsModal";
+
+import KtxView from "./features/ktx/KtxView";
+import RoomModal from "./features/ktx/RoomModal";
+import WorkerModal from "./features/ktx/WorkerModal";
+import AddFloorModal from "./features/ktx/AddFloorModal";
+import AddRoomModal from "./features/ktx/AddRoomModal";
+import ImportExcelModal from "./features/ktx/ImportExcelModal";
+import InitKtxModal from "./features/ktx/InitKtxModal";
+import StaysHistoryModal from "./features/ktx/StaysHistoryModal";
+
+import WorkersView from "./features/workers/WorkersView";
+import AddWorkerModal from "./features/workers/AddWorkerModal";
+import StatsView from "./features/stats/StatsView";
+import RecruiterModal from "./features/stats/RecruiterModal";
+import AboutView from "./features/about/AboutView";
+
 // Services
 import { saveSettingsToDb } from "./services/settingsService";
 
@@ -66,6 +86,8 @@ import {
   checkInWorker as checkInWorkerSvc,
   checkOutStay as checkOutStaySvc,
   transferWorker as transferWorkerSvc,
+  upsertElectricity as upsertElectricitySvc,
+  markElectricityPaid as markElectricityPaidSvc,
 } from "./services/ktxMutationsService";
 
 import {
@@ -80,7 +102,9 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
-const DeleteGuardModal = lazy(() => import("./features/settings/DeleteGuardModal"));
+const DeleteGuardModal = lazy(
+  () => import("./features/settings/DeleteGuardModal"),
+);
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
 const KtxView = lazy(() => import("./features/ktx/KtxView"));
 const RoomModal = lazy(() => import("./features/ktx/RoomModal"));
@@ -89,7 +113,9 @@ const AddFloorModal = lazy(() => import("./features/ktx/AddFloorModal"));
 const AddRoomModal = lazy(() => import("./features/ktx/AddRoomModal"));
 const ImportExcelModal = lazy(() => import("./features/ktx/ImportExcelModal"));
 const InitKtxModal = lazy(() => import("./features/ktx/InitKtxModal"));
-const StaysHistoryModal = lazy(() => import("./features/ktx/StaysHistoryModal"));
+const StaysHistoryModal = lazy(
+  () => import("./features/ktx/StaysHistoryModal"),
+);
 const WorkersView = lazy(() => import("./features/workers/WorkersView"));
 const AddWorkerModal = lazy(() => import("./features/workers/AddWorkerModal"));
 const StatsView = lazy(() => import("./features/stats/StatsView"));
@@ -258,12 +284,36 @@ function LazyFallback() {
 // Main App
 // ---------------------------
 export default function App() {
+  const DEFAULT_SETTINGS = useMemo(
+    () => ({
+      siteName: "KTX",
+      roomGridCols: 3,
+      adminPassword: "123456",
+      canDeleteStructure: false, // bật/tắt xóa tầng/phòng
+      requirePasswordOnDelete: true, // bắt nhập mật khẩu trước khi xóa
+
+      about: {
+        companyName: "Ký túc xá",
+        address: "",
+        hotline: "0343.751.753",
+        email: "",
+        website: "",
+        mapUrl: "",
+        workingHours: "",
+        services: [],
+        rules: "",
+        bankInfo: "",
+        description: "",
+        adminNotice: "",
+      },
+    }),
+    [],
+  );
   const [state, setState] = useState(() => ({
     floors: [],
     workers: [],
     settings: DEFAULT_SETTINGS,
   }));
-
   const [auth, setAuth] = useState({ isAdmin: false });
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -290,12 +340,25 @@ export default function App() {
     setFloorId((prev) => prev || floors[0]?.id || "");
   }, []);
 
-  useAppBootstrap({
-    loadAllFromDb,
-    setState,
-    setAuth,
-    defaultSettings: DEFAULT_SETTINGS,
-  });
+  useEffect(() => {
+    (async () => {
+      try {
+        await loadAllFromDb();
+      } catch (e) {
+        console.error(e);
+        alert(
+          "Không tải được dữ liệu từ Supabase: " + (e?.message || String(e)),
+        );
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const nextSettings = await loadSettingsFromDb(DEFAULT_SETTINGS);
+      setState((s) => ({ ...s, settings: nextSettings }));
+    })();
+  }, []);
 
   const [initModal, setInitModal] = useState({
     open: false,
@@ -321,6 +384,17 @@ export default function App() {
   const [loginModal, setLoginModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
   const [staysHistoryOpen, setStaysHistoryOpen] = useState(false);
+  const [electricityHistoryOpen, setElectricityHistoryOpen] = useState(false);
+  const [electricityHistoryMode, setElectricityHistoryMode] = useState("all"); // "paid"|"pending"
+  const billingMonth = state.settings?.electricityMonth; // hoặc key tháng bạn đang dùng
+  // nếu settings bạn tên khác (vd electricityBillingMonth) thì đổi lại cho đúng
+
+  const openHistory = (mode) => {
+    setElectricityHistoryMode(mode);
+    setElectricityHistoryOpen(true);
+  };
+  const [electricityHistoryFilter, setElectricityHistoryFilter] =
+    useState(null); // 'pending' | 'paid' | null
 
   // Picker check-in (được RoomModal gọi qua actions.openCheckInPicker)
   const [checkInPicker, setCheckInPicker] = useState({
@@ -406,6 +480,11 @@ export default function App() {
     return { workerIds: workerIdSet, roomIds: roomIdSet };
   }, [q, state.workers, state.floors]);
 
+  async function loadAllFromDb() {
+    const { floors, workers } = await loadAllFromDbSvc();
+    setState((s) => ({ ...s, floors, workers }));
+    if (!floorId && floors[0]?.id) setFloorId(floors[0].id);
+  }
   async function importExcelFile(file) {
     if (!file) return;
     if (!auth.isAdmin) return setLoginModal(true);
@@ -619,6 +698,16 @@ export default function App() {
     return m;
   }, [state.floors]);
 
+  const electricityByRoomId = useMemo(() => {
+    const m = new Map();
+    for (const f of state.floors) {
+      for (const r of f.rooms) {
+        if (r.electricity) m.set(r.id, r.electricity);
+      }
+    }
+    return m;
+  }, [state.floors]);
+
   const allStays = useMemo(() => {
     return state.floors.flatMap((f) =>
       f.rooms.flatMap((r) =>
@@ -626,6 +715,51 @@ export default function App() {
       ),
     );
   }, [state.floors]);
+
+  // electricity records flattened
+  const allElectricity = useMemo(() => {
+    return state.floors.flatMap((f) =>
+      f.rooms.map((r) => ({
+        roomId: r.id,
+        roomCode: r.code,
+        electricity: r.electricity,
+      })),
+    );
+  }, [state.floors]);
+
+  const pendingElectricity = useMemo(() => {
+    return allElectricity.filter((x) => {
+      const e = x.electricity;
+      return (
+        e &&
+        !e.paid &&
+        e.month === state.settings.billingMonth &&
+        e.start != null &&
+        e.end != null
+      );
+    });
+  }, [allElectricity, state.settings.billingMonth]);
+
+  const paidElectricity = useMemo(() => {
+    return allElectricity.filter((x) => {
+      const e = x.electricity;
+      return e && e.paid && e.month === state.settings.billingMonth;
+    });
+  }, [allElectricity, state.settings.billingMonth]);
+
+  const pendingElectricityCount = pendingElectricity.length;
+  const pendingElectricityAmount = pendingElectricity.reduce((sum, x) => {
+    const e = x.electricity;
+    const used = Number(e.end || 0) - Number(e.start || 0);
+    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
+  }, 0);
+
+  const paidElectricityCount = paidElectricity.length;
+  const paidElectricityAmount = paidElectricity.reduce((sum, x) => {
+    const e = x.electricity;
+    const used = Number(e.end || 0) - Number(e.start || 0);
+    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
+  }, 0);
 
   const recruiterStats = useMemo(() => {
     const counts = new Map();
@@ -941,57 +1075,60 @@ export default function App() {
     return { worker: w, currentRoom };
   }, [workerModal, workerById, state.floors]);
 
+  function openElectricityHistory(type) {
+    setElectricityHistoryFilter(type); // "paid" | "pending"
+    setElectricityHistoryOpen(true);
+  }
+
   // ---------------------------
   // Render
   // ---------------------------
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {Header}
-      <Suspense fallback={<LazyFallback />}>
-        {tab === "ktx" ? (
-          <KtxView
-            state={state}
-            auth={auth}
-            floorId={floorId}
-            setFloorId={setFloorId}
-            q={q}
-            globalMatches={globalMatches}
-            workerById={workerById}
-            setRoomModal={setRoomModal}
-            exportExcel={exportExcel}
-            requireAdmin={requireAdmin}
-            setInitModal={setInitModal}
-            setAddRoomModal={setAddRoomModal}
-            setLoginModal={setLoginModal}
-            setAddFloorModal={setAddFloorModal}
-            guardDelete={guardDelete}
-            deleteFloor={deleteFloor}
-          />
-        ) : null}
-        {tab === "workers" ? (
-          <WorkersView
-            state={state}
-            q={q}
-            auth={auth}
-            exportExcel={exportExcel}
-            requireAdmin={requireAdmin}
-            setAddWorkerModal={setAddWorkerModal}
-            setWorkerModal={setWorkerModal}
-            floors={state.floors}
-            roomById={roomById}
-          />
-        ) : null}
-        {tab === "stats" ? (
-          <StatsView
-            stats={stats}
-            recruiterStats={recruiterStats}
-            setRecruiterModal={setRecruiterModal}
-            exportExcel={exportExcel}
-            openStaysHistory={() => setStaysHistoryOpen(true)}
-          />
-        ) : null}
-        {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
-      </Suspense>
+      {tab === "ktx" ? (
+        <KtxView
+          state={state}
+          auth={auth}
+          floorId={floorId}
+          setFloorId={setFloorId}
+          q={q}
+          globalMatches={globalMatches}
+          workerById={workerById}
+          setRoomModal={setRoomModal}
+          exportExcel={exportExcel}
+          requireAdmin={requireAdmin}
+          setInitModal={setInitModal}
+          setAddRoomModal={setAddRoomModal}
+          setLoginModal={setLoginModal}
+          setAddFloorModal={setAddFloorModal}
+          guardDelete={guardDelete}
+          deleteFloor={deleteFloor}
+        />
+      ) : null}
+      {tab === "workers" ? (
+        <WorkersView
+          state={state}
+          q={q}
+          auth={auth}
+          exportExcel={exportExcel}
+          requireAdmin={requireAdmin}
+          setAddWorkerModal={setAddWorkerModal}
+          setWorkerModal={setWorkerModal}
+          floors={state.floors}
+          roomById={roomById}
+        />
+      ) : null}
+      {tab === "stats" ? (
+        <StatsView
+          stats={stats}
+          recruiterStats={recruiterStats}
+          setRecruiterModal={setRecruiterModal}
+          exportExcel={exportExcel}
+          openStaysHistory={() => setStaysHistoryOpen(true)}
+        />
+      ) : null}
+      {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
       {/* bottom nav */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div className="mx-auto w-full max-w-md px-4 pb-4">
@@ -1025,78 +1162,124 @@ export default function App() {
       </div>
       {/* Modals */}
       {/* RoomModal - component tách file */}
-      {roomModal.open ? <Suspense fallback={null}><RoomModal
-        open={roomModal.open}
-        onClose={() => setRoomModal({ open: false, floorId: "", roomId: "" })}
-        floor={roomCtx?.floor || null}
-        room={roomCtx?.room || null}
-        workerById={workerById}
-        auth={auth}
-        requireAdmin={requireAdmin}
-        actions={{
-          updateRoom: async ({ roomId, patch }) => {
-            if (!roomCtx?.floor?.id) return;
-            await updateRoomCode(roomCtx.floor.id, roomId, patch?.code || "");
-          },
-          deleteRoom: async ({ roomId }) => {
-            if (!roomCtx?.floor?.id) return;
-            await deleteRoom(roomCtx.floor.id, roomId);
-            setRoomModal({ open: false, floorId: "", roomId: "" });
-          },
-          checkOut: async ({ stayId, dateOut }) => {
-            await checkOutStay({ stayId, dateOut: dateOut || todayISO() });
-          },
-          // new manual check-in actions
-          addWorker: async (w) => {
-            return await addWorker(w);
-          },
-          checkIn: async ({ floorId, roomId, workerId, dateIn }) => {
-            await checkInWorker({ floorId, roomId, workerId, dateIn });
-          },
-          onViewWorker: (workerId) => {
-            setWorkerModal({ open: true, workerId, roomCtx: null });
-          },
-          guardDelete,
-          transfer: ({ stayId, workerId }) => {
-            // open transfer modal with current room context
-            const fromRoomId = roomCtx?.room?.id || roomModal.roomId;
-            setTransferModal({
-              open: true,
-              stayId,
-              workerId,
-              fromRoomId,
-              toRoomId: "",
-              date: todayISO(),
-            });
-          },
-        }}
-      /></Suspense> : null}
+      {roomModal.open ? (
+        <Suspense fallback={null}>
+          <RoomModal
+            open={roomModal.open}
+            onClose={() =>
+              setRoomModal({ open: false, floorId: "", roomId: "" })
+            }
+            floor={roomCtx?.floor || null}
+            room={roomCtx?.room || null}
+            workerById={workerById}
+            auth={auth}
+            requireAdmin={requireAdmin}
+            actions={{
+              updateRoom: async ({ roomId, patch }) => {
+                if (!roomCtx?.floor?.id) return;
+                await updateRoomCode(
+                  roomCtx.floor.id,
+                  roomId,
+                  patch?.code || "",
+                );
+              },
+              deleteRoom: async ({ roomId }) => {
+                if (!roomCtx?.floor?.id) return;
+                await deleteRoom(roomCtx.floor.id, roomId);
+                setRoomModal({ open: false, floorId: "", roomId: "" });
+              },
+              checkOut: async ({ stayId, dateOut }) => {
+                await checkOutStay({ stayId, dateOut: dateOut || todayISO() });
+              },
+              // new manual check-in actions
+              addWorker: async (w) => {
+                return await addWorker(w);
+              },
+              checkIn: async ({ floorId, roomId, workerId, dateIn }) => {
+                await checkInWorker({ floorId, roomId, workerId, dateIn });
+              },
+              onViewWorker: (workerId) => {
+                setWorkerModal({ open: true, workerId, roomCtx: null });
+              },
+              guardDelete,
+              transfer: ({ stayId, workerId }) => {
+                // open transfer modal with current room context
+                const fromRoomId = roomCtx?.room?.id || roomModal.roomId;
+                setTransferModal({
+                  open: true,
+                  stayId,
+                  workerId,
+                  fromRoomId,
+                  toRoomId: "",
+                  date: todayISO(),
+                });
+              },
+              electricityPrice: state.settings.electricityPrice,
+              billingMonth: state.settings.billingMonth,
+              upsertElectricity: async (rec) => {
+                const updated = await upsertElectricitySvc(rec);
+                console.log(updated, state.floors);
+                setState((s) => {
+                  const floors = s.floors.map((f) => {
+                    if (f.id !== roomCtx?.floor?.id) return f;
+                    return {
+                      ...f,
+                      rooms: f.rooms.map((r) => {
+                        if (r.id !== roomCtx?.room?.id) return r;
+                        return {
+                          ...r,
+                          electricity: [
+                            ...r?.electricity?.filter(
+                              (e) => e?.id !== updated?.id,
+                            ),
+                            updated,
+                          ],
+                        };
+                      }),
+                    };
+                  });
+                  console.log(floors);
+                  return { ...s, floors };
+                });
+              },
+              markElectricityPaid: async (rec) => {
+                await markElectricityPaidSvc(rec);
+                await loadAllFromDb();
+              },
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {/* WorkerModal - component tách file */}
-      {workerModal.open ? <Suspense fallback={null}><WorkerModal
-        open={workerModal.open}
-        onClose={() =>
-          setWorkerModal({ open: false, workerId: null, roomCtx: null })
-        }
-        worker={workerCtx?.worker || null}
-        stays={
-          workerModal.workerId
-            ? staysByWorkerId.get(workerModal.workerId) || []
-            : []
-        }
-        roomById={roomById}
-        auth={auth}
-        requireAdmin={requireAdmin}
-        actions={{
-          updateWorker: async ({ workerId, patch }) => {
-            await updateWorker(workerId, patch || {});
-          },
-          deleteWorker: async ({ workerId }) => {
-            await deleteWorker(workerId);
-            setWorkerModal({ open: false, workerId: null, roomCtx: null });
-          },
-        }}
-      /></Suspense> : null}
+      {workerModal.open ? (
+        <Suspense fallback={null}>
+          <WorkerModal
+            open={workerModal.open}
+            onClose={() =>
+              setWorkerModal({ open: false, workerId: null, roomCtx: null })
+            }
+            worker={workerCtx?.worker || null}
+            stays={
+              workerModal.workerId
+                ? staysByWorkerId.get(workerModal.workerId) || []
+                : []
+            }
+            roomById={roomById}
+            auth={auth}
+            requireAdmin={requireAdmin}
+            actions={{
+              updateWorker: async ({ workerId, patch }) => {
+                await updateWorker(workerId, patch || {});
+              },
+              deleteWorker: async ({ workerId }) => {
+                await deleteWorker(workerId);
+                setWorkerModal({ open: false, workerId: null, roomCtx: null });
+              },
+            }}
+          />
+        </Suspense>
+      ) : null}
 
       {/* Transfer modal (pickup from app-gộp) */}
       <Modal
@@ -1281,78 +1464,110 @@ export default function App() {
       </InlineModal>
 
       {/* Init KTX */}
-      {initModal.open ? <Suspense fallback={null}><InitKtxModal
-        initModal={initModal}
-        setInitModal={setInitModal}
-        requireAdmin={requireAdmin}
-        initKtxFromInputs={initKtxFromInputs}
-      /></Suspense> : null}
+      {initModal.open ? (
+        <Suspense fallback={null}>
+          <InitKtxModal
+            initModal={initModal}
+            setInitModal={setInitModal}
+            requireAdmin={requireAdmin}
+            initKtxFromInputs={initKtxFromInputs}
+          />
+        </Suspense>
+      ) : null}
 
       {/* Add/Import modals */}
-      {addFloorModal ? <Suspense fallback={null}><AddFloorModal
-        open={addFloorModal}
-        onClose={() => setAddFloorModal(false)}
-        requireAdmin={requireAdmin}
-        addFloor={addFloor}
-      /></Suspense> : null}
-      {addRoomModal ? <Suspense fallback={null}><AddRoomModal
-        open={addRoomModal}
-        onClose={() => setAddRoomModal(false)}
-        requireAdmin={requireAdmin}
-        state={state}
-        floor={floor}
-        setFloorId={setFloorId}
-        addRoom={addRoom}
-      /></Suspense> : null}
-      {addWorkerModal ? <Suspense fallback={null}><AddWorkerModal
-        open={addWorkerModal}
-        onClose={() => setAddWorkerModal(false)}
-        requireAdmin={requireAdmin}
-        addWorker={addWorker}
-      /></Suspense> : null}
-      {importModal.open ? <Suspense fallback={null}><ImportExcelModal
-        importModal={importModal}
-        setImportModal={setImportModal}
-        importFileRef={importFileRef}
-        importExcelFile={importExcelFile}
-      /></Suspense> : null}
-      {staysHistoryOpen ? <Suspense fallback={null}><StaysHistoryModal
-        open={staysHistoryOpen}
-        onClose={() => setStaysHistoryOpen(false)}
-        stays={allStays}
-        roomById={roomById}
-        workerById={workerById}
-        onExport={exportExcel}
-      /></Suspense> : null}
-      {recruiterModal.open ? <Suspense fallback={null}><RecruiterModal
-        recruiterModal={recruiterModal}
-        setRecruiterModal={setRecruiterModal}
-        recruiterWorkersMap={recruiterWorkersMap}
-        setWorkerModal={setWorkerModal}
-      /></Suspense> : null}
-      {loginModal ? <Suspense fallback={null}><LoginModal
-        open={loginModal}
-        onClose={() => setLoginModal(false)}
-        loginEmail={loginEmail}
-        setLoginEmail={setLoginEmail}
-        loginPassword={loginPassword}
-        setLoginPassword={setLoginPassword}
-        authIsAdmin={auth.isAdmin}
-      /></Suspense> : null}
-      {settingsModal ? <Suspense fallback={null}><SettingsModal
-        open={settingsModal}
-        onClose={() => setSettingsModal(false)}
-        state={state}
-        setState={setState}
-        auth={auth}
-        setLoginModal={setLoginModal}
-        importModal={importModal}
-        setImportModal={setImportModal}
-        importFileRef={importFileRef}
-        DEFAULT_SETTINGS={DEFAULT_SETTINGS}
-        saveSettingsToDb={saveSettingsToDb} // nếu bạn có hàm này ở App.jsx
-        requireAdmin={requireAdmin}
-      /></Suspense> : null}
+      {addFloorModal ? (
+        <Suspense fallback={null}>
+          <AddFloorModal
+            open={addFloorModal}
+            onClose={() => setAddFloorModal(false)}
+            requireAdmin={requireAdmin}
+            addFloor={addFloor}
+          />
+        </Suspense>
+      ) : null}
+      {addRoomModal ? (
+        <Suspense fallback={null}>
+          <AddRoomModal
+            open={addRoomModal}
+            onClose={() => setAddRoomModal(false)}
+            requireAdmin={requireAdmin}
+            state={state}
+            floor={floor}
+            setFloorId={setFloorId}
+            addRoom={addRoom}
+          />
+        </Suspense>
+      ) : null}
+      {addWorkerModal ? (
+        <Suspense fallback={null}>
+          <AddWorkerModal
+            open={addWorkerModal}
+            onClose={() => setAddWorkerModal(false)}
+            requireAdmin={requireAdmin}
+            addWorker={addWorker}
+          />
+        </Suspense>
+      ) : null}
+      {importModal.open ? (
+        <Suspense fallback={null}>
+          <ImportExcelModal
+            importModal={importModal}
+            setImportModal={setImportModal}
+            importFileRef={importFileRef}
+            importExcelFile={importExcelFile}
+          />
+          <StaysHistoryModal
+            open={staysHistoryOpen}
+            onClose={() => setStaysHistoryOpen(false)}
+            stays={allStays}
+            roomById={roomById}
+            workerById={workerById}
+            onExport={exportExcel}
+          />
+        </Suspense>
+      ) : null}
+      {recruiterModal.open ? (
+        <Suspense fallback={null}>
+          <RecruiterModal
+            recruiterModal={recruiterModal}
+            setRecruiterModal={setRecruiterModal}
+            recruiterWorkersMap={recruiterWorkersMap}
+            setWorkerModal={setWorkerModal}
+          />
+        </Suspense>
+      ) : null}
+      {loginModal ? (
+        <Suspense fallback={null}>
+          <LoginModal
+            open={loginModal}
+            onClose={() => setLoginModal(false)}
+            loginEmail={loginEmail}
+            setLoginEmail={setLoginEmail}
+            loginPassword={loginPassword}
+            setLoginPassword={setLoginPassword}
+            authIsAdmin={auth.isAdmin}
+          />
+        </Suspense>
+      ) : null}
+      {settingsModal ? (
+        <Suspense fallback={null}>
+          <SettingsModal
+            open={settingsModal}
+            onClose={() => setSettingsModal(false)}
+            state={state}
+            setState={setState}
+            auth={auth}
+            setLoginModal={setLoginModal}
+            importModal={importModal}
+            setImportModal={setImportModal}
+            importFileRef={importFileRef}
+            DEFAULT_SETTINGS={DEFAULT_SETTINGS}
+            saveSettingsToDb={saveSettingsToDb} // nếu bạn có hàm này ở App.jsx
+            requireAdmin={requireAdmin}
+          />
+        </Suspense>
+      ) : null}
 
       <input
         ref={importFileRef}
@@ -1366,40 +1581,44 @@ export default function App() {
           importExcelFile(file);
         }}
       />
-      {deletePassModal.open ? <Suspense fallback={null}><DeleteGuardModal
-        open={deletePassModal.open}
-        title={deletePassModal.title}
-        message={deletePassModal.message}
-        password={deletePass}
-        setPassword={setDeletePass}
-        onClose={() => {
-          setDeletePass("");
-          setDeletePassModal({
-            open: false,
-            title: "",
-            message: "",
-            onDelete: null,
-          });
-        }}
-        onConfirm={async () => {
-          if (deletePass !== state.settings.adminPassword) {
-            alert("Mật khẩu không đúng.");
-            return;
-          }
+      {deletePassModal.open ? (
+        <Suspense fallback={null}>
+          <DeleteGuardModal
+            open={deletePassModal.open}
+            title={deletePassModal.title}
+            message={deletePassModal.message}
+            password={deletePass}
+            setPassword={setDeletePass}
+            onClose={() => {
+              setDeletePass("");
+              setDeletePassModal({
+                open: false,
+                title: "",
+                message: "",
+                onDelete: null,
+              });
+            }}
+            onConfirm={async () => {
+              if (deletePass !== state.settings.adminPassword) {
+                alert("Mật khẩu không đúng.");
+                return;
+              }
 
-          try {
-            await deletePassModal.onDelete?.();
-          } finally {
-            setDeletePass("");
-            setDeletePassModal({
-              open: false,
-              title: "",
-              message: "",
-              onDelete: null,
-            });
-          }
-        }}
-      /></Suspense> : null}
+              try {
+                await deletePassModal.onDelete?.();
+              } finally {
+                setDeletePass("");
+                setDeletePassModal({
+                  open: false,
+                  title: "",
+                  message: "",
+                  onDelete: null,
+                });
+              }
+            }}
+          />
+        </Suspense>
+      ) : null}
       <div className="h-10" />
     </div>
   );

@@ -5,28 +5,26 @@ import Pill from "../../components/ui/Pill";
 import Confirm from "../../components/ui/Confirm";
 import clsx from "../../components/ui/clsx";
 import { Users, Trash2, Save, LogOut, Plus, Edit } from "lucide-react";
+import ElectricityModal from "./ElectricityModal";
 
 export default function RoomModal({
   open,
   onClose,
-
   // data
   floor,
-  room, // { id, code, stays:[{id, workerId, dateIn, dateOut}] }
-
+  room, // { id, code, stays:[{id, workerId, dateIn, dateOut}], electricity? }
   workerById, // Map(workerId -> worker)
-
   // permissions
   auth, // { isAdmin: boolean }
   requireAdmin, // (fn)=>void
-
   // actions (bạn nối từ App.jsx)
   // note: may supply onViewWorker to allow clicking a name to open worker details
   // available callbacks: updateRoom, deleteRoom, checkOut, addWorker, checkIn,
-  //                  onViewWorker, transfer
+  //                  onViewWorker, transfer, upsertElectricity, markElectricityPaid
   actions,
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
+  const [elecModal, setElecModal] = useState(false);
 
   // manual check-in form state
   const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -99,11 +97,24 @@ export default function RoomModal({
                   </button>
                 ) : null}
               </div>
-              <Pill
-                icon={Users}
-                text={`${current.length} đang ở`}
-                tone={current.length ? "green" : "slate"}
-              />
+              <div className="flex items-center gap-2">
+                <button
+                  className={clsx(
+                    "rounded-2xl px-3 py-1 text-xs font-semibold",
+                    auth?.isAdmin
+                      ? "bg-sky-500 text-white"
+                      : "bg-slate-200 text-slate-500",
+                  )}
+                  onClick={() => setElecModal(true)}
+                >
+                  Tiền điện
+                </button>
+                <Pill
+                  icon={Users}
+                  text={`${current.length} đang ở`}
+                  tone={current.length ? "green" : "slate"}
+                />
+              </div>
             </div>
           </div>
 
@@ -405,6 +416,22 @@ export default function RoomModal({
             await actions.deleteRoom({ roomId: room.id });
             onClose?.();
           });
+        }}
+      />
+
+      <ElectricityModal
+        key={`elec-${room?.id}-${room?.electricity?.id || "new"}-${actions?.billingMonth}-${elecModal}`}
+        open={elecModal}
+        onClose={() => setElecModal(false)}
+        room={room}
+        electricity={room.electricity}
+        pricePerUnit={actions?.electricityPrice}
+        billingMonth={actions?.billingMonth}
+        auth={auth}
+        requireAdmin={requireAdmin}
+        actions={{
+          upsertElectricity: actions?.upsertElectricity,
+          markElectricityPaid: actions?.markElectricityPaid,
         }}
       />
     </>
