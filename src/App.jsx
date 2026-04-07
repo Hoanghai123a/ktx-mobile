@@ -69,6 +69,9 @@ const AddFloorModal = lazy(() => import("./features/ktx/AddFloorModal"));
 const AddRoomModal = lazy(() => import("./features/ktx/AddRoomModal"));
 const ImportExcelModal = lazy(() => import("./features/ktx/ImportExcelModal"));
 const InitKtxModal = lazy(() => import("./features/ktx/InitKtxModal"));
+const ElectricityHistoryModal = lazy(
+  () => import("./features/ktx/ElectricityHistoryModal"),
+);
 const StaysHistoryModal = lazy(
   () => import("./features/ktx/StaysHistoryModal"),
 );
@@ -328,6 +331,14 @@ export default function App() {
     token, // Pass token here
   });
 
+  const saveSettingsToDb = useCallback(
+    async (nextSettings) => {
+      if (!token) throw new Error("Unauthorized");
+      return await settingsService.update(nextSettings, token);
+    },
+    [token],
+  );
+
   const [initModal, setInitModal] = useState({
     open: false,
     floors: 3,
@@ -487,21 +498,30 @@ export default function App() {
     action();
   }
 
+  const handleLogout = useCallback(() => {
+    authLogout?.();
+    setState({
+      floors: [],
+      workers: [],
+      settings: DEFAULT_SETTINGS,
+    });
+    setFloorId("");
+    setTab("ktx");
+  }, [authLogout]);
+
   async function addFloor(name) {
     try {
       const floorName =
         (name || "").trim() || `Tầng ${state.floors.length + 1}`;
       const sort = state.floors.length + 1;
 
-      if (token) {
-        await floorService.create({ name: floorName, sort }, token);
-        await loadAllFromDb();
-        return;
-      }
-
-      const id = await addFloorSvc({ name: floorName, sort });
+      if (!token) return setLoginModal(true);
+      const created = await floorService.create(
+        { name: floorName, sort },
+        token,
+      );
       await loadAllFromDb();
-      setFloorId(id);
+      if (created?.id) setFloorId(created.id);
     } catch (e) {
       alert(e.message || String(e));
     }
@@ -509,16 +529,8 @@ export default function App() {
 
   async function deleteFloor(floorId) {
     try {
-      if (token) {
-        await floorService.delete(floorId, token);
-        await loadAllFromDb();
-        setFloorId((prev) => (prev === floorId ? "" : prev));
-        return;
-      }
-
-      const fl = state.floors.find((f) => f.id === floorId);
-      const roomIds = (fl?.rooms || []).map((r) => r.id);
-      await deleteFloorSvc({ floorId, roomIds });
+      if (!token) return setLoginModal(true);
+      await floorService.delete(floorId, token);
       await loadAllFromDb();
       setFloorId((prev) => (prev === floorId ? "" : prev));
     } catch (e) {
@@ -532,16 +544,11 @@ export default function App() {
       const sort = (floor?.rooms?.length || 0) + 1;
       const roomCode = (code || "").trim() || String(sort);
 
-      if (token) {
-        await roomService.create(
-          { floor_id: floorId, code: roomCode, sort },
-          token,
-        );
-        await loadAllFromDb();
-        return;
-      }
-
-      await addRoomSvc({ floorId, code: roomCode, sort });
+      if (!token) return setLoginModal(true);
+      await roomService.create(
+        { floor_id: floorId, code: roomCode, sort },
+        token,
+      );
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -553,13 +560,8 @@ export default function App() {
       const nextCode = (newCode || "").trim();
       if (!nextCode) return alert("Tên phòng không được để trống.");
 
-      if (token) {
-        await roomService.update(roomId, { code: nextCode }, token);
-        await loadAllFromDb();
-        return;
-      }
-
-      await updateRoomCodeSvc({ roomId, code: nextCode });
+      if (!token) return setLoginModal(true);
+      await roomService.update(roomId, { code: nextCode }, token);
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -568,12 +570,8 @@ export default function App() {
 
   async function deleteRoom(floorId, roomId) {
     try {
-      if (token) {
-        await roomService.delete(roomId, token);
-        await loadAllFromDb();
-        return;
-      }
-      await deleteRoomSvc({ roomId });
+      if (!token) return setLoginModal(true);
+      await roomService.delete(roomId, token);
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -582,22 +580,20 @@ export default function App() {
 
   async function addWorker(worker) {
     try {
-      if (token) {
-        const res = await workerService.create(
-          {
-            full_name: worker.fullName,
-            hometown: worker.hometown,
-            phone: worker.phone,
-            dob: worker.dob,
-            recruiter: worker.recruiter,
-            note: worker.note,
-          },
-          token,
-        );
-        await loadAllFromDb();
-        return res;
-      }
-      return await addWorkerSvc(worker);
+      if (!token) return null;
+      const res = await workerService.create(
+        {
+          full_name: worker.fullName,
+          hometown: worker.hometown,
+          phone: worker.phone,
+          dob: worker.dob,
+          recruiter: worker.recruiter,
+          note: worker.note,
+        },
+        token,
+      );
+      await loadAllFromDb();
+      return res;
     } catch (e) {
       alert(e.message || String(e));
       return null;
@@ -606,21 +602,16 @@ export default function App() {
 
   async function updateWorker(workerId, patch) {
     try {
-      if (token) {
-        // Map camelCase to snake_case for backend
-        const mappedPatch = {};
-        if (patch.fullName) mappedPatch.full_name = patch.fullName;
-        if (patch.hometown) mappedPatch.hometown = patch.hometown;
-        if (patch.phone) mappedPatch.phone = patch.phone;
-        if (patch.dob) mappedPatch.dob = patch.dob;
-        if (patch.recruiter) mappedPatch.recruiter = patch.recruiter;
-        if (patch.note) mappedPatch.note = patch.note;
+      if (!token) return setLoginModal(true);
+      const mappedPatch = {};
+      if (patch.fullName) mappedPatch.full_name = patch.fullName;
+      if (patch.hometown) mappedPatch.hometown = patch.hometown;
+      if (patch.phone) mappedPatch.phone = patch.phone;
+      if (patch.dob) mappedPatch.dob = patch.dob;
+      if (patch.recruiter) mappedPatch.recruiter = patch.recruiter;
+      if (patch.note) mappedPatch.note = patch.note;
 
-        await workerService.update(workerId, mappedPatch, token);
-        await loadAllFromDb();
-        return;
-      }
-      await updateWorkerSvc(workerId, patch);
+      await workerService.update(workerId, mappedPatch, token);
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -629,12 +620,8 @@ export default function App() {
 
   async function deleteWorker(workerId) {
     try {
-      if (token) {
-        await workerService.delete(workerId, token);
-        await loadAllFromDb();
-        return;
-      }
-      await deleteWorkerSvc(workerId);
+      if (!token) return setLoginModal(true);
+      await workerService.delete(workerId, token);
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -644,19 +631,11 @@ export default function App() {
   async function checkInWorker({ roomId, workerId, dateIn }) {
     try {
       const d = dateIn || todayISO();
-      if (token) {
-        await stayService.create(
-          { room_id: roomId, worker_id: workerId, date_in: d },
-          token,
-        );
-        await loadAllFromDb();
-        return;
-      }
-      await checkInWorkerSvc({
-        roomId,
-        workerId,
-        dateIn: d,
-      });
+      if (!token) return setLoginModal(true);
+      await stayService.create(
+        { room_id: roomId, worker_id: workerId, date_in: d },
+        token,
+      );
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -666,12 +645,8 @@ export default function App() {
   async function checkOutStay({ stayId, dateOut }) {
     try {
       const d = dateOut || todayISO();
-      if (token) {
-        await stayService.update(stayId, { date_out: d }, token);
-        await loadAllFromDb();
-        return;
-      }
-      await checkOutStaySvc({ stayId, dateOut: d });
+      if (!token) return setLoginModal(true);
+      await stayService.update(stayId, { date_out: d }, token);
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -681,17 +656,12 @@ export default function App() {
   async function transferWorker({ stayId, workerId, toRoomId, transferDate }) {
     try {
       const d = transferDate || todayISO();
-      if (token) {
-        // Chuyển phòng = Check out phòng cũ + Check in phòng mới
-        await stayService.update(stayId, { date_out: d }, token);
-        await stayService.create(
-          { room_id: toRoomId, worker_id: workerId, date_in: d },
-          token,
-        );
-        await loadAllFromDb();
-        return;
-      }
-      await transferWorkerSvc({ stayId, workerId, toRoomId, transferDate: d });
+      if (!token) return setLoginModal(true);
+      await stayService.update(stayId, { date_out: d }, token);
+      await stayService.create(
+        { room_id: toRoomId, worker_id: workerId, date_in: d },
+        token,
+      );
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -761,16 +731,6 @@ export default function App() {
     return m;
   }, [state.floors]);
 
-  const electricityByRoomId = useMemo(() => {
-    const m = new Map();
-    for (const f of state.floors) {
-      for (const r of f.rooms) {
-        if (r.electricity) m.set(r.id, r.electricity);
-      }
-    }
-    return m;
-  }, [state.floors]);
-
   const allStays = useMemo(() => {
     return state.floors.flatMap((f) =>
       f.rooms.flatMap((r) =>
@@ -782,13 +742,21 @@ export default function App() {
   // electricity records flattened
   const allElectricity = useMemo(() => {
     return state.floors.flatMap((f) =>
-      f.rooms.map((r) => ({
-        roomId: r.id,
-        roomCode: r.code,
-        electricity: r.electricity,
-      })),
+      f.rooms.map((r) => {
+        const list = Array.isArray(r.electricity) ? r.electricity : [];
+        const byMonth = billingMonth
+          ? list.find((e) => e?.month === billingMonth)
+          : null;
+        const latest = list[0] || null;
+        return {
+          roomId: r.id,
+          roomCode: r.code,
+          electricity: byMonth || latest,
+          electricityList: list,
+        };
+      }),
     );
-  }, [state.floors]);
+  }, [state.floors, billingMonth]);
 
   const pendingElectricity = useMemo(() => {
     return allElectricity.filter((x) => {
@@ -797,8 +765,8 @@ export default function App() {
         e &&
         !e.paid &&
         e.month === state.settings.billingMonth &&
-        e.start != null &&
-        e.end != null
+        e.start_reading != null &&
+        e.end_reading != null
       );
     });
   }, [allElectricity, state.settings.billingMonth]);
@@ -810,17 +778,32 @@ export default function App() {
     });
   }, [allElectricity, state.settings.billingMonth]);
 
+  const electricityHistoryRecords = useMemo(() => {
+    const month = state.settings.billingMonth;
+    const rows = [];
+    for (const x of allElectricity) {
+      const list = Array.isArray(x.electricityList) ? x.electricityList : [];
+      for (const e of list) {
+        if (month && e?.month !== month) continue;
+        if (electricityHistoryMode === "paid" && !e?.paid) continue;
+        if (electricityHistoryMode === "pending" && e?.paid) continue;
+        rows.push({ roomId: x.roomId, roomCode: x.roomCode, electricity: e });
+      }
+    }
+    return rows;
+  }, [allElectricity, electricityHistoryMode, state.settings.billingMonth]);
+
   const pendingElectricityCount = pendingElectricity.length;
   const pendingElectricityAmount = pendingElectricity.reduce((sum, x) => {
     const e = x.electricity;
-    const used = Number(e.end || 0) - Number(e.start || 0);
+    const used = Number(e.end_reading || 0) - Number(e.start_reading || 0);
     return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
   }, 0);
 
   const paidElectricityCount = paidElectricity.length;
   const paidElectricityAmount = paidElectricity.reduce((sum, x) => {
     const e = x.electricity;
-    const used = Number(e.end || 0) - Number(e.start || 0);
+    const used = Number(e.end_reading || 0) - Number(e.start_reading || 0);
     return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
   }, 0);
 
@@ -934,16 +917,11 @@ export default function App() {
 
   async function initKtxFromInputs(payload) {
     try {
-      if (token) {
-        await dataLoader.initKtx(payload, token);
-        await loadAllFromDb();
-        alert("Khởi tạo KTX thành công!");
-        return true;
-      }
-      const ok = await initKtxSvc(payload);
+      if (!token) return false;
+      await dataLoader.initKtx(payload, token);
       await loadAllFromDb();
       alert("Khởi tạo KTX thành công!");
-      return ok;
+      return true;
     } catch (e) {
       alert(e.message || String(e));
       return false;
@@ -952,13 +930,8 @@ export default function App() {
 
   async function wipeDatabase() {
     try {
-      if (token) {
-        await dataLoader.wipeDatabase(token);
-        await loadAllFromDb();
-        alert("Đã xóa sạch dữ liệu.");
-        return;
-      }
-      await wipeDatabaseSvc();
+      if (!token) return setLoginModal(true);
+      await dataLoader.wipeDatabase(token);
       await loadAllFromDb();
       alert("Đã xóa sạch dữ liệu.");
     } catch (e) {
@@ -998,7 +971,7 @@ export default function App() {
             {auth.isAdmin ? (
               <button
                 className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
-                onClick={() => setLoginModal(true)}
+                onClick={handleLogout}
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Đăng xuất
@@ -1189,11 +1162,6 @@ export default function App() {
     return { worker: w, currentRoom };
   }, [workerModal, workerById, state.floors]);
 
-  function openElectricityHistory(type) {
-    setElectricityHistoryFilter(type); // "paid" | "pending"
-    setElectricityHistoryOpen(true);
-  }
-
   // ---------------------------
   // Render
   // ---------------------------
@@ -1339,57 +1307,27 @@ export default function App() {
               billingMonth: state.settings.billingMonth,
               upsertElectricity: async (rec) => {
                 try {
-                  if (token) {
-                    await electricityService.upsert(
-                      {
-                        id: rec.id,
-                        room_id: roomCtx?.room?.id,
-                        month: rec.month,
-                        start_reading: rec.startReading,
-                        end_reading: rec.endReading,
-                        paid: rec.paid,
-                      },
-                      token,
-                    );
-                    await loadAllFromDb();
-                    return;
-                  }
-
-                  // Supabase legacy
-                  const updated = await upsertElectricitySvc(rec);
-                  setState((s) => {
-                    const floors = s.floors.map((f) => {
-                      if (f.id !== roomCtx?.floor?.id) return f;
-                      return {
-                        ...f,
-                        rooms: f.rooms.map((r) => {
-                          if (r.id !== roomCtx?.room?.id) return r;
-                          return {
-                            ...r,
-                            electricity: [
-                              ...r?.electricity?.filter(
-                                (e) => e?.id !== updated?.id,
-                              ),
-                              updated,
-                            ],
-                          };
-                        }),
-                      };
-                    });
-                    return { ...s, floors };
-                  });
+                  if (!token) return setLoginModal(true);
+                  await electricityService.upsert(
+                    {
+                      id: rec.id,
+                      room_id: rec.roomId || roomCtx?.room?.id,
+                      month: rec.month,
+                      start_reading: rec.start_reading ?? rec.startReading ?? 0,
+                      end_reading: rec.end_reading ?? rec.endReading ?? 0,
+                      paid: !!rec.paid,
+                    },
+                    token,
+                  );
+                  await loadAllFromDb();
                 } catch (e) {
                   alert(e.message || String(e));
                 }
               },
               markElectricityPaid: async (rec) => {
                 try {
-                  if (token) {
-                    await electricityService.markPaid(rec.id, token);
-                    await loadAllFromDb();
-                    return;
-                  }
-                  await markElectricityPaidSvc(rec);
+                  if (!token) return setLoginModal(true);
+                  await electricityService.markPaid(rec.id, token);
                   await loadAllFromDb();
                 } catch (e) {
                   alert(e.message || String(e));
@@ -1713,17 +1651,46 @@ export default function App() {
             setState={setState}
             auth={auth}
             setLoginModal={setLoginModal}
-            importModal={importModal}
-            setImportModal={setImportModal}
+            onLogout={handleLogout}
             importFileRef={importFileRef}
             DEFAULT_SETTINGS={DEFAULT_SETTINGS}
-            saveSettingsToDb={saveSettingsToDb} // nếu bạn có hàm này ở App.jsx
+            saveSettingsToDb={saveSettingsToDb}
             requireAdmin={requireAdmin}
             wipeDatabase={wipeDatabase}
             onImportExcel={handleImportExcel}
           />
         </Suspense>
       ) : null}
+
+      {electricityHistoryOpen ? (
+        <Suspense fallback={null}>
+          <ElectricityHistoryModal
+            open={electricityHistoryOpen}
+            onClose={() => setElectricityHistoryOpen(false)}
+            records={electricityHistoryRecords}
+            pricePerUnit={state.settings.electricityPrice || 0}
+            mode={electricityHistoryMode}
+            month={state.settings.billingMonth}
+          />
+        </Suspense>
+      ) : null}
+
+      <Confirm
+        open={confirm.open}
+        title={confirm.title}
+        message={confirm.message}
+        confirmText={confirm.confirmText}
+        onCancel={() =>
+          setConfirm({
+            open: false,
+            title: "",
+            message: "",
+            confirmText: "Xóa",
+            onConfirm: null,
+          })
+        }
+        onConfirm={() => confirm.onConfirm?.()}
+      />
 
       {deletePassModal.open ? (
         <Suspense fallback={null}>

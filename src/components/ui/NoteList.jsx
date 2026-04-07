@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2, StickyNote } from "lucide-react";
 import { noteService } from "../../services/api-services";
 import { useAuth } from "../../contexts/AuthContext";
@@ -9,20 +9,20 @@ export default function NoteList({ targetId, targetType }) {
   const [newNote, setNewNote] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const loadNotes = useCallback(async () => {
+    try {
+      const data = await noteService.getByTarget(targetId, targetType, token);
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Load notes failed", e);
+    }
+  }, [targetId, targetType, token]);
+
   useEffect(() => {
     if (targetId && token) {
       loadNotes();
     }
-  }, [targetId, token]);
-
-  const loadNotes = async () => {
-    try {
-      const data = await noteService.getByTarget(targetId, targetType, token);
-      setNotes(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Load notes failed", err);
-    }
-  };
+  }, [targetId, token, loadNotes]);
 
   const handleAdd = async () => {
     if (!newNote.trim()) return;
@@ -30,11 +30,11 @@ export default function NoteList({ targetId, targetType }) {
     try {
       const res = await noteService.create(
         { target_id: targetId, target_type: targetType, content: newNote },
-        token
+        token,
       );
       setNotes([res, ...notes]);
       setNewNote("");
-    } catch (err) {
+    } catch {
       alert("Không thể thêm ghi chú.");
     } finally {
       setLoading(false);
@@ -46,7 +46,7 @@ export default function NoteList({ targetId, targetType }) {
     try {
       await noteService.delete(id, token);
       setNotes(notes.filter((n) => n.id !== id));
-    } catch (err) {
+    } catch {
       alert("Không thể xóa ghi chú.");
     }
   };

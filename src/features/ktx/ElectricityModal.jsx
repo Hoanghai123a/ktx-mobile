@@ -36,10 +36,6 @@ export default function ElectricityModal({
     try {
       const s = Number(start || 0);
       const e = Number(end || 0);
-      console.log("Saving electricity reading:", {
-        s,
-        e,
-      });
       await actions.upsertElectricity({
         roomId: room?.id,
         month: billingMonth,
@@ -84,7 +80,13 @@ export default function ElectricityModal({
         ? (thisElectricity?.end_reading ?? 0)
         : (thisElectricity?.end_reading ?? 0),
     );
-  }, [open]);
+  }, [
+    open,
+    billingMonth,
+    thisElectricity?.month,
+    thisElectricity?.start_reading,
+    thisElectricity?.end_reading,
+  ]);
   const isSameMonth = thisElectricity?.month === billingMonth;
   return (
     <Modal open={open} title="Tiền điện" onClose={handleClose}>

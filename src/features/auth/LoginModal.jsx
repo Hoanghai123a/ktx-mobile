@@ -2,7 +2,6 @@ import React from "react";
 import { LogIn, LogOut } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
-import { supabase } from "../../services/supabaseClient";
 import { authService } from "../../services/api-services";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -45,8 +44,6 @@ export default function LoginModal({
     try {
       authService.logout();
       logout();
-      // Đồng thời đăng xuất Supabase
-      await supabase.auth.signOut();
       onClose();
     } catch (err) {
       alert("Đăng xuất lỗi: " + err.message);
