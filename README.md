@@ -1,11 +1,11 @@
 # ktx-mobile
 
-Ứng dụng quản lý KTX/NLĐ chạy trên React + Vite, dùng Supabase làm backend.
+Ứng dụng quản lý KTX/NLĐ chạy trên React + Vite, dùng Node.js/Express + PostgreSQL làm backend (qua `/api` proxy).
 
 ## Stack chính
 
 - React 19 + Vite
-- Supabase (`@supabase/supabase-js`)
+- Node.js/Express + PostgreSQL (backend)
 - Tailwind CSS
 - Recharts
 - XLSX (import/export Excel)
@@ -26,8 +26,9 @@ npm install
 Tạo file `.env` ở thư mục gốc:
 
 ```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_HOST=/api/
+VITE_KEY=your_application_key
+VITE_DEBUGMODE=development
 ```
 
 ## Chạy dự án
@@ -46,7 +47,7 @@ npm run dev
 ## Cấu trúc thư mục
 
 - `src/features`: các màn hình và modal theo domain nghiệp vụ
-- `src/services`: lớp thao tác dữ liệu Supabase + import/export
+- `src/services`: lớp thao tác dữ liệu qua API backend + import/export
 - `src/components/ui`: UI components dùng lại
 
 ## Ghi chú
