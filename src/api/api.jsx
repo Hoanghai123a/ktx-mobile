@@ -3,6 +3,7 @@ import axios from "axios";
 
 const key = import.meta.env.VITE_KEY;
 const debugMode = import.meta.env.VITE_DEBUGMODE === "development";
+const backendHint = "Hãy đảm bảo Backend đang chạy (cd backend && npm start).";
 
 // Axios instance matching SmartNote's pattern
 const api = axios.create({
@@ -26,7 +27,7 @@ api.interceptors.request.use(
   (error) => {
     if (debugMode) console.error("❌ Request error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
 api.interceptors.response.use(
@@ -52,13 +53,28 @@ api.interceptors.response.use(
       if (debugMode) {
         console.error(
           `❌ [ERROR] ${url} failed after ${duration} ms`,
-          error.message
+          error.message,
         );
       }
     }
     return Promise.reject(error);
-  }
+  },
 );
+
+function looksLikeProxyConnectionFailure(error) {
+  const status = error?.response?.status;
+  if (status !== 500) return false;
+  const data = error?.response?.data;
+  const text =
+    typeof data === "string"
+      ? data
+      : typeof data?.error === "string"
+        ? data.error
+        : "";
+  return /ECONNREFUSED|socket hang up|Proxy error|connect ECONNREFUSED/i.test(
+    text,
+  );
+}
 
 // ----- Helpers -----
 function clearPrevious(url) {
@@ -93,9 +109,10 @@ export const debounceGet = (url, token, delay = DEFAULT_DELAY) => {
           headers: buildHeaders(token),
         });
         resolve(response.data);
-      } catch (error) {
-        console.error("Error fetching data", error);
-        reject(error);
+      } catch (e) {
+        if (debugMode) console.error("Error fetching data", e);
+        error(e);
+        reject(e);
       } finally {
         delete debounceTimers[url];
         delete abortControllers[url];
@@ -116,9 +133,10 @@ export const debouncePost = (url, data, token, delay = DEFAULT_DELAY) => {
           headers: buildHeaders(token),
         });
         resolve(response.data);
-      } catch (error) {
-        console.error("Error posting data", error);
-        reject(error);
+      } catch (e) {
+        if (debugMode) console.error("Error posting data", e);
+        error(e);
+        reject(e);
       } finally {
         delete debounceTimers[url];
         delete abortControllers[url];
@@ -139,9 +157,10 @@ export const debouncePatch = (url, data, token, delay = DEFAULT_DELAY) => {
           headers: buildHeaders(token),
         });
         resolve(response.data);
-      } catch (error) {
-        console.error("Error patching data", error);
-        reject(error);
+      } catch (e) {
+        if (debugMode) console.error("Error patching data", e);
+        error(e);
+        reject(e);
       } finally {
         delete debounceTimers[url];
         delete abortControllers[url];
@@ -162,9 +181,10 @@ export const debounceDelete = (url, token, delay = DEFAULT_DELAY) => {
           headers: buildHeaders(token),
         });
         resolve(response.data);
-      } catch (error) {
-        console.error("Error deleting data", error);
-        reject(error);
+      } catch (e) {
+        if (debugMode) console.error("Error deleting data", e);
+        error(e);
+        reject(e);
       } finally {
         delete debounceTimers[url];
         delete abortControllers[url];
@@ -174,15 +194,30 @@ export const debounceDelete = (url, token, delay = DEFAULT_DELAY) => {
 };
 
 // ----- Error handler -----
-const error = (e) => {
+function error(e) {
+  if (!e?.response) {
+    const msg =
+      e?.code === "ERR_NETWORK" ||
+      /fetch failed/i.test(String(e?.message || ""))
+        ? `Không kết nối được Backend. ${backendHint}`
+        : e?.message || `Không kết nối được Backend. ${backendHint}`;
+    message.error(msg);
+    return;
+  }
+
+  if (looksLikeProxyConnectionFailure(e)) {
+    message.error(`Không kết nối được Backend (proxy lỗi). ${backendHint}`);
+    return;
+  }
+
   message.error(
     e?.response?.data?.detail ||
       e?.response?.data?.details ||
       e?.response?.data?.error ||
       e?.response?.data?.errors ||
-      "Có lỗi xảy ra!"
+      `Có lỗi xảy ra! ${backendHint}`,
   );
-};
+}
 
 // ----- Cookie & Token utils -----
 function getCookie(name) {
