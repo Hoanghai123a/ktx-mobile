@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Shield, Save, LogIn, LogOut, FileUp } from "lucide-react";
+import { Shield, Save, LogIn, LogOut, FileUp, Download } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
+import { downloadExcelSample } from "../../services/excelSampleService";
 
 import clsx from "../../components/ui/clsx";
 import Modal from "../../components/ui/Modal";
@@ -24,6 +25,8 @@ export default function SettingsModal({
   DEFAULT_SETTINGS,
   saveSettingsToDb,
   requireAdmin,
+  wipeDatabase,
+  onImportExcel,
 }) {
   const settings = state.settings;
 
@@ -270,35 +273,6 @@ export default function SettingsModal({
               }
             />
 
-            <div className="mt-2 text-xs text-slate-600">
-              <strong>Nếu gặp lỗi 400 khi lưu số điện:</strong>
-              <div className="mt-1 space-y-1">
-                <div>
-                  1️⃣ Bảng cần có unique constraint trên (room_id, month):
-                </div>
-                <pre className="rounded bg-slate-100 p-2 text-xs">
-                  {`alter table electricities add unique (room_id, month);`}
-                </pre>
-                <div>2️⃣ Hoặc nếu chưa tạo bảng, dùng SQL này:</div>
-                <pre className="rounded bg-slate-100 p-2 text-xs">
-                  {`create table electricities (
-  id uuid primary key default uuid_generate_v4(),
-  room_id uuid references rooms(id),
-  month text,
-  start_reading numeric,
-  end_reading numeric,
-  paid boolean default false,
-  paid_at timestamp,
-  unique(room_id, month)
-);`}
-                </pre>
-                <div>
-                  3️⃣ Kiểm tra RLS policy - cho phép INSERT/UPDATE trên role của
-                  bạn.
-                </div>
-              </div>
-            </div>
-
             <div className="rounded-2xl bg-slate-50 p-3">
               <div className="text-xs font-semibold text-slate-900">
                 Bảo vệ xóa
@@ -352,18 +326,17 @@ export default function SettingsModal({
             <Pill icon={FileUp} text="Excel" tone="sky" />
           </div>
 
-          <div className="mt-3">
+          <div className="mt-3 flex gap-2">
             <button
               className={clsx(
-                "w-full rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
+                "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
                 auth.isAdmin
                   ? "bg-slate-900 text-white"
                   : "bg-slate-100 text-slate-500",
               )}
               onClick={() =>
                 requireAdmin(() => {
-                  setImportModal?.((m) => ({ ...m, open: true }));
-                  importFileRef?.current?.click();
+                  importFileRef?.current?.click(); // Kích hoạt input file
                 })
               }
             >
@@ -371,6 +344,57 @@ export default function SettingsModal({
                 <FileUp className="h-4 w-4" />
                 Nhập Excel
               </span>
+            </button>
+
+            <button
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              onClick={downloadExcelSample}
+            >
+              <span className="inline-flex items-center justify-center gap-2">
+                <Download className="h-4 w-4" />
+                Tải file mẫu
+              </span>
+            </button>
+          </div>
+          <input
+            type="file"
+            ref={importFileRef}
+            className="hidden"
+            accept=".xlsx, .xls"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                await onImportExcel(file);
+              }
+              e.target.value = null; // Reset input file để có thể chọn lại cùng file
+            }}
+          />
+        </div>
+
+        {/* DATABASE TOOLS */}
+        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100 border-red-100 border">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold text-red-600">Hệ thống</div>
+              <div className="mt-1 text-xs text-slate-600">
+                Xóa toàn bộ dữ liệu để khởi tạo lại từ đầu.
+              </div>
+            </div>
+            <button
+              className="rounded-2xl bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
+              onClick={() =>
+                requireAdmin(() => {
+                  if (
+                    confirm(
+                      "BẠN CÓ CHẮC CHẮN MUỐN XÓA SẠCH DATABASE? Hành động này không thể hoàn tác.",
+                    )
+                  ) {
+                    wipeDatabase?.();
+                  }
+                })
+              }
+            >
+              RESET DATABASE
             </button>
           </div>
         </div>

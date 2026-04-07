@@ -4,8 +4,17 @@ import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
 import Confirm from "../../components/ui/Confirm";
 import clsx from "../../components/ui/clsx";
-import { Users, Trash2, Save, LogOut, Plus, Edit } from "lucide-react";
+import {
+  Users,
+  Trash2,
+  Save,
+  LogOut,
+  Plus,
+  Edit,
+  StickyNote,
+} from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
+import NoteList from "../../components/ui/NoteList";
 
 export default function RoomModal({
   open,
@@ -25,6 +34,7 @@ export default function RoomModal({
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
   const [elecModal, setElecModal] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   // manual check-in form state
   const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -48,6 +58,13 @@ export default function RoomModal({
     return stays.filter((s) => !s.dateOut);
   }, [room]);
 
+  const history = useMemo(() => {
+    const stays = room?.stays || [];
+    return stays
+      .filter((s) => !!s.dateOut)
+      .sort((a, b) => new Date(b.dateOut || 0) - new Date(a.dateOut || 0));
+  }, [room]);
+
   // title shown in modal header; include both label and code for clarity
   const title = room ? `Chi tiết phòng ${room.code}` : "Chi tiết phòng";
 
@@ -63,6 +80,24 @@ export default function RoomModal({
     <>
       <Modal open={open} title={title} onClose={onClose}>
         <div className="space-y-3">
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-900">
+                Ghi chú phòng
+              </div>
+              <button
+                onClick={() => setShowNotes(!showNotes)}
+                className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <StickyNote className="h-3.5 w-3.5" />
+                  {showNotes ? "Ẩn" : "Xem"}
+                </span>
+              </button>
+            </div>
+            {showNotes && <NoteList targetId={room.id} targetType="room" />}
+          </div>
+
           <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
             <div className="text-xs font-semibold text-slate-900">
               {floor?.name || "Tầng"}
@@ -322,6 +357,41 @@ export default function RoomModal({
               )}
             </div>
           </div>
+
+          {/* History stays */}
+          <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+            <div className="text-sm font-semibold text-slate-900">
+              Lịch sử ở phòng
+            </div>
+            <div className="mt-3 space-y-2">
+              {history.length ? (
+                history.map((s) => {
+                  const w = workerById?.get(s.workerId);
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/50 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-700">
+                          {w?.fullName || w?.name || s.workerId}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {s.dateIn ? String(s.dateIn).slice(0, 10) : "?"} ➔{" "}
+                          {s.dateOut ? String(s.dateOut).slice(0, 10) : "?"}
+                        </div>
+                      </div>
+                      <Pill text="Đã rời" tone="slate" />
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-2 text-center text-xs text-slate-400">
+                  Chưa có lịch sử.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Modal>
 
@@ -341,14 +411,20 @@ export default function RoomModal({
           <TextField
             label="Ngày rời đi"
             value={checkOutCtx.dateOut}
-            onChange={(v) => setCheckOutCtx((prev) => ({ ...prev, dateOut: v }))}
+            onChange={(v) =>
+              setCheckOutCtx((prev) => ({ ...prev, dateOut: v }))
+            }
             type="date"
           />
           <div className="flex gap-2">
             <button
               className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
               onClick={() =>
-                setCheckOutCtx((prev) => ({ ...prev, open: false, stayId: null }))
+                setCheckOutCtx((prev) => ({
+                  ...prev,
+                  open: false,
+                  stayId: null,
+                }))
               }
             >
               Hủy

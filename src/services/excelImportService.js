@@ -1,11 +1,6 @@
 // src/services/excelImportService.js
 import * as XLSX from "xlsx";
-import { supabase } from "./supabaseClient";
-
-function isMissingWorkerNoteColumn(error) {
-  const msg = String(error?.message || "").toLowerCase();
-  return msg.includes("workers.note") || msg.includes('column "note"');
-}
+import { workerService, roomService, stayService } from "./api-services";
 
 function normHeader(s) {
   return String(s || "")
@@ -25,6 +20,9 @@ function excelSerialToISO(n) {
 
 function parseDateToISO(v) {
   if (!v && v !== 0) return "";
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return v.toISOString().slice(0, 10);
+  }
   if (typeof v === "number") {
     if (v > 20000 && v < 60000) return excelSerialToISO(v);
     return "";
@@ -33,7 +31,7 @@ function parseDateToISO(v) {
   if (!s) return "";
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const m = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+.*)?$/);
   if (m) {
     const dd = String(m[1]).padStart(2, "0");
     const mm = String(m[2]).padStart(2, "0");
@@ -57,7 +55,7 @@ function normalizePhone(v) {
   return s.replace(/\s+/g, "");
 }
 
-export async function importExcelFileToDb(file) {
+export async function importExcelFileToDb(file, token) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
 
@@ -77,211 +75,251 @@ export async function importExcelFileToDb(file) {
 
   const total = rows.length;
 
-  // preload rooms
-  const roomsRes = await supabase.from("rooms").select("id,code");
-  if (roomsRes.error) throw new Error(roomsRes.error.message);
-  const roomIdByCode = new Map(
-    (roomsRes.data || []).map((r) => [String(r.code).trim(), r.id]),
-  );
+  try {
+    // preload rooms
+    const roomsData = await roomService.getAll(token);
+    const roomIdByCode = new Map(
+      (roomsData || []).map((r) => [String(r.code).trim(), r.id]),
+    );
 
-  // preload workers
-  let workersRes = await supabase
-    .from("workers")
-    .select("id,full_name,dob,phone,hometown,recruiter,note");
-  let supportsWorkerNote = true;
+    // preload workers
+    const workersData = await workerService.getAll(token);
+    const keyOfWorker = (fullName, dob, phone) =>
+      `${String(fullName || "")
+        .trim()
+        .toLowerCase()}|${String(dob || "").trim()}|${String(phone || "").trim()}`;
 
-  if (workersRes.error && isMissingWorkerNoteColumn(workersRes.error)) {
-    supportsWorkerNote = false;
-    workersRes = await supabase
-      .from("workers")
-      .select("id,full_name,dob,phone,hometown,recruiter");
-  }
-  if (workersRes.error) throw new Error(workersRes.error.message);
-
-  const keyOfWorker = (fullName, dob, phone) =>
-    `${String(fullName || "")
-      .trim()
-      .toLowerCase()}|${String(dob || "").trim()}|${String(phone || "").trim()}`;
-
-  const existing = new Map();
-  for (const w of workersRes.data || []) {
-    existing.set(keyOfWorker(w.full_name, w.dob || "", w.phone || ""), w);
-  }
-
-  // preload stays
-  const staysRes = await supabase
-    .from("stays")
-    .select("id,worker_id,room_id,date_out");
-  if (staysRes.error) throw new Error(staysRes.error.message);
-
-  const activeStayByWorker = new Map();
-  for (const st of staysRes.data || []) {
-    if (!st.date_out) activeStayByWorker.set(st.worker_id, st);
-  }
-
-  let workersInserted = 0;
-  let workersUpdated = 0;
-  let staysInserted = 0;
-  let skipped = 0;
-  const errors = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const line = i + 2;
-
-    const fullName = String(
-      pick(row, ["Họ tên", "Ho ten", "Full name", "Tên", "Name"]),
-    ).trim();
-    if (!fullName) {
-      skipped++;
-      continue;
+    const existing = new Map();
+    for (const w of workersData || []) {
+      // API returns snake_case from DB
+      // Check both field names to be safe
+      const fullName = w.full_name || w.fullName;
+      const dob = w.dob;
+      const phone = w.phone;
+      existing.set(keyOfWorker(fullName, dob || "", phone || ""), w);
     }
 
-    const dob = parseDateToISO(
-      pick(row, ["Ngày sinh", "Ngay sinh", "DOB", "Birth", "Birthdate"]),
-    );
-    const phone = normalizePhone(
-      pick(row, ["Số điện thoại", "So dien thoai", "Phone", "SDT", "Sdt"]),
-    );
-    const hometown = String(
-      pick(row, ["Quê quán", "Que quan", "Hometown", "Que"]),
-    ).trim();
-    const recruiter = String(
-      pick(row, ["Người tuyển", "Nguoi tuyen", "Recruiter", "Tuyen"]),
-    ).trim();
-    const note = String(pick(row, ["Ghi chú", "Ghi chu", "Note", "Notes"])).trim();
-    const roomCode = String(
-      pick(row, ["Phòng", "Phong", "Room", "Room code"]),
-    ).trim();
-    const dateIn = parseDateToISO(
-      pick(row, ["Ngày vào", "Ngay vao", "Date in", "Check in"]),
-    );
-    const dateOut = parseDateToISO(
-      pick(row, [
+    // preload stays
+    const staysData = await stayService.getAll(token);
+    const activeStayByWorker = new Map();
+    const existingStayKeys = new Set();
+    const stayKey = (workerId, roomId, dateIn, dateOut) =>
+      `${workerId}|${roomId}|${dateIn}|${dateOut || ""}`;
+    for (const st of staysData || []) {
+      existingStayKeys.add(
+        stayKey(st.worker_id, st.room_id, st.date_in, st.date_out || ""),
+      );
+      if (!st.date_out) activeStayByWorker.set(st.worker_id, st);
+    }
+
+    let workersInserted = 0;
+    let workersUpdated = 0;
+    let staysInserted = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const line = i + 2;
+
+      const fullName = String(
+        pick(row, ["Họ tên", "Ho ten", "Full name", "Tên", "Name"]),
+      ).trim();
+      if (!fullName) {
+        skipped++;
+        continue;
+      }
+
+      const dob = parseDateToISO(
+        pick(row, ["Ngày sinh", "Ngay sinh", "DOB", "Birth", "Birthdate"]),
+      );
+      const phone = normalizePhone(
+        pick(row, ["Số điện thoại", "So dien thoai", "Phone", "SDT", "Sdt"]),
+      );
+      const hometown = String(
+        pick(row, ["Quê quán", "Que quan", "Hometown", "Que"]),
+      ).trim();
+      const recruiter = String(
+        pick(row, ["Người tuyển", "Nguoi tuyen", "Recruiter", "Tuyen"]),
+      ).trim();
+      const note = String(
+        pick(row, ["Ghi chú", "Ghi chu", "Note", "Notes"]),
+      ).trim();
+      const roomCode = String(
+        pick(row, ["Phòng", "Phong", "Room", "Room code"]),
+      ).trim();
+      const rawDateIn = pick(row, ["Ngày vào", "Ngay vao", "Date in", "Check in"]);
+      const rawDateOut = pick(row, [
         "Ngày rời",
         "Ngay roi",
         "Ngày ra",
         "Ngay ra",
         "Date out",
         "Check out",
-      ]),
-    );
-
-    // 1) upsert worker
-    const k = keyOfWorker(fullName, dob, phone);
-    let worker = existing.get(k);
-    let workerId = worker?.id || null;
-
-    if (!workerId) {
-      const workerPayload = {
-        full_name: fullName,
-        dob: dob || null,
-        phone: phone || null,
-        hometown: hometown || null,
-        recruiter: recruiter || null,
-      };
-      if (supportsWorkerNote) workerPayload.note = note || null;
-
-      const ins = await supabase
-        .from("workers")
-        .insert([workerPayload])
-        .select("id")
-        .single();
-
-      if (ins.error) {
-        errors.push({
-          line,
-          reason: `Tạo NLĐ lỗi: ${ins.error.message}`,
-          fullName,
-        });
-        continue;
-      }
-
-      workerId = ins.data.id;
-      workersInserted++;
-      worker = {
-        id: workerId,
-        full_name: fullName,
-        dob,
-        phone,
-        hometown,
-        recruiter,
-        note,
-      };
-      existing.set(k, worker);
-    } else {
-      const patch = {};
-      if (hometown && !worker.hometown) patch.hometown = hometown;
-      if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
-      if (dob && !worker.dob) patch.dob = dob;
-      if (phone && !worker.phone) patch.phone = phone;
-      if (supportsWorkerNote && note && !worker.note) patch.note = note;
-
-      if (Object.keys(patch).length) {
-        const up = await supabase
-          .from("workers")
-          .update(patch)
-          .eq("id", workerId);
-        if (!up.error) workersUpdated++;
-      }
-    }
-
-    // 2) stays
-    if (roomCode && dateIn) {
-      const roomId = roomIdByCode.get(roomCode);
-      if (!roomId) {
-        errors.push({
-          line,
-          reason: `Phòng không tồn tại: ${roomCode}`,
-          fullName,
-        });
-        continue;
-      }
-
-      const active = activeStayByWorker.get(workerId);
-      if (active) {
-        errors.push({
-          line,
-          reason: `NLĐ đang ở phòng khác (không tự chuyển)`,
-          fullName,
-        });
-        continue;
-      }
-
-      const insStay = await supabase.from("stays").insert([
-        {
-          room_id: roomId,
-          worker_id: workerId,
-          date_in: dateIn,
-          date_out: dateOut || null,
-        },
       ]);
+      const dateIn = parseDateToISO(rawDateIn);
+      const dateOut = parseDateToISO(rawDateOut);
+      const hasRawDateIn =
+        rawDateIn != null && String(rawDateIn).trim() !== "";
+      const hasRawDateOut =
+        rawDateOut != null && String(rawDateOut).trim() !== "";
+      const hasAnyStayInfo = !!roomCode || hasRawDateIn || hasRawDateOut;
 
-      if (insStay.error) {
+      if (hasRawDateOut && !dateOut) {
         errors.push({
           line,
-          reason: `Tạo lịch sử ở lỗi: ${insStay.error.message}`,
+          reason: `Không parse được ngày rời: "${String(rawDateOut).trim()}"`,
           fullName,
         });
-        continue;
+        console.warn(
+          `IMPORT ERROR line ${line}: dateOut invalid for "${fullName}"`,
+          rawDateOut,
+        );
       }
 
-      staysInserted++;
-      if (!dateOut)
-        activeStayByWorker.set(workerId, {
-          worker_id: workerId,
-          room_id: roomId,
-          date_out: null,
-        });
-    }
-  }
+      // 1) upsert worker
+      const k = keyOfWorker(fullName, dob, phone);
+      let worker = existing.get(k);
+      let workerId = worker?.id || null;
 
-  return {
-    total,
-    workersInserted,
-    workersUpdated,
-    staysInserted,
-    skipped,
-    errors,
-  };
+      if (!workerId) {
+        const workerPayload = {
+          full_name: fullName,
+          dob: dob || null,
+          phone: phone || null,
+          hometown: hometown || null,
+          recruiter: recruiter || null,
+          note: note || null,
+        };
+
+        try {
+          const ins = await workerService.create(workerPayload, token);
+          workerId = ins.id;
+          workersInserted++;
+          worker = {
+            id: workerId,
+            full_name: fullName,
+            dob,
+            phone,
+            hometown,
+            recruiter,
+            note,
+          };
+          existing.set(k, worker);
+        } catch (err) {
+          errors.push({
+            line,
+            reason: `Tạo NLĐ lỗi: ${err.message}`,
+            fullName,
+          });
+          continue;
+        }
+      } else {
+        const patch = {};
+        if (hometown && !worker.hometown) patch.hometown = hometown;
+        if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
+        if (dob && !worker.dob) patch.dob = dob;
+        if (phone && !worker.phone) patch.phone = phone;
+        if (note && !worker.note) patch.note = note;
+
+        if (Object.keys(patch).length) {
+          try {
+            await workerService.update(workerId, patch, token);
+            workersUpdated++;
+          } catch (err) {
+            console.error(`Update worker ${workerId} failed`, err);
+          }
+        }
+      }
+
+      // 2) stays
+      if (hasAnyStayInfo) {
+        if (!roomCode) {
+          errors.push({
+            line,
+            reason: "Thiếu mã phòng (Phòng/Room).",
+            fullName,
+          });
+          continue;
+        }
+        if (!dateIn) {
+          errors.push({
+            line,
+            reason: `Thiếu hoặc không parse được ngày vào: "${String(rawDateIn).trim()}"`,
+            fullName,
+          });
+          continue;
+        }
+        if (hasRawDateOut && !dateOut) {
+          continue;
+        }
+
+        const roomId = roomIdByCode.get(roomCode);
+        if (!roomId) {
+          errors.push({
+            line,
+            reason: `Phòng không tồn tại: ${roomCode}`,
+            fullName,
+          });
+          continue;
+        }
+
+        const nextStayKey = stayKey(workerId, roomId, dateIn, dateOut || "");
+        if (existingStayKeys.has(nextStayKey)) {
+          skipped++;
+          continue;
+        }
+
+        if (!dateOut) {
+          const active = activeStayByWorker.get(workerId);
+          if (active) {
+            errors.push({
+              line,
+              reason: "NLĐ đang có lượt ở hiện tại (không tự chuyển).",
+              fullName,
+            });
+            continue;
+          }
+        }
+
+        try {
+          await stayService.create(
+            {
+              room_id: roomId,
+              worker_id: workerId,
+              date_in: dateIn,
+              date_out: dateOut || null,
+            },
+            token,
+          );
+          staysInserted++;
+          existingStayKeys.add(nextStayKey);
+          if (!dateOut)
+            activeStayByWorker.set(workerId, {
+              worker_id: workerId,
+              room_id: roomId,
+              date_out: null,
+            });
+        } catch (err) {
+          errors.push({
+            line,
+            reason: `Tạo lịch sử ở lỗi: ${err.message}`,
+            fullName,
+          });
+          continue;
+        }
+      }
+    }
+
+    return {
+      total,
+      workersInserted,
+      workersUpdated,
+      staysInserted,
+      skipped,
+      errors,
+    };
+  } catch (err) {
+    throw new Error(`Lỗi hệ thống khi nhập Excel: ${err.message}`);
+  }
 }

@@ -3,7 +3,8 @@ import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Confirm from "../../components/ui/Confirm";
 import clsx from "../../components/ui/clsx";
-import { Save, Trash2 } from "lucide-react";
+import { Save, Trash2, StickyNote } from "lucide-react";
+import NoteList from "../../components/ui/NoteList";
 
 export default function WorkerModal({
   open,
@@ -25,6 +26,7 @@ export default function WorkerModal({
   const [phone, setPhone] = useState(worker?.phone || "");
   const [note, setNote] = useState(worker?.note || "");
   const [confirmDel, setConfirmDel] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   useEffect(() => {
     setFullName(worker?.fullName || "");
@@ -50,6 +52,13 @@ export default function WorkerModal({
     return list.find((s) => !s.dateOut) || null;
   }, [stays]);
 
+  const stayHistory = useMemo(() => {
+    const list = stays || [];
+    return list
+      .filter((s) => !!s.dateOut)
+      .sort((a, b) => new Date(b.dateOut || 0) - new Date(a.dateOut || 0));
+  }, [stays]);
+
   return (
     <>
       <Modal open={open} title={title} onClose={onClose}>
@@ -57,6 +66,24 @@ export default function WorkerModal({
           <div className="text-sm text-slate-600">Không tìm thấy NLĐ.</div>
         ) : (
           <div className="space-y-3">
+            <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Ghi chú chi tiết</div>
+                <button
+                  onClick={() => setShowNotes(!showNotes)}
+                  className="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <StickyNote className="h-3.5 w-3.5" />
+                    {showNotes ? "Ẩn" : "Xem"}
+                  </span>
+                </button>
+              </div>
+              {showNotes && (
+                <NoteList targetId={worker.id} targetType="worker" />
+              )}
+            </div>
+
             <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
               <div className="text-sm font-semibold">Thông tin NLĐ</div>
 
@@ -195,6 +222,35 @@ export default function WorkerModal({
                       return `Đang ở phòng: ${roomCode} (vào ${dateStr})`;
                     })()
                   : "Hiện không ở phòng nào."}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="text-sm font-semibold">Lịch sử ở</div>
+              <div className="mt-2 space-y-2">
+                {stayHistory.length ? (
+                  stayHistory.map((s) => {
+                    const room = roomById?.get(s.roomId);
+                    return (
+                      <div
+                        key={s.id}
+                        className="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/50 px-3 py-2"
+                      >
+                        <div className="text-sm font-medium text-slate-700">
+                          Phòng {room?.code || s.roomId}
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {s.dateIn ? String(s.dateIn).slice(0, 10) : "?"} ➔{" "}
+                          {s.dateOut ? String(s.dateOut).slice(0, 10) : "?"}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="py-1 text-center text-xs text-slate-400">
+                    Chưa có lịch sử.
+                  </div>
+                )}
               </div>
             </div>
           </div>

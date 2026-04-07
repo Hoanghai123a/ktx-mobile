@@ -3,6 +3,8 @@ import { LogIn, LogOut } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import { supabase } from "../../services/supabaseClient";
+import { authService } from "../../services/api-services";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginModal({
   open,
@@ -13,9 +15,43 @@ export default function LoginModal({
   loginPassword,
   setLoginPassword,
 }) {
+  const { login, logout } = useAuth();
   const emailRef = React.useRef(null);
   const passRef = React.useRef(null);
   const lastFieldRef = React.useRef("email");
+
+  const handleLogin = async () => {
+    const email = (loginEmail || "").trim();
+    const password = loginPassword || "";
+    if (!email || !password) {
+      alert("Vui lòng nhập email và mật khẩu.");
+      return;
+    }
+
+    // Ưu tiên sử dụng API Service mới (giống SmartNote)
+    try {
+      const res = await authService.login(email, password);
+      login(res); // Lưu vào AuthContext
+      onClose();
+    } catch (apiErr) {
+      console.error("API Login failed:", apiErr);
+      alert(
+        "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản hoặc Backend.",
+      );
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      authService.logout();
+      logout();
+      // Đồng thời đăng xuất Supabase
+      await supabase.auth.signOut();
+      onClose();
+    } catch (err) {
+      alert("Đăng xuất lỗi: " + err.message);
+    }
+  };
 
   return (
     <Modal open={open} title="Đăng nhập" onClose={onClose} zIndex="z-[60]">
@@ -50,23 +86,7 @@ export default function LoginModal({
 
         <button
           className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-          onClick={async () => {
-            const email = (loginEmail || "").trim();
-            const password = loginPassword || "";
-            if (!email || !password) {
-              alert("Vui lòng nhập email và mật khẩu.");
-              return;
-            }
-            const { error } = await supabase.auth.signInWithPassword({
-              email,
-              password,
-            });
-            if (error) {
-              alert("Đăng nhập thất bại: " + error.message);
-              return;
-            }
-            onClose();
-          }}
+          onClick={handleLogin}
         >
           <span className="inline-flex items-center justify-center gap-2">
             <LogIn className="h-4 w-4" />
@@ -77,14 +97,7 @@ export default function LoginModal({
         {authIsAdmin ? (
           <button
             className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold"
-            onClick={async () => {
-              const { error } = await supabase.auth.signOut();
-              if (error) {
-                alert("Đăng xuất lỗi: " + error.message);
-                return;
-              }
-              onClose();
-            }}
+            onClick={handleLogout}
           >
             <span className="inline-flex items-center justify-center gap-2">
               <LogOut className="h-4 w-4" />

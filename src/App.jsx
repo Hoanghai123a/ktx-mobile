@@ -263,16 +263,38 @@ function LazyFallback() {
   return <div className="px-4 py-6 text-sm text-slate-500">Đang tải...</div>;
 }
 
+import { useAuth } from "./contexts/AuthContext";
+import {
+  dataLoader,
+  workerService,
+  roomService,
+  floorService,
+  stayService,
+  settingsService as settingsApiService,
+} from "./services/api-services";
+
+// ... existing imports ...
+
 // ---------------------------
 // Main App
 // ---------------------------
 export default function App() {
+  const { user, token, logout: authLogout } = useAuth();
   const [state, setState] = useState(() => ({
     floors: [],
     workers: [],
     settings: DEFAULT_SETTINGS,
   }));
   const [auth, setAuth] = useState({ isAdmin: false });
+
+  // Sync auth state with AuthContext
+  useEffect(() => {
+    if (user) {
+      setAuth({ isAdmin: true, user });
+    } else {
+      // If no user in AuthContext, we still keep setAuth for Supabase legacy
+    }
+  }, [user]);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [tab, setTab] = useState("ktx"); // ktx | stats | workers | settings
@@ -293,16 +315,36 @@ export default function App() {
   // ---------------------------
 
   const loadAllFromDb = useCallback(async () => {
-    const { floors, workers } = await loadAllFromDbSvc();
-    setState((s) => ({ ...s, floors, workers }));
-    setFloorId((prev) => prev || floors[0]?.id || "");
-  }, []);
+    try {
+      // Ưu tiên gọi API Backend mới
+      if (token) {
+        console.log(
+          "🚀 [DATABASE] Đang kết nối tới: BACKEND API (Node.js + Postgres)",
+        );
+        const data = await dataLoader.loadAll(token);
+        setState((s) => ({ ...s, ...data }));
+        setFloorId((prev) => prev || data.floors[0]?.id || "");
+        return;
+      }
+
+      console.log(
+        "⚠️ [DATABASE] Đang kết nối tới: SUPABASE (Chế độ Fallback/Chưa đăng nhập)",
+      );
+      // Nếu chưa đăng nhập qua API, chúng ta không tải dữ liệu từ Supabase nữa
+      // (Hoặc nếu bạn muốn giữ fallback thì giữ nguyên, nhưng để biết là dùng Backend hay chưa thì nên để trống)
+      console.warn("Chưa có Token API. Vui lòng đăng nhập bằng admin/admin.");
+    } catch (err) {
+      console.error("API loadAll failed:", err);
+      alert("Lỗi tải dữ liệu từ Backend. Kiểm tra kết nối.");
+    }
+  }, [token]);
 
   useAppBootstrap({
     loadAllFromDb,
     setState,
     setAuth,
     defaultSettings: DEFAULT_SETTINGS,
+    token, // Pass token here
   });
 
   const [initModal, setInitModal] = useState({
@@ -367,30 +409,34 @@ export default function App() {
   });
 
   const importFileRef = useRef(null);
-  const [confirm, setConfirm] = useState({ open: false });
-  const [recruiterModal, setRecruiterModal] = useState({
-    open: false,
-    recruiter: null,
-  });
 
-  useEffect(() => {
-    // keep selected floor valid
-    if (!state.floors.some((f) => f.id === floorId)) {
-      setFloorId(state.floors?.[0]?.id || "");
-    }
-  }, [state.floors, floorId]);
+  const handleImportExcel = useCallback(
+    async (file) => {
+      if (!file) return;
+      if (!auth.isAdmin) {
+        setLoginModal(true);
+        return;
+      }
 
-  async function initKtxFromInputs(payload) {
-    try {
-      const ok = await initKtxSvc(payload);
-      await loadAllFromDb();
-      alert("Khởi tạo KTX thành công!");
-      return ok;
-    } catch (e) {
-      alert(e.message || String(e));
-      return false;
-    }
-  }
+      setImportModal({ open: true, busy: true, result: null });
+      try {
+        const result = await importExcelFileToDb(file, token);
+        setImportModal((m) => ({ ...m, busy: false, result }));
+        await loadAllFromDb(); // Tải lại dữ liệu sau khi nhập
+
+        setTab("ktx"); // Chuyển về tab KTX
+        setSettingsModal(false); // Đóng SettingsModal
+        alert("Nhập Excel thành công!");
+      } catch (error) {
+        console.error("❌ Lỗi khi nhập Excel:", error);
+        alert("Lỗi khi nhập Excel. Vui lòng xem console để biết chi tiết.");
+        setImportModal((m) => ({ ...m, busy: false, result: null }));
+      }
+    },
+    [auth.isAdmin, token, loadAllFromDb],
+  );
+
+  // ...
 
   const workerById = useMemo(() => {
     const map = new Map();
@@ -432,7 +478,7 @@ export default function App() {
     // ensure modal visible when starting
     setImportModal((m) => ({ ...m, open: true, busy: true, result: null }));
     try {
-      const result = await importExcelFileToDb(file);
+      const result = await importExcelFileToDb(file, token);
       setImportModal((m) => ({ ...m, busy: false, result }));
       await loadAllFromDb();
 
@@ -464,6 +510,13 @@ export default function App() {
       const floorName =
         (name || "").trim() || `Tầng ${state.floors.length + 1}`;
       const sort = state.floors.length + 1;
+
+      if (token) {
+        await floorService.create({ name: floorName, sort }, token);
+        await loadAllFromDb();
+        return;
+      }
+
       const id = await addFloorSvc({ name: floorName, sort });
       await loadAllFromDb();
       setFloorId(id);
@@ -474,6 +527,13 @@ export default function App() {
 
   async function deleteFloor(floorId) {
     try {
+      if (token) {
+        await floorService.delete(floorId, token);
+        await loadAllFromDb();
+        setFloorId((prev) => (prev === floorId ? "" : prev));
+        return;
+      }
+
       const fl = state.floors.find((f) => f.id === floorId);
       const roomIds = (fl?.rooms || []).map((r) => r.id);
       await deleteFloorSvc({ floorId, roomIds });
@@ -489,6 +549,16 @@ export default function App() {
       const floor = state.floors.find((f) => f.id === floorId);
       const sort = (floor?.rooms?.length || 0) + 1;
       const roomCode = (code || "").trim() || String(sort);
+
+      if (token) {
+        await roomService.create(
+          { floor_id: floorId, code: roomCode, sort },
+          token,
+        );
+        await loadAllFromDb();
+        return;
+      }
+
       await addRoomSvc({ floorId, code: roomCode, sort });
       await loadAllFromDb();
     } catch (e) {
@@ -500,6 +570,13 @@ export default function App() {
     try {
       const nextCode = (newCode || "").trim();
       if (!nextCode) return alert("Tên phòng không được để trống.");
+
+      if (token) {
+        await roomService.update(roomId, { code: nextCode }, token);
+        await loadAllFromDb();
+        return;
+      }
+
       await updateRoomCodeSvc({ roomId, code: nextCode });
       await loadAllFromDb();
     } catch (e) {
@@ -509,6 +586,11 @@ export default function App() {
 
   async function deleteRoom(floorId, roomId) {
     try {
+      if (token) {
+        await roomService.delete(roomId, token);
+        await loadAllFromDb();
+        return;
+      }
       await deleteRoomSvc({ roomId });
       await loadAllFromDb();
     } catch (e) {
@@ -518,6 +600,21 @@ export default function App() {
 
   async function addWorker(worker) {
     try {
+      if (token) {
+        const res = await workerService.create(
+          {
+            full_name: worker.fullName,
+            hometown: worker.hometown,
+            phone: worker.phone,
+            dob: worker.dob,
+            recruiter: worker.recruiter,
+            note: worker.note,
+          },
+          token,
+        );
+        await loadAllFromDb();
+        return res;
+      }
       return await addWorkerSvc(worker);
     } catch (e) {
       alert(e.message || String(e));
@@ -527,6 +624,20 @@ export default function App() {
 
   async function updateWorker(workerId, patch) {
     try {
+      if (token) {
+        // Map camelCase to snake_case for backend
+        const mappedPatch = {};
+        if (patch.fullName) mappedPatch.full_name = patch.fullName;
+        if (patch.hometown) mappedPatch.hometown = patch.hometown;
+        if (patch.phone) mappedPatch.phone = patch.phone;
+        if (patch.dob) mappedPatch.dob = patch.dob;
+        if (patch.recruiter) mappedPatch.recruiter = patch.recruiter;
+        if (patch.note) mappedPatch.note = patch.note;
+
+        await workerService.update(workerId, mappedPatch, token);
+        await loadAllFromDb();
+        return;
+      }
       await updateWorkerSvc(workerId, patch);
       await loadAllFromDb();
     } catch (e) {
@@ -536,6 +647,11 @@ export default function App() {
 
   async function deleteWorker(workerId) {
     try {
+      if (token) {
+        await workerService.delete(workerId, token);
+        await loadAllFromDb();
+        return;
+      }
       await deleteWorkerSvc(workerId);
       await loadAllFromDb();
     } catch (e) {
@@ -545,10 +661,19 @@ export default function App() {
 
   async function checkInWorker({ roomId, workerId, dateIn }) {
     try {
+      const d = dateIn || todayISO();
+      if (token) {
+        await stayService.create(
+          { room_id: roomId, worker_id: workerId, date_in: d },
+          token,
+        );
+        await loadAllFromDb();
+        return;
+      }
       await checkInWorkerSvc({
         roomId,
         workerId,
-        dateIn: dateIn || todayISO(),
+        dateIn: d,
       });
       await loadAllFromDb();
     } catch (e) {
@@ -558,7 +683,13 @@ export default function App() {
 
   async function checkOutStay({ stayId, dateOut }) {
     try {
-      await checkOutStaySvc({ stayId, dateOut });
+      const d = dateOut || todayISO();
+      if (token) {
+        await stayService.update(stayId, { date_out: d }, token);
+        await loadAllFromDb();
+        return;
+      }
+      await checkOutStaySvc({ stayId, dateOut: d });
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -568,6 +699,16 @@ export default function App() {
   async function transferWorker({ stayId, workerId, toRoomId, transferDate }) {
     try {
       const d = transferDate || todayISO();
+      if (token) {
+        // Chuyển phòng = Check out phòng cũ + Check in phòng mới
+        await stayService.update(stayId, { date_out: d }, token);
+        await stayService.create(
+          { room_id: toRoomId, worker_id: workerId, date_in: d },
+          token,
+        );
+        await loadAllFromDb();
+        return;
+      }
       await transferWorkerSvc({ stayId, workerId, toRoomId, transferDate: d });
       await loadAllFromDb();
     } catch (e) {
@@ -807,6 +948,40 @@ export default function App() {
       message,
       onDelete,
     });
+  }
+
+  async function initKtxFromInputs(payload) {
+    try {
+      if (token) {
+        await dataLoader.initKtx(payload, token);
+        await loadAllFromDb();
+        alert("Khởi tạo KTX thành công!");
+        return true;
+      }
+      const ok = await initKtxSvc(payload);
+      await loadAllFromDb();
+      alert("Khởi tạo KTX thành công!");
+      return ok;
+    } catch (e) {
+      alert(e.message || String(e));
+      return false;
+    }
+  }
+
+  async function wipeDatabase() {
+    try {
+      if (token) {
+        await dataLoader.wipeDatabase(token);
+        await loadAllFromDb();
+        alert("Đã xóa sạch dữ liệu.");
+        return;
+      }
+      await wipeDatabaseSvc();
+      await loadAllFromDb();
+      alert("Đã xóa sạch dữ liệu.");
+    } catch (e) {
+      alert(e.message || String(e));
+    }
   }
 
   // ---------------------------
@@ -1181,34 +1356,62 @@ export default function App() {
               electricityPrice: state.settings.electricityPrice,
               billingMonth: state.settings.billingMonth,
               upsertElectricity: async (rec) => {
-                const updated = await upsertElectricitySvc(rec);
-                console.log(updated, state.floors);
-                setState((s) => {
-                  const floors = s.floors.map((f) => {
-                    if (f.id !== roomCtx?.floor?.id) return f;
-                    return {
-                      ...f,
-                      rooms: f.rooms.map((r) => {
-                        if (r.id !== roomCtx?.room?.id) return r;
-                        return {
-                          ...r,
-                          electricity: [
-                            ...r?.electricity?.filter(
-                              (e) => e?.id !== updated?.id,
-                            ),
-                            updated,
-                          ],
-                        };
-                      }),
-                    };
+                try {
+                  if (token) {
+                    await electricityService.upsert(
+                      {
+                        id: rec.id,
+                        room_id: roomCtx?.room?.id,
+                        month: rec.month,
+                        start_reading: rec.startReading,
+                        end_reading: rec.endReading,
+                        paid: rec.paid,
+                      },
+                      token,
+                    );
+                    await loadAllFromDb();
+                    return;
+                  }
+
+                  // Supabase legacy
+                  const updated = await upsertElectricitySvc(rec);
+                  setState((s) => {
+                    const floors = s.floors.map((f) => {
+                      if (f.id !== roomCtx?.floor?.id) return f;
+                      return {
+                        ...f,
+                        rooms: f.rooms.map((r) => {
+                          if (r.id !== roomCtx?.room?.id) return r;
+                          return {
+                            ...r,
+                            electricity: [
+                              ...r?.electricity?.filter(
+                                (e) => e?.id !== updated?.id,
+                              ),
+                              updated,
+                            ],
+                          };
+                        }),
+                      };
+                    });
+                    return { ...s, floors };
                   });
-                  console.log(floors);
-                  return { ...s, floors };
-                });
+                } catch (e) {
+                  alert(e.message || String(e));
+                }
               },
               markElectricityPaid: async (rec) => {
-                await markElectricityPaidSvc(rec);
-                await loadAllFromDb();
+                try {
+                  if (token) {
+                    await electricityService.markPaid(rec.id, token);
+                    await loadAllFromDb();
+                    return;
+                  }
+                  await markElectricityPaidSvc(rec);
+                  await loadAllFromDb();
+                } catch (e) {
+                  alert(e.message || String(e));
+                }
               },
             }}
           />
@@ -1534,22 +1737,12 @@ export default function App() {
             DEFAULT_SETTINGS={DEFAULT_SETTINGS}
             saveSettingsToDb={saveSettingsToDb} // nếu bạn có hàm này ở App.jsx
             requireAdmin={requireAdmin}
+            wipeDatabase={wipeDatabase}
+            onImportExcel={handleImportExcel}
           />
         </Suspense>
       ) : null}
 
-      <input
-        ref={importFileRef}
-        type="file"
-        accept=".xlsx,.xls"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          e.target.value = ""; // allow reselect same file
-          importExcelFile(file);
-        }}
-      />
       {deletePassModal.open ? (
         <Suspense fallback={null}>
           <DeleteGuardModal
