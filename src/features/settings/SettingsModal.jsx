@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Shield, Save, LogIn, LogOut, FileUp, Download } from "lucide-react";
-import { supabase } from "../../services/supabaseClient";
 import { downloadExcelSample } from "../../services/excelSampleService";
 
 import clsx from "../../components/ui/clsx";
@@ -17,9 +16,9 @@ export default function SettingsModal({
 
   auth,
   setLoginModal,
+  onLogout,
 
   // excel import support
-  setImportModal,
   importFileRef,
 
   DEFAULT_SETTINGS,
@@ -85,8 +84,8 @@ export default function SettingsModal({
             ) : (
               <button
                 className="mt-3 rounded-2xl bg-slate-900 px-2 py-2 text-sm font-semibold text-white"
-                onClick={async () => {
-                  await supabase.auth.signOut();
+                onClick={() => {
+                  onLogout?.();
                   onClose?.();
                 }}
               >

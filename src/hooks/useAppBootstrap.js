@@ -1,6 +1,5 @@
 import { useEffect } from "react";
-import { supabase } from "../services/supabaseClient";
-import { loadSettingsFromDb } from "../services/settingsService";
+import { settingsService } from "../services/api-services";
 
 /**
  * useAppBootstrap - Hook khởi tạo ứng dụng
@@ -37,11 +36,18 @@ export function useAppBootstrap({
   useEffect(() => {
     (async () => {
       try {
-        const nextSettings = await loadSettingsFromDb(defaultSettings);
-        setState((s) => ({ ...s, settings: nextSettings }));
+        if (!token) return;
+        const data = await settingsService.get(token);
+        setState((s) => ({
+          ...s,
+          settings: {
+            ...defaultSettings,
+            ...(data || {}),
+          },
+        }));
       } catch (e) {
         console.error("Bootstrap loadSettings error:", e);
       }
     })();
-  }, [defaultSettings, setState]);
+  }, [defaultSettings, setState, token]);
 }

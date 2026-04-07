@@ -8,7 +8,9 @@ const PORT = process.env.PORT || 5000;
 
 // Log ngay lập tức khi có yêu cầu đến
 app.use((req, res, next) => {
-  console.log(`📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  console.log(
+    `📡 [${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`,
+  );
   next();
 });
 
@@ -23,12 +25,16 @@ const authMiddleware = (req, res, next) => {
   const authHeader = req.headers["authorization"];
 
   // Lấy key từ env và loại bỏ dấu ngoặc kép nếu có
-  const validKey = (process.env.APPLICATION_KEY || "").replace(/['"]/g, "").trim();
+  const validKey = (process.env.APPLICATION_KEY || "")
+    .replace(/['"]/g, "")
+    .trim();
 
   // Kiểm tra Application Key
   if (appKey !== validKey) {
     console.warn(`⚠️ Unauthorized access attempt with key: ${appKey}`);
-    return res.status(403).json({ error: "Forbidden: Invalid Application Key" });
+    return res
+      .status(403)
+      .json({ error: "Forbidden: Invalid Application Key" });
   }
 
   // Một số routes không cần token (như login)
@@ -57,6 +63,7 @@ app.use("/rooms", require("./routes/roomRoutes"));
 app.use("/floors", require("./routes/floorRoutes"));
 app.use("/stays", require("./routes/stayRoutes"));
 app.use("/electricities", require("./routes/electricityRoutes"));
+app.use("/settings", require("./routes/settingsRoutes"));
 app.use("/", require("./routes/dataRoutes"));
 
 app.get("/", (req, res) => {
@@ -81,7 +88,7 @@ app.post("/login/", (req, res) => {
 });
 
 // --- Error Handler ---
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error(err.stack);
   res.status(500).json({ error: err.message || "Internal Server Error" });
 });

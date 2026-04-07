@@ -51,33 +51,6 @@ import Confirm from "./components/ui/Confirm";
 import TabButton from "./components/ui/TabButton";
 
 // Services
-import {
-  saveSettingsToDb,
-  loadSettingsFromDb,
-} from "./services/settingsService";
-
-import {
-  loadAllFromDb as loadAllFromDbSvc,
-  initKtxFromInputs as initKtxSvc,
-} from "./services/ktxDbService";
-import {
-  addFloor as addFloorSvc,
-  deleteFloor as deleteFloorSvc,
-  addRoom as addRoomSvc,
-  updateRoomCode as updateRoomCodeSvc,
-  deleteRoom as deleteRoomSvc,
-  checkInWorker as checkInWorkerSvc,
-  checkOutStay as checkOutStaySvc,
-  transferWorker as transferWorkerSvc,
-  upsertElectricity as upsertElectricitySvc,
-  markElectricityPaid as markElectricityPaidSvc,
-} from "./services/ktxMutationsService";
-
-import {
-  addWorker as addWorkerSvc,
-  updateWorker as updateWorkerSvc,
-  deleteWorker as deleteWorkerSvc,
-} from "./services/workersService";
 import { importExcelFileToDb } from "./services/excelImportService";
 import { exportExcel as exportExcelSvc } from "./services/excelExportService";
 import Pill from "./components/ui/Pill";
@@ -270,7 +243,8 @@ import {
   roomService,
   floorService,
   stayService,
-  settingsService as settingsApiService,
+  electricityService,
+  settingsService,
 } from "./services/api-services";
 
 // ... existing imports ...
@@ -292,7 +266,7 @@ export default function App() {
     if (user) {
       setAuth({ isAdmin: true, user });
     } else {
-      // If no user in AuthContext, we still keep setAuth for Supabase legacy
+      setAuth({ isAdmin: false, user: null });
     }
   }, [user]);
   const [loginEmail, setLoginEmail] = useState("");
@@ -309,6 +283,13 @@ export default function App() {
     onDelete: null,
   });
   const [deletePass, setDeletePass] = useState("");
+  const [confirm, setConfirm] = useState({
+    open: false,
+    title: "",
+    message: "",
+    confirmText: "Xóa",
+    onConfirm: null,
+  });
   // ---------------------------
   // Settings persistence (Supabase)
   // Table: app_settings (id=1, data=jsonb)
@@ -371,17 +352,18 @@ export default function App() {
   const [loginModal, setLoginModal] = useState(false);
   const [settingsModal, setSettingsModal] = useState(false);
   const [staysHistoryOpen, setStaysHistoryOpen] = useState(false);
+  const [recruiterModal, setRecruiterModal] = useState({
+    open: false,
+    recruiter: "",
+  });
   const [electricityHistoryOpen, setElectricityHistoryOpen] = useState(false);
   const [electricityHistoryMode, setElectricityHistoryMode] = useState("all"); // "paid"|"pending"
-  const billingMonth = state.settings?.electricityMonth; // hoặc key tháng bạn đang dùng
-  // nếu settings bạn tên khác (vd electricityBillingMonth) thì đổi lại cho đúng
+  const billingMonth = state.settings?.billingMonth || "";
 
   const openHistory = (mode) => {
     setElectricityHistoryMode(mode);
     setElectricityHistoryOpen(true);
   };
-  const [electricityHistoryFilter, setElectricityHistoryFilter] =
-    useState(null); // 'pending' | 'paid' | null
 
   // Picker check-in (được RoomModal gọi qua actions.openCheckInPicker)
   const [checkInPicker, setCheckInPicker] = useState({
