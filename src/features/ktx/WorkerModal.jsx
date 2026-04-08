@@ -176,7 +176,7 @@ export default function WorkerModal({
                         return;
                       }
                       console.log("WorkerModal: calling updateWorker...");
-                      const ok = await actions.updateWorker({
+                      const result = await actions.updateWorker({
                         workerId: worker.id,
                         patch: {
                           employeeCode: code,
@@ -188,10 +188,13 @@ export default function WorkerModal({
                           note: note || "",
                         },
                       });
-                      console.log("WorkerModal: updateWorker result:", ok);
-                      if (ok) {
-                        console.log("WorkerModal: closing popup...");
+
+                      // Kiểm tra nếu có kết quả trả về (không bị lỗi)
+                      if (result) {
+                        message.success("Cập nhật thông tin thành công!"); // Thêm thông báo để người dùng biết
                         onClose?.();
+                      } else {
+                        message.error("Lưu thất bại, vui lòng thử lại.");
                       }
                     })
                   }

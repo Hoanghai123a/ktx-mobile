@@ -196,6 +196,7 @@ import {
   electricityService,
   settingsService,
 } from "./services/api-services";
+import { message } from "antd";
 
 // ... existing imports ...
 
@@ -635,12 +636,13 @@ export default function App() {
 
       if (Object.keys(mappedPatch).length === 0) return true;
 
+      // Chờ cập nhật và load lại dữ liệu xong
       await workerService.update(workerId, mappedPatch, token);
       await loadAllFromDb();
-      message.success("Cập nhật thông tin NLĐ thành công.");
+
       return true;
     } catch (e) {
-      // Error message is already shown by api.jsx interceptor
+      console.error("Lỗi updateWorker:", e);
       return false;
     }
   }
