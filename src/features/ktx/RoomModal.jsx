@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { message } from "antd";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
@@ -136,6 +137,7 @@ export default function RoomModal({
                             code: next,
                           });
                           console.log("Update room code result:", ok);
+                          if (ok) onClose?.();
                         });
                       }
                     }}
@@ -440,7 +442,7 @@ export default function RoomModal({
                     .trim()
                     .toUpperCase();
                   const name = String(fullName || "").trim();
-                  if (!code) nextErrors.employeeCode = true;
+                  // Removed mandatory employeeCode check
                   if (code && !/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
                     nextErrors.employeeCode =
                       "Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.";
@@ -452,7 +454,9 @@ export default function RoomModal({
                   if (Object.keys(nextErrors).length) return;
 
                   if (!actions?.addWorker || !actions?.checkIn) {
-                    alert("Chưa nối actions.addWorker / actions.checkIn");
+                    message.error(
+                      "Chưa nối actions.addWorker / actions.checkIn",
+                    );
                     return;
                   }
 
@@ -496,7 +500,7 @@ export default function RoomModal({
                     }
 
                     if (!workerId) {
-                      alert("Không xác định được NLĐ để check-in.");
+                      message.error("Không xác định được NLĐ để check-in.");
                       return;
                     }
 
@@ -509,6 +513,7 @@ export default function RoomModal({
 
                     setAddOpen(false);
                     resetAddForm();
+                    onClose?.();
                   } catch (e) {
                     alert(e?.message || String(e));
                   }
@@ -564,7 +569,10 @@ export default function RoomModal({
                       gender: null,
                     });
                     console.log(`[RoomModal] Update gender (null) result:`, ok);
-                    if (ok !== false) setGenderOpen(false);
+                    if (ok !== false) {
+                      setGenderOpen(false);
+                      onClose?.();
+                    }
                   } finally {
                     setGenderBusy(false);
                   }
@@ -594,7 +602,10 @@ export default function RoomModal({
                       gender: "male",
                     });
                     console.log(`[RoomModal] Update gender (male) result:`, ok);
-                    if (ok !== false) setGenderOpen(false);
+                    if (ok !== false) {
+                      setGenderOpen(false);
+                      onClose?.();
+                    }
                   } finally {
                     setGenderBusy(false);
                   }
@@ -630,7 +641,10 @@ export default function RoomModal({
                       `[RoomModal] Update gender (female) result:`,
                       ok,
                     );
-                    if (ok !== false) setGenderOpen(false);
+                    if (ok !== false) {
+                      setGenderOpen(false);
+                      onClose?.();
+                    }
                   } finally {
                     setGenderBusy(false);
                   }

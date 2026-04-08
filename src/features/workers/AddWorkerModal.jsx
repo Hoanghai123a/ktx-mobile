@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { message } from "antd";
 import { UserPlus, UserRound } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
@@ -46,7 +47,10 @@ export default function AddWorkerModal({
     const code = normalizedEmployeeCode;
     if (!code) return false;
     return existingWorkers.some(
-      (w) => String(w.employeeCode || "").trim().toUpperCase() === code,
+      (w) =>
+        String(w.employeeCode || "")
+          .trim()
+          .toUpperCase() === code,
     );
   }, [existingWorkers, normalizedEmployeeCode]);
 
@@ -179,22 +183,18 @@ export default function AddWorkerModal({
           onClick={() =>
             requireAdmin(async () => {
               const code = (employeeCode || "").trim().toUpperCase();
-              if (!code) {
-                alert("Vui lòng nhập Mã nhân viên.");
-                return;
-              }
-              if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
-                alert(
+              if (code && !/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
+                message.warning(
                   "Mã nhân viên không hợp lệ. Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.",
                 );
                 return;
               }
               if (duplicateInState) {
-                alert("Mã nhân viên đã tồn tại.");
+                message.warning("Mã nhân viên đã tồn tại.");
                 return;
               }
               if (!fullName.trim()) {
-                alert("Vui lòng nhập Họ tên.");
+                message.warning("Vui lòng nhập Họ tên.");
                 return;
               }
               addWorker({

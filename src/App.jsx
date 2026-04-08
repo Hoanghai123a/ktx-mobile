@@ -581,9 +581,10 @@ export default function App() {
         token,
       );
       await loadAllFromDb();
+      message.success("Thêm NLĐ thành công.");
       return res;
     } catch (e) {
-      alert(e.message || String(e));
+      // message error shown by api interceptor
       return null;
     }
   }
@@ -615,19 +616,31 @@ export default function App() {
     try {
       if (!token) return setLoginModal(true);
       const mappedPatch = {};
-      if (patch.employeeCode) mappedPatch.employee_code = patch.employeeCode;
-      if (patch.fullName) mappedPatch.full_name = patch.fullName;
-      if (patch.hometown) mappedPatch.hometown = patch.hometown;
-      if (patch.phone) mappedPatch.phone = patch.phone;
-      if (patch.dob) mappedPatch.dob = patch.dob;
-      if (patch.recruiter) mappedPatch.recruiter = patch.recruiter;
-      if (patch.note) mappedPatch.note = patch.note;
+
+      const fieldMap = {
+        employeeCode: "employee_code",
+        fullName: "full_name",
+        hometown: "hometown",
+        phone: "phone",
+        dob: "dob",
+        recruiter: "recruiter",
+        note: "note",
+      };
+
+      Object.keys(fieldMap).forEach((k) => {
+        if (Object.prototype.hasOwnProperty.call(patch, k)) {
+          mappedPatch[fieldMap[k]] = patch[k] || null;
+        }
+      });
+
+      if (Object.keys(mappedPatch).length === 0) return true;
 
       await workerService.update(workerId, mappedPatch, token);
       await loadAllFromDb();
+      message.success("Cập nhật thông tin NLĐ thành công.");
       return true;
     } catch (e) {
-      alert(e.message || String(e));
+      // Error message is already shown by api.jsx interceptor
       return false;
     }
   }

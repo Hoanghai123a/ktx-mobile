@@ -64,25 +64,8 @@ function normalizePhone(v) {
 }
 
 function isValidEmployeeCode(code) {
-  if (!code) return false;
+  if (!code) return true; // Optional
   return /^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code);
-}
-
-function makeVisitorEmployeeCode(seed, existingByCode) {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-
-  let attempt = 0;
-  while (attempt < 20) {
-    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-    const code = `VL-${yyyy}${mm}${dd}-${String(seed).padStart(4, "0")}-${rand}`;
-    if (!existingByCode?.has(code)) return code;
-    attempt++;
-  }
-
-  return `VL-${yyyy}${mm}${dd}-${String(seed).padStart(4, "0")}-${Date.now()}`;
 }
 
 export async function importExcelRowsToDb(rows, token, deps, logger = console) {
@@ -260,10 +243,9 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
       )
         .trim()
         .toUpperCase();
-      let finalEmployeeCode = providedEmployeeCode || currentCode;
-      if (!finalEmployeeCode) {
-        finalEmployeeCode = makeVisitorEmployeeCode(line, existingByCode);
-      }
+      let finalEmployeeCode = providedEmployeeCode || currentCode || null;
+      // No longer forcing makeVisitorEmployeeCode for missing codes
+      // as per user requirement to allow empty employee codes.
 
       if (!workerId) {
         const workerPayload = {
@@ -515,15 +497,9 @@ async function _importExcelFileToDbLegacy(file, token) {
       const fullName = String(
         pick(row, ["Họ tên", "Ho ten", "Full name", "Tên", "Name"]),
       ).trim();
-      if (!employeeCode) {
-        errors.push({
-          line,
-          reason: "Thiếu Mã nhân viên.",
-          fullName: fullName || "(trống)",
-        });
-        continue;
-      }
-      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(employeeCode)) {
+
+      // employeeCode is now optional
+      if (employeeCode && !/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(employeeCode)) {
         errors.push({
           line,
           reason:

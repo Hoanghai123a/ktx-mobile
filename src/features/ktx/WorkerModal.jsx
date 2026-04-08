@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { message } from "antd";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Confirm from "../../components/ui/Confirm";
@@ -163,16 +164,19 @@ export default function WorkerModal({
                         return;
                       }
                       const code = (employeeCode || "").trim().toUpperCase();
-                      if (!code) return alert("Mã nhân viên không được rỗng.");
-                      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
-                        alert(
+                      if (code && !/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
+                        message.warning(
                           "Mã nhân viên không hợp lệ. Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.",
                         );
                         return;
                       }
                       const nextName = (fullName || "").trim();
-                      if (!nextName) return alert("Tên không được rỗng.");
-                      await actions.updateWorker({
+                      if (!nextName) {
+                        message.warning("Tên không được rỗng.");
+                        return;
+                      }
+                      console.log("WorkerModal: calling updateWorker...");
+                      const ok = await actions.updateWorker({
                         workerId: worker.id,
                         patch: {
                           employeeCode: code,
@@ -184,6 +188,11 @@ export default function WorkerModal({
                           note: note || "",
                         },
                       });
+                      console.log("WorkerModal: updateWorker result:", ok);
+                      if (ok) {
+                        console.log("WorkerModal: closing popup...");
+                        onClose?.();
+                      }
                     })
                   }
                 >
