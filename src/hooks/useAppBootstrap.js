@@ -38,13 +38,16 @@ export function useAppBootstrap({
       try {
         if (!token) return;
         const data = await settingsService.get(token);
-        setState((s) => ({
-          ...s,
-          settings: {
-            ...defaultSettings,
-            ...(data || {}),
-          },
-        }));
+        setState((s) => {
+          console.log("Bootstrap settings loaded, updating state. Current floors count:", s.floors.length);
+          return {
+            ...s,
+            settings: {
+              ...defaultSettings,
+              ...(data || {}),
+            },
+          };
+        });
       } catch (e) {
         console.error("Bootstrap loadSettings error:", e);
       }

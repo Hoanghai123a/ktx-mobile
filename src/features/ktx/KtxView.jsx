@@ -5,6 +5,8 @@ import {
   Trash2,
   DoorClosed,
   DoorOpen,
+  Mars,
+  Venus,
   Users,
 } from "lucide-react";
 
@@ -295,7 +297,11 @@ function RoomCard({ r, floorId, q, globalMatches, workerById, setRoomModal }) {
         </div>
 
         <div className="grid h-9 w-9 place-items-center rounded-2xl bg-white/70 ring-1 ring-slate-200">
-          {count === 0 ? (
+          {r.gender === "male" || r.gender === "Nam" ? (
+            <Mars className="h-5 w-5 text-sky-600" />
+          ) : r.gender === "female" || r.gender === "Nữ" ? (
+            <Venus className="h-5 w-5 text-pink-600" />
+          ) : count === 0 ? (
             <DoorClosed className="h-5 w-5 text-slate-500" />
           ) : (
             <DoorOpen className="h-5 w-5 text-slate-700" />
@@ -325,7 +331,13 @@ function RoomCard({ r, floorId, q, globalMatches, workerById, setRoomModal }) {
       {(q || "").trim() && isMatched ? (
         <div className="mt-2 line-clamp-2 text-xs text-slate-600">
           {current
-            .map((s) => workerById?.get(s.workerId)?.fullName)
+            .map((s) => {
+              const w = workerById?.get(s.workerId);
+              if (!w) return null;
+              return w.employeeCode
+                ? `${w.employeeCode} - ${w.fullName}`
+                : w.fullName;
+            })
             .filter(Boolean)
             .join(", ")}
         </div>

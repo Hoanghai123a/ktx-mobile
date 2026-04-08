@@ -56,6 +56,7 @@ import { exportExcel as exportExcelSvc } from "./services/excelExportService";
 import Pill from "./components/ui/Pill";
 import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
+import { loadPersistedState, savePersistedState } from "./services/persistence";
 
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
 const DeleteGuardModal = lazy(
@@ -91,60 +92,6 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-// ---------------------------
-// Inline UI helpers (fallback nếu bạn chưa import từ components/ui)
-// ---------------------------
-function InlineModal({ open, title, onClose, children }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-xl">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-          <div className="min-w-0">
-            <div className="truncate text-base font-semibold text-slate-900">
-              {title || ""}
-            </div>
-          </div>
-          <button
-            className="rounded-xl px-3 py-1 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-            onClick={onClose}
-          >
-            Đóng
-          </button>
-        </div>
-        <div className="px-4 py-4">{children}</div>
-      </div>
-    </div>
-  );
-}
-
-function InlineTextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-}) {
-  return (
-    <label className="block">
-      {label ? (
-        <div className="mb-1 text-xs font-semibold text-slate-700">{label}</div>
-      ) : null}
-      <input
-        type={type}
-        value={value ?? ""}
-        placeholder={placeholder}
-        onChange={(e) => onChange?.(e.target.value)}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
-      />
-    </label>
-  );
 }
 
 function Modal({ open, title, children, onClose }) {
@@ -257,11 +204,7 @@ import {
 // ---------------------------
 export default function App() {
   const { user, token, logout: authLogout } = useAuth();
-  const [state, setState] = useState(() => ({
-    floors: [],
-    workers: [],
-    settings: DEFAULT_SETTINGS,
-  }));
+  const [state, setState] = useState(() => loadPersistedState());
   const [auth, setAuth] = useState({ isAdmin: false });
 
   // Sync auth state with AuthContext
@@ -293,6 +236,11 @@ export default function App() {
     confirmText: "Xóa",
     onConfirm: null,
   });
+
+  useEffect(() => {
+    const t = setTimeout(() => savePersistedState(state), 150);
+    return () => clearTimeout(t);
+  }, [state]);
   // ---------------------------
   // Settings persistence (Supabase)
   // Table: app_settings (id=1, data=jsonb)
@@ -376,15 +324,6 @@ export default function App() {
     setElectricityHistoryOpen(true);
   };
 
-  // Picker check-in (được RoomModal gọi qua actions.openCheckInPicker)
-  const [checkInPicker, setCheckInPicker] = useState({
-    open: false,
-    floorId: null,
-    roomId: null,
-    q: "",
-    dateIn: todayISO(),
-  });
-
   // transfer dialog state (mirrors app-gộp logic)
   const [transferModal, setTransferModal] = useState({
     open: false,
@@ -447,7 +386,11 @@ export default function App() {
     if (!query) return { workerIds: new Set(), roomIds: new Set() };
 
     const matchedWorkers = state.workers
-      .filter((w) => w.fullName.toLowerCase().includes(query))
+      .filter((w) => {
+        const name = (w.fullName || "").toLowerCase();
+        const code = (w.employeeCode || "").toLowerCase();
+        return name.includes(query) || code.includes(query);
+      })
       .map((w) => w.id);
 
     const workerIdSet = new Set(matchedWorkers);
@@ -563,8 +506,52 @@ export default function App() {
       if (!token) return setLoginModal(true);
       await roomService.update(roomId, { code: nextCode }, token);
       await loadAllFromDb();
+      return true;
     } catch (e) {
+      if (e?.response?.status === 404) {
+        await loadAllFromDb();
+        alert("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
+        return false;
+      }
       alert(e.message || String(e));
+      return false;
+    }
+  }
+
+  async function updateRoom(roomId, patch) {
+    try {
+      if (!token) return setLoginModal(true);
+      const nextPatch = { ...(patch || {}) };
+
+      console.log("updateRoom initiating:", { roomId, nextPatch });
+
+      if (Object.prototype.hasOwnProperty.call(nextPatch, "code")) {
+        const c = String(nextPatch.code || "").trim();
+        if (!c) return alert("Tên phòng không được để trống.");
+        nextPatch.code = c;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(nextPatch, "gender")) {
+        const g = nextPatch.gender;
+        if (g !== null && g !== "male" && g !== "female") {
+          return alert("Giới tính phòng không hợp lệ.");
+        }
+      }
+
+      const res = await roomService.update(roomId, nextPatch, token);
+      console.log("updateRoom API success:", res);
+
+      await loadAllFromDb();
+      console.log("updateRoom state refreshed");
+      return true;
+    } catch (e) {
+      if (e?.response?.status === 404) {
+        await loadAllFromDb();
+        alert("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
+        return false;
+      }
+      alert(e.message || String(e));
+      return false;
     }
   }
 
@@ -583,6 +570,7 @@ export default function App() {
       if (!token) return null;
       const res = await workerService.create(
         {
+          employee_code: worker.employeeCode,
           full_name: worker.fullName,
           hometown: worker.hometown,
           phone: worker.phone,
@@ -600,10 +588,34 @@ export default function App() {
     }
   }
 
+  const lookupWorkerByCode = useCallback(
+    async (code) => {
+      if (!token) throw new Error("Unauthorized");
+      const normalized = String(code || "")
+        .trim()
+        .toUpperCase();
+      if (!normalized) return null;
+      const row = await workerService.getByEmployeeCode(normalized, token);
+      if (!row) return null;
+      return {
+        id: row.id,
+        employeeCode: row.employee_code || row.employeeCode || normalized,
+        fullName: row.full_name || row.fullName || "",
+        hometown: row.hometown || "",
+        recruiter: row.recruiter || "",
+        dob: row.dob || "",
+        phone: row.phone || "",
+        note: row.note || "",
+      };
+    },
+    [token],
+  );
+
   async function updateWorker(workerId, patch) {
     try {
       if (!token) return setLoginModal(true);
       const mappedPatch = {};
+      if (patch.employeeCode) mappedPatch.employee_code = patch.employeeCode;
       if (patch.fullName) mappedPatch.full_name = patch.fullName;
       if (patch.hometown) mappedPatch.hometown = patch.hometown;
       if (patch.phone) mappedPatch.phone = patch.phone;
@@ -613,8 +625,10 @@ export default function App() {
 
       await workerService.update(workerId, mappedPatch, token);
       await loadAllFromDb();
+      return true;
     } catch (e) {
       alert(e.message || String(e));
+      return false;
     }
   }
 
@@ -838,6 +852,7 @@ export default function App() {
           const recruiter = (w.recruiter || "(Chưa có)").trim() || "(Chưa có)";
           const item = {
             workerId: w.id,
+            employeeCode: w.employeeCode || "",
             fullName: w.fullName,
             hometown: w.hometown,
             recruiter,
@@ -1086,7 +1101,11 @@ export default function App() {
             </div>
           </div>
           <div className="grid h-9 w-9 place-items-center rounded-2xl bg-white/70 ring-1 ring-slate-200">
-            {count === 0 ? (
+            {r.gender === "male" || r.gender === "Nam" ? (
+              <Mars className="h-5 w-5 text-sky-600" />
+            ) : r.gender === "female" || r.gender === "Nữ" ? (
+              <Venus className="h-5 w-5 text-pink-600" />
+            ) : count === 0 ? (
               <DoorClosed className="h-5 w-5 text-slate-500" />
             ) : (
               <DoorOpen className="h-5 w-5 text-slate-700" />
@@ -1133,7 +1152,7 @@ export default function App() {
     const f = state.floors.find((x) => x.id === roomModal.floorId);
     const r = f?.rooms.find((x) => x.id === roomModal.roomId);
     return f && r ? { floor: f, room: r } : null;
-  }, [roomModal, state.floors]);
+  }, [roomModal.open, roomModal.floorId, roomModal.roomId, state.floors]);
 
   // ---------------------------
   // Worker modal
@@ -1254,6 +1273,7 @@ export default function App() {
       {roomModal.open ? (
         <Suspense fallback={null}>
           <RoomModal
+            key={`room-modal-${roomModal.roomId}-${roomCtx?.room?.gender}`}
             open={roomModal.open}
             onClose={() =>
               setRoomModal({ open: false, floorId: "", roomId: "" })
@@ -1261,16 +1281,41 @@ export default function App() {
             floor={roomCtx?.floor || null}
             room={roomCtx?.room || null}
             workerById={workerById}
+            workers={state.workers}
+            occupiedWorkerIds={occupiedWorkerIds}
             auth={auth}
             requireAdmin={requireAdmin}
             actions={{
-              updateRoom: async ({ roomId, patch }) => {
+              updateRoom: async (roomId, patch) => {
                 if (!roomCtx?.floor?.id) return;
-                await updateRoomCode(
-                  roomCtx.floor.id,
-                  roomId,
-                  patch?.code || "",
-                );
+
+                // If the first argument is an object, it's the old style call: { roomId, patch }
+                let actualRoomId = roomId;
+                let actualPatch = patch;
+
+                if (typeof roomId === "object" && roomId !== null && !patch) {
+                  actualRoomId = roomId.roomId;
+                  actualPatch = roomId.patch;
+                }
+
+                console.log("App actions.updateRoom calling:", {
+                  actualRoomId,
+                  actualPatch,
+                });
+
+                if (
+                  Object.prototype.hasOwnProperty.call(
+                    actualPatch || {},
+                    "code",
+                  )
+                ) {
+                  return await updateRoomCode(
+                    roomCtx.floor.id,
+                    actualRoomId,
+                    actualPatch?.code || "",
+                  );
+                }
+                return await updateRoom(actualRoomId, actualPatch || {});
               },
               deleteRoom: async ({ roomId }) => {
                 if (!roomCtx?.floor?.id) return;
@@ -1283,6 +1328,9 @@ export default function App() {
               // new manual check-in actions
               addWorker: async (w) => {
                 return await addWorker(w);
+              },
+              updateWorker: async ({ workerId, patch }) => {
+                return await updateWorker(workerId, patch || {});
               },
               checkIn: async ({ floorId, roomId, workerId, dateIn }) => {
                 await checkInWorker({ floorId, roomId, workerId, dateIn });
@@ -1357,7 +1405,7 @@ export default function App() {
             requireAdmin={requireAdmin}
             actions={{
               updateWorker: async ({ workerId, patch }) => {
-                await updateWorker(workerId, patch || {});
+                return await updateWorker(workerId, patch || {});
               },
               deleteWorker: async ({ workerId }) => {
                 await deleteWorker(workerId);
@@ -1453,103 +1501,6 @@ export default function App() {
         </div>
       </Modal>
 
-      {/* Check-in Picker Modal (inline) */}
-      <InlineModal
-        open={checkInPicker.open}
-        title="Chọn NLĐ để check-in"
-        onClose={() =>
-          setCheckInPicker((s) => ({
-            ...s,
-            open: false,
-            roomId: null,
-            floorId: null,
-            q: "",
-          }))
-        }
-      >
-        <div className="space-y-3">
-          <InlineTextField
-            label="Tìm NLĐ"
-            value={checkInPicker.q}
-            onChange={(v) => setCheckInPicker((s) => ({ ...s, q: v }))}
-            placeholder="Nhập tên / SĐT..."
-          />
-          <InlineTextField
-            label="Ngày vào"
-            value={checkInPicker.dateIn}
-            onChange={(v) => setCheckInPicker((s) => ({ ...s, dateIn: v }))}
-            type="date"
-          />
-
-          <div className="space-y-2">
-            {state.workers
-              .filter((w) => {
-                const key =
-                  `${w.fullName || ""} ${w.phone || ""}`.toLowerCase();
-                const qq = (checkInPicker.q || "").trim().toLowerCase();
-                if (!qq) return true;
-                return key.includes(qq);
-              })
-              .map((w) => {
-                const isOccupied = occupiedWorkerIds.has(w.id);
-                return (
-                  <button
-                    key={w.id}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left hover:bg-slate-50"
-                    onClick={() =>
-                      requireAdmin(async () => {
-                        if (!checkInPicker.roomId) return;
-
-                        if (isOccupied) {
-                          const ok = confirm(
-                            "NLĐ này đang ở phòng khác. Bạn vẫn muốn check-in (có thể bị trùng)?",
-                          );
-                          if (!ok) return;
-                        }
-
-                        await checkInWorker({
-                          floorId: checkInPicker.floorId,
-                          roomId: checkInPicker.roomId,
-                          workerId: w.id,
-                          dateIn: checkInPicker.dateIn || todayISO(),
-                        });
-
-                        setCheckInPicker((s) => ({
-                          ...s,
-                          open: false,
-                          roomId: null,
-                          floorId: null,
-                          q: "",
-                        }));
-                      })
-                    }
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">
-                          {w.fullName || "(Chưa có tên)"}
-                        </div>
-                        <div className="text-xs text-slate-600">
-                          {w.phone || "-"}
-                        </div>
-                      </div>
-                      {isOccupied ? (
-                        <span className="shrink-0 rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
-                          Đang ở
-                        </span>
-                      ) : (
-                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
-                          Trống
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-          </div>
-        </div>
-      </InlineModal>
-
       {/* Init KTX */}
       {initModal.open ? (
         <Suspense fallback={null}>
@@ -1593,6 +1544,8 @@ export default function App() {
             onClose={() => setAddWorkerModal(false)}
             requireAdmin={requireAdmin}
             addWorker={addWorker}
+            lookupWorkerByCode={lookupWorkerByCode}
+            existingWorkers={state.workers}
           />
         </Suspense>
       ) : null}

@@ -24,13 +24,18 @@ CREATE TABLE IF NOT EXISTS rooms (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     floor_id uuid REFERENCES floors(id) ON DELETE CASCADE,
     code text NOT NULL,
+    gender text,
     sort integer NOT NULL DEFAULT 0,
     created_at timestamp with time zone DEFAULT now()
 );
 
+ALTER TABLE rooms
+    ADD COLUMN IF NOT EXISTS gender text;
+
 -- 4. Người lao động (Công nhân/Sinh viên)
 CREATE TABLE IF NOT EXISTS workers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_code text,
     full_name text NOT NULL,
     hometown text,
     phone text,
@@ -39,6 +44,13 @@ CREATE TABLE IF NOT EXISTS workers (
     note text,
     created_at timestamp with time zone DEFAULT now()
 );
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS employee_code text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS workers_employee_code_unique
+    ON workers (employee_code)
+    WHERE employee_code IS NOT NULL;
 
 -- 5. Lịch sử cư trú (Stays)
 CREATE TABLE IF NOT EXISTS stays (

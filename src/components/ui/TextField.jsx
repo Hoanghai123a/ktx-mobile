@@ -11,6 +11,7 @@ export default function TextField({
   onBlur,
   onKeyDown,
   disabled = false,
+  error,
 }) {
   return (
     <label className="block space-y-1">
@@ -25,8 +26,17 @@ export default function TextField({
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+        className={`w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none ${
+          error
+            ? "border-rose-400 focus:border-rose-500"
+            : "border-slate-200 focus:border-slate-400"
+        }`}
       />
+      {error ? (
+        <div className="text-xs font-medium text-rose-600">
+          {typeof error === "string" ? error : "Trường này là bắt buộc"}
+        </div>
+      ) : null}
     </label>
   );
 }

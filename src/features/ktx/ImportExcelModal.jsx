@@ -26,8 +26,10 @@ export default function ImportExcelModal({
         <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
           <div className="text-sm font-semibold">Hướng dẫn</div>
           <div className="mt-1 text-xs text-slate-600">
-            File Excel (sheet đầu tiên) nên có các cột: Họ tên, Ngày sinh, Số
-            điện thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.
+            File Excel (sheet đầu tiên) có thể có/không có cột Mã nhân viên. Nếu
+            không có, hệ thống sẽ tự tạo mã vãng lai để lưu và xếp phòng bình
+            thường. Các cột gợi ý: Mã nhân viên, Họ tên, Ngày sinh, Số điện
+            thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.
             <br />
             Nếu không có Phòng/Ngày vào thì chỉ tạo NLĐ.
           </div>

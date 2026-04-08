@@ -11,7 +11,11 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
         Phòng: r.code,
         "Số NLĐ đang ở": current.length,
         "Danh sách NLĐ": current
-          .map((s) => workerById.get(s.workerId)?.fullName)
+          .map((s) => {
+            const w = workerById.get(s.workerId);
+            if (!w) return null;
+            return w.employeeCode ? `${w.employeeCode} - ${w.fullName}` : w.fullName;
+          })
           .filter(Boolean)
           .join(", "),
       });
@@ -19,6 +23,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
   }
 
   const workersSheet = workers.map((w) => ({
+    "Mã nhân viên": w.employeeCode || "",
     "Họ tên": w.fullName,
     "Ngày sinh": w.dob || "",
     "Quê quán": w.hometown,
@@ -35,6 +40,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
         staysSheet.push({
           Tầng: f.name,
           Phòng: r.code,
+          "Mã nhân viên": w?.employeeCode || "",
           "Họ tên": w?.fullName || "(không rõ)",
           "Ngày sinh": w?.dob || "",
           "Quê quán": w?.hometown || "",

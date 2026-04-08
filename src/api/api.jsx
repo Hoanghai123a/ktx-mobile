@@ -1,7 +1,9 @@
 import { message } from "antd";
 import axios from "axios";
 
-const key = import.meta.env.VITE_KEY;
+const key = String(import.meta.env.VITE_KEY || "")
+  .replace(/['"]/g, "")
+  .trim();
 const debugMode = import.meta.env.VITE_DEBUGMODE === "development";
 const backendHint = "Hãy đảm bảo Backend đang chạy (cd backend && npm start).";
 

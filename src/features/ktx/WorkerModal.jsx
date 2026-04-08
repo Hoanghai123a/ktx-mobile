@@ -19,6 +19,7 @@ export default function WorkerModal({
 
   actions, // { updateWorker, deleteWorker }
 }) {
+  const [employeeCode, setEmployeeCode] = useState(worker?.employeeCode || "");
   const [fullName, setFullName] = useState(worker?.fullName || "");
   const [dob, setDob] = useState(worker?.dob || "");
   const [hometown, setHometown] = useState(worker?.hometown || "");
@@ -29,6 +30,7 @@ export default function WorkerModal({
   const [showNotes, setShowNotes] = useState(false);
 
   useEffect(() => {
+    setEmployeeCode(worker?.employeeCode || "");
     setFullName(worker?.fullName || "");
     setDob(worker?.dob || "");
     setHometown(worker?.hometown || "");
@@ -37,6 +39,7 @@ export default function WorkerModal({
     setNote(worker?.note || "");
   }, [
     worker?.id,
+    worker?.employeeCode,
     worker?.fullName,
     worker?.dob,
     worker?.hometown,
@@ -45,7 +48,11 @@ export default function WorkerModal({
     worker?.note,
   ]);
 
-  const title = worker ? worker.fullName || "NLĐ" : "NLĐ";
+  const title = worker
+    ? `${worker.employeeCode ? `${worker.employeeCode} - ` : ""}${
+        worker.fullName || "NLĐ"
+      }`
+    : "NLĐ";
 
   const currentStay = useMemo(() => {
     const list = stays || [];
@@ -88,6 +95,15 @@ export default function WorkerModal({
               <div className="text-sm font-semibold">Thông tin NLĐ</div>
 
               <div className="mt-3 space-y-2">
+                <TextField
+                  label="Mã nhân viên"
+                  value={employeeCode}
+                  onChange={(v) =>
+                    setEmployeeCode(String(v || "").toUpperCase())
+                  }
+                  placeholder="VD: NV001"
+                  disabled={!auth?.isAdmin}
+                />
                 <TextField
                   label="Họ tên"
                   value={fullName}
@@ -146,11 +162,20 @@ export default function WorkerModal({
                         alert("Chưa nối actions.updateWorker");
                         return;
                       }
+                      const code = (employeeCode || "").trim().toUpperCase();
+                      if (!code) return alert("Mã nhân viên không được rỗng.");
+                      if (!/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
+                        alert(
+                          "Mã nhân viên không hợp lệ. Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.",
+                        );
+                        return;
+                      }
                       const nextName = (fullName || "").trim();
                       if (!nextName) return alert("Tên không được rỗng.");
                       await actions.updateWorker({
                         workerId: worker.id,
                         patch: {
+                          employeeCode: code,
                           fullName: nextName,
                           dob: dob || null,
                           hometown: hometown || "",

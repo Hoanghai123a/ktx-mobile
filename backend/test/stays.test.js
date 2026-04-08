@@ -6,11 +6,33 @@ const APP_KEY = process.env.APPLICATION_KEY || "test-key";
 const BASE_PORT = Number(process.env.TEST_PORT || 5050);
 const BASE_URL = `http://127.0.0.1:${BASE_PORT}`;
 
+function runInitDb() {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["init-db.js"], {
+      cwd: __dirname + "/..",
+      env: { ...process.env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (c) => {
+      stderr += c.toString("utf8");
+    });
+    child.on("exit", (code) => {
+      if (code === 0) return resolve();
+      reject(new Error(`init-db failed: ${code}\n${stderr}`));
+    });
+  });
+}
+
 function startServer() {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["index.js"], {
       cwd: __dirname + "/..",
-      env: { ...process.env, PORT: String(BASE_PORT), APPLICATION_KEY: APP_KEY },
+      env: {
+        ...process.env,
+        PORT: String(BASE_PORT),
+        APPLICATION_KEY: APP_KEY,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -78,6 +100,7 @@ let server = null;
 let token = null;
 
 test.before(async () => {
+  await runInitDb();
   server = await startServer();
 
   const loginRes = await fetchJson("/login/", {
@@ -113,16 +136,44 @@ test("stays validation and load-all shape", async () => {
   assert.equal(load0.json.floors.length, 1);
   assert.equal(load0.json.floors[0].rooms.length, 2);
 
+  const roomId = load0.json.floors[0].rooms[0].id;
+  assert.ok(roomId);
+
+  const genderRes = await fetchJson(`/rooms/${roomId}/`, {
+    method: "PATCH",
+    token,
+    body: { gender: "male" },
+  });
+  assert.equal(genderRes.status, 200);
+
+  const loadAfterGender = await fetchJson("/load-all/", { token });
+  assert.equal(loadAfterGender.status, 200);
+  assert.equal(loadAfterGender.json.floors[0].rooms[0].gender, "male");
+
   const workerRes = await fetchJson("/workers/", {
     method: "POST",
     token,
-    body: { full_name: "Test Worker", phone: "0900000000" },
+    body: {
+      employee_code: "NV_TEST_001",
+      full_name: "Test Worker",
+      phone: "0900000000",
+    },
   });
   assert.equal(workerRes.status, 201);
   const workerId = workerRes.json.id;
   assert.ok(workerId);
 
-  const roomId = load0.json.floors[0].rooms[0].id;
+  const byCode = await fetchJson("/workers/by-code/NV_TEST_001", { token });
+  assert.equal(byCode.status, 200);
+  assert.equal(byCode.json.employee_code, "NV_TEST_001");
+  assert.equal(byCode.json.id, workerId);
+
+  const dupCode = await fetchJson("/workers/", {
+    method: "POST",
+    token,
+    body: { employee_code: "NV_TEST_001", full_name: "Other" },
+  });
+  assert.equal(dupCode.status, 409);
 
   const badStay = await fetchJson("/stays/", {
     method: "POST",
@@ -183,4 +234,3 @@ test("stays validation and load-all shape", async () => {
   assert.equal(current.length, 1);
   assert.equal(history.length, 1);
 });
-

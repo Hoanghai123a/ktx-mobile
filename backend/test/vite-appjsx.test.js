@@ -4,7 +4,7 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 const VITE_PORT = Number(process.env.TEST_VITE_PORT || 5179);
-const APP_URL = `http://127.0.0.1:${VITE_PORT}`;
+const APP_URL = `http://localhost:${VITE_PORT}`;
 
 function startVite() {
   return new Promise((resolve, reject) => {
@@ -48,9 +48,17 @@ function startVite() {
       );
     }, 30000);
 
+    const optimisticReady = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve({ child, getLogs: () => ({ stdout, stderr }) });
+    }, 1500);
+
     const onReady = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(optimisticReady);
       clearTimeout(timeout);
       resolve({ child, getLogs: () => ({ stdout, stderr }) });
     };
@@ -58,10 +66,13 @@ function startVite() {
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString("utf8");
       stdout += text;
-      if (
-        text.includes(`http://localhost:${VITE_PORT}/`) ||
-        text.includes(`http://127.0.0.1:${VITE_PORT}/`)
-      ) {
+      const ascii = stdout.replace(/[^\x20-\x7E]/g, "");
+      const hasPort = ascii.includes(`:${VITE_PORT}/`);
+      const hasLocalUrl =
+        ascii.includes(`http://localhost:${VITE_PORT}/`) ||
+        ascii.includes(`http://127.0.0.1:${VITE_PORT}/`);
+      const hasReady = ascii.toLowerCase().includes("ready in");
+      if ((hasReady && hasPort) || hasLocalUrl) {
         onReady();
       }
     });
@@ -74,6 +85,7 @@ function startVite() {
     child.on("exit", (code) => {
       if (settled) return;
       settled = true;
+      clearTimeout(optimisticReady);
       clearTimeout(timeout);
       reject(new Error(`Vite exited early: ${code}\n\nSTDERR:\n${stderr}`));
     });
@@ -86,12 +98,31 @@ async function getOnce(url) {
   return { status: res.status, text };
 }
 
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function waitForVite(baseUrl) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${baseUrl}/`, { method: "GET" });
+      if (res.status >= 200 && res.status < 500) return;
+    } catch {
+      // ignore
+    }
+    await sleep(250);
+  }
+  throw new Error("Vite not reachable");
+}
+
 test(
   "Vite serves /src/App.jsx reliably (no 500 across 20 requests)",
   { timeout: 120000 },
   async () => {
     const { child, getLogs } = await startVite();
     try {
+      await waitForVite(APP_URL);
       const urlBase = `${APP_URL}/src/App.jsx?t=`;
 
       for (let i = 0; i < 20; i++) {

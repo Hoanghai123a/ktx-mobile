@@ -1,12 +1,12 @@
-import workerService from "./workerService";
-import roomService from "./roomService";
-import floorService from "./floorService";
-import stayService from "./stayService";
-import settingsService from "./settingsService";
-import authService from "./authService";
-import dataLoader from "./dataLoader";
-import noteService from "./noteService";
-import electricityService from "./electricityService";
+import workerService from "./workerService.js";
+import roomService from "./roomService.js";
+import floorService from "./floorService.js";
+import stayService from "./stayService.js";
+import settingsService from "./settingsService.js";
+import authService from "./authService.js";
+import dataLoader from "./dataLoader.js";
+import noteService from "./noteService.js";
+import electricityService from "./electricityService.js";
 
 export {
   workerService,

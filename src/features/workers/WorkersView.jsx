@@ -35,7 +35,11 @@ export default function WorkersView({
   const list = query
     ? state.workers
         .filter((w) => occupiedWorkerIds.has(w.id))
-        .filter((w) => w.fullName.toLowerCase().includes(query))
+        .filter((w) => {
+          const name = (w.fullName || "").toLowerCase();
+          const code = (w.employeeCode || "").toLowerCase();
+          return name.includes(query) || code.includes(query);
+        })
     : state.workers.filter((w) => occupiedWorkerIds.has(w.id));
 
   return (
@@ -71,7 +75,14 @@ export default function WorkersView({
         {list.length ? (
           list
             .slice()
-            .sort((a, b) => a.fullName.localeCompare(b.fullName, "vi"))
+            .sort((a, b) => {
+              const ac = (a.employeeCode || "").localeCompare(
+                b.employeeCode || "",
+                "vi",
+              );
+              if (ac !== 0) return ac;
+              return a.fullName.localeCompare(b.fullName, "vi");
+            })
             .map((w) => (
               <button
                 key={w.id}
@@ -86,6 +97,7 @@ export default function WorkersView({
               >
                 <div className="flex flex-col items-start justify-between">
                   <div className="text-base font-semibold text-slate-900">
+                    {w.employeeCode ? `${w.employeeCode} - ` : ""}
                     {w.fullName}
                   </div>
                   <div className="flex gap-2 justify-space-between w-full">
@@ -119,7 +131,7 @@ export default function WorkersView({
             hint={
               auth.isAdmin
                 ? "Hiện tại không có NLĐ nào đang ở trong KTX."
-                : "Bạn đang ở chế độ xem. Hãy đăng nhập để check-in NLĐ."
+                : "Bạn đang ở chế độ xem. Hãy đăng nhập để thêm NLĐ."
             }
             action={
               <button

@@ -10,12 +10,14 @@ const dataController = {
       const floorsData = floorsRes.rows;
 
       // 2. Lấy tất cả phòng
-      const roomsRes = await db.query("SELECT * FROM rooms ORDER BY sort ASC");
+      const roomsRes = await db.query(
+        "SELECT id, floor_id, code, sort, gender FROM rooms ORDER BY sort ASC",
+      );
       const roomsData = roomsRes.rows;
 
       // 3. Lấy tất cả NLĐ
       const workersRes = await db.query(
-        "SELECT * FROM workers ORDER BY full_name ASC",
+        "SELECT * FROM workers ORDER BY employee_code NULLS LAST, full_name ASC",
       );
       const workersData = workersRes.rows;
 
@@ -35,10 +37,11 @@ const dataController = {
       const roomsByFloor = new Map();
       roomsData.forEach((r) => {
         if (!roomsByFloor.has(r.floor_id)) roomsByFloor.set(r.floor_id, []);
-        roomsByFloor.get(r.floor_id).push({
+        const roomObj = {
           id: r.id,
           code: r.code,
           sort: r.sort,
+          gender: r.gender || null, // Ensure gender is at least null so it's sent in JSON
           stays: staysData
             .filter((s) => s.room_id === r.id)
             .map((s) => ({
@@ -49,18 +52,23 @@ const dataController = {
               dateOut: s.date_out,
             })),
           electricity: elecData.filter((e) => e.room_id === r.id),
-        });
+        };
+        roomsByFloor.get(r.floor_id).push(roomObj);
       });
 
-      const formattedFloors = floorsData.map((f) => ({
-        id: f.id,
-        name: f.name,
-        sort: f.sort,
-        rooms: roomsByFloor.get(f.id) || [],
-      }));
+      const formattedFloors = floorsData.map((f) => {
+        const rooms = roomsByFloor.get(f.id) || [];
+        return {
+          id: f.id,
+          name: f.name,
+          sort: f.sort,
+          rooms,
+        };
+      });
 
       const formattedWorkers = workersData.map((w) => ({
         id: w.id,
+        employeeCode: w.employee_code || "",
         fullName: w.full_name,
         hometown: w.hometown || "",
         recruiter: w.recruiter || "",
@@ -86,19 +94,25 @@ const dataController = {
       const R = Number(roomsPerFloor);
       const S = Number(startNo);
 
-      console.log(`🏗️ Bắt đầu khởi tạo KTX: ${F} tầng, ${R} phòng/tầng, bắt đầu từ ${S}`);
+      console.log(
+        `🏗️ Bắt đầu khởi tạo KTX: ${F} tầng, ${R} phòng/tầng, bắt đầu từ ${S}`,
+      );
 
       if (!Number.isInteger(F) || F <= 0 || F > 100)
         return res.status(400).json({ error: "Số tầng không hợp lệ (1-100)." });
       if (!Number.isInteger(R) || R <= 0 || R > 300)
-        return res.status(400).json({ error: "Số phòng/tầng không hợp lệ (1-300)." });
+        return res
+          .status(400)
+          .json({ error: "Số phòng/tầng không hợp lệ (1-300)." });
       if (!Number.isInteger(S) || S <= 0)
         return res.status(400).json({ error: "Số bắt đầu không hợp lệ." });
 
       // Kiểm tra xem đã có dữ liệu chưa
       const checkRes = await db.query("SELECT id FROM floors LIMIT 1");
       if (checkRes.rowCount > 0) {
-        return res.status(400).json({ error: "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại." });
+        return res.status(400).json({
+          error: "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại.",
+        });
       }
 
       await db.query("BEGIN");
@@ -110,7 +124,7 @@ const dataController = {
         const sort = i + 1;
         const insFloor = await db.query(
           "INSERT INTO floors (name, sort) VALUES ($1, $2) RETURNING id",
-          [name, sort]
+          [name, sort],
         );
         floorIds.push(insFloor.rows[0].id);
       }
@@ -121,11 +135,11 @@ const dataController = {
       for (let i = 0; i < F; i++) {
         const floorId = floorIds[i];
         for (let j = 0; j < R; j++) {
-          const code = String(S + (i * R) + j);
+          const code = String(S + i * R + j);
           const sort = j + 1;
           await db.query(
             "INSERT INTO rooms (floor_id, code, sort) VALUES ($1, $2, $3)",
-            [floorId, code, sort]
+            [floorId, code, sort],
           );
           roomCount++;
         }

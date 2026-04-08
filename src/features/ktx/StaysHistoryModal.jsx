@@ -14,7 +14,11 @@ export default function StaysHistoryModal({ open, onClose, stays = [], roomById,
       .map((s) => ({
         ...s,
         roomCode: roomById?.get(s.roomId)?.code || s.roomId || "—",
-        workerName: workerById?.get(s.workerId)?.fullName || "—",
+        workerName: (() => {
+          const w = workerById?.get(s.workerId);
+          if (!w) return "—";
+          return w.employeeCode ? `${w.employeeCode} - ${w.fullName}` : w.fullName;
+        })(),
       }));
   }, [stays, roomById, workerById]);
 

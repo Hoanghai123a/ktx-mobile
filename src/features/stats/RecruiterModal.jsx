@@ -51,6 +51,7 @@ export default function RecruiterModal({
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-base font-semibold text-slate-900">
+                    {it.employeeCode ? `${it.employeeCode} - ` : ""}
                     {it.fullName}
                   </div>
                   <div className="mt-1 text-xs text-slate-600">
