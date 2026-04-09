@@ -19,38 +19,38 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
-// --- Auth Middleware (giống SmartNote) ---
 const authMiddleware = (req, res, next) => {
   const appKey = req.headers["applicationkey"];
   const authHeader = req.headers["authorization"];
 
-  // Lấy key từ env và loại bỏ dấu ngoặc kép nếu có
+  // 1. Kiểm tra Application Key (Bắt buộc cho mọi request từ App)
   const validKey = (process.env.APPLICATION_KEY || "")
     .replace(/['"]/g, "")
     .trim();
-
-  // Kiểm tra Application Key
   if (appKey !== validKey) {
-    console.warn(`⚠️ Unauthorized access attempt with key: ${appKey}`);
+    console.warn(`⚠️ Sai Application Key từ: ${req.ip}`);
     return res
       .status(403)
       .json({ error: "Forbidden: Invalid Application Key" });
   }
 
-  // Một số routes không cần token (như login)
+  // 2. CHO PHÉP ĐI QUA: Nếu là lệnh LẤY dữ liệu (GET) hoặc lệnh kiểm tra của trình duyệt (OPTIONS)
+  if (req.method === "GET" || req.method === "OPTIONS") {
+    return next();
+  }
+
+  // 3. Cho phép các route login/signup đi qua (POST nhưng không cần token)
   if (req.path === "/login/" || req.path === "/signup/") {
     return next();
   }
 
-  // Kiểm tra Bearer Token
+  // 4. KIỂM TRA TOKEN: Chỉ áp dụng cho các lệnh thay đổi dữ liệu (POST, PUT, DELETE)
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.error(`❌ Chặn thao tác ${req.method} do thiếu Token`);
     return res
       .status(401)
-      .json({ error: "Unauthorized: Missing or invalid token" });
+      .json({ error: "Bạn cần đăng nhập để thực hiện thao tác này" });
   }
-
-  // const token = authHeader.split(" ")[1];
-  // Ở đây bạn sẽ verify token (JWT)
 
   next();
 };

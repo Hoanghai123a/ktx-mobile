@@ -250,25 +250,25 @@ export default function App() {
   const loadAllFromDb = useCallback(async () => {
     try {
       // Ưu tiên gọi API Backend mới
-      if (token) {
-        console.log(
-          "🚀 [DATABASE] Đang kết nối tới: BACKEND API (Node.js + Postgres)",
-        );
-        const data = await dataLoader.loadAll(token);
-        setState((s) => ({ ...s, ...data }));
-        setFloorId((prev) => prev || data.floors[0]?.id || "");
-        return;
-      }
-
       console.log(
-        "⚠️ [DATABASE] Đang kết nối tới: SUPABASE (Chế độ Fallback/Chưa đăng nhập)",
+        "🚀 [DATABASE] Đang kết nối tới: BACKEND API (Node.js + Postgres)",
       );
-      // Nếu chưa đăng nhập qua API, chúng ta không tải dữ liệu từ Supabase nữa
-      // (Hoặc nếu bạn muốn giữ fallback thì giữ nguyên, nhưng để biết là dùng Backend hay chưa thì nên để trống)
-      console.warn("Chưa có Token API. Vui lòng đăng nhập bằng admin/admin.");
+      const data = await dataLoader.loadAll(token);
+      if (data) {
+        setState((s) => ({ ...s, ...data }));
+        setFloorId((prev) => prev || data.floors?.[0]?.id || "");
+      }
     } catch (err) {
-      console.error("API loadAll failed:", err);
-      alert("Lỗi tải dữ liệu từ Backend. Kiểm tra kết nối.");
+      // Nếu là lỗi 401 (token hết hạn), xóa token cũ và thử tải lại như khách
+      if (err?.response?.status === 401) {
+        if (token) {
+          dataLoader.removeToken();
+          setToken(null);
+        }
+        console.log("Chế độ khách: Đang chờ đăng nhập hoặc dữ liệu công khai.");
+      } else {
+        console.error("Lỗi kết nối hệ thống:", err);
+      }
     }
   }, [token]);
 
@@ -639,7 +639,6 @@ export default function App() {
       // Chờ cập nhật và load lại dữ liệu xong
       await workerService.update(workerId, mappedPatch, token);
       await loadAllFromDb();
-
       return true;
     } catch (e) {
       console.error("Lỗi updateWorker:", e);
