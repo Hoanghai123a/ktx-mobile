@@ -24,7 +24,7 @@ const authMiddleware = (req, res, next) => {
   const authHeader = req.headers["authorization"];
 
   // 1. Kiểm tra Application Key (Bắt buộc cho mọi request từ App)
-  const validKey = (process.env.APPLICATION_KEY || "")
+  const validKey = (process.env.APPLICATION_KEY || process.env.VITE_KEY || "")
     .replace(/['"]/g, "")
     .trim();
   if (appKey !== validKey) {
@@ -40,7 +40,7 @@ const authMiddleware = (req, res, next) => {
   }
 
   // 3. Cho phép các route login/signup đi qua (POST nhưng không cần token)
-  if (req.path === "/login/" || req.path === "/signup/") {
+  if (req.path === "/login/" || req.path === "/register/" || req.path === "/signup/") {
     return next();
   }
 
@@ -64,28 +64,14 @@ app.use("/floors", require("./routes/floorRoutes"));
 app.use("/stays", require("./routes/stayRoutes"));
 app.use("/electricities", require("./routes/electricityRoutes"));
 app.use("/settings", require("./routes/settingsRoutes"));
+app.use("/notes", require("./routes/noteRoutes"));
+app.use("/", require("./routes/authRoutes"));
 app.use("/", require("./routes/dataRoutes"));
 
 app.get("/", (req, res) => {
-  res.json({ message: "KTX Mobile API is running" });
+  res.json({ message: "KTX Mobile API is running", database: "PocketBase" });
 });
 
-app.post("/login/", (req, res) => {
-  const { username, password } = req.body;
-  // Mock login thành công (giống cấu trúc SmartNote mong đợi)
-  if (username === "admin" && password === "admin") {
-    return res.json({
-      access_token: "mock-jwt-token-for-ktx-mobile",
-      expires_in: 3600,
-      data: {
-        username: "admin",
-        full_name: "Quản trị viên",
-        isAdmin: true,
-      },
-    });
-  }
-  res.status(400).json({ error: "Tài khoản hoặc mật khẩu không đúng" });
-});
 
 // --- Error Handler ---
 app.use((err, req, res, _next) => {

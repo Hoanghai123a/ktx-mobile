@@ -16,14 +16,14 @@ export default function DeleteGuardModal({
         <div className="text-sm text-slate-700">{message}</div>
 
         <label className="block text-sm font-medium text-slate-700">
-          Nhập mật khẩu Admin để xác nhận
+          Nhập mật khẩu Đăng nhập ?? x?c nh?n
         </label>
         <input
           type="password"
           className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Mật khẩu Admin"
+          placeholder="Mật khẩu Đăng nhập"
         />
 
         <div className="flex gap-2 pt-2">

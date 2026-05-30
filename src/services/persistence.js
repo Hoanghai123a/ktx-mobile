@@ -1,6 +1,9 @@
 import { DEFAULT_SETTINGS } from "../constants/defaultSettings.js";
 
-const STORAGE_KEY = "ktx_state_v1";
+const DATA_SOURCE_KEY = String(
+  import.meta.env.VITE_POCKETBASE_URL || import.meta.env.VITE_HOST || "local",
+).replace(/[^a-z0-9]+/gi, "_");
+const STORAGE_KEY = `ktx_state_v2_${DATA_SOURCE_KEY}`;
 
 function getStorage() {
   return globalThis?.localStorage;

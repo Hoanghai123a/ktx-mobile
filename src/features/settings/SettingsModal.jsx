@@ -297,17 +297,9 @@ export default function SettingsModal({
                     }))
                   }
                 />
-                <TextField
-                  label="Mật khẩu Admin (dùng cho xóa)"
-                  type="password"
-                  value={mergedDraft.adminPassword || ""}
-                  onChange={(v) =>
-                    setDraft((s) => ({
-                      ...s,
-                      adminPassword: v,
-                    }))
-                  }
-                />
+                <div className="rounded-2xl bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                  Khi xóa tầng/phòng, hệ thống sẽ yêu cầu nhập lại mật khẩu đăng nhập hiện tại.
+                </div>
               </div>
             </div>
           </div>

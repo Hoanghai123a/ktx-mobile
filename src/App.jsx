@@ -36,6 +36,10 @@ import {
   Clock,
   ShieldCheck,
   CreditCard,
+  Mars,
+  Pin,
+  PinOff,
+  Venus,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -58,6 +62,7 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
 
+const AuthScreen = lazy(() => import("./features/auth/AuthScreen"));
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
 const DeleteGuardModal = lazy(
   () => import("./features/settings/DeleteGuardModal"),
@@ -81,6 +86,7 @@ const AddWorkerModal = lazy(() => import("./features/workers/AddWorkerModal"));
 const StatsView = lazy(() => import("./features/stats/StatsView"));
 const RecruiterModal = lazy(() => import("./features/stats/RecruiterModal"));
 const AboutView = lazy(() => import("./features/about/AboutView"));
+const AdminBuildingsView = lazy(() => import("./features/admin/AdminBuildingsView"));
 
 function clsx(...arr) {
   return arr.filter(Boolean).join(" ");
@@ -182,6 +188,146 @@ function Empty({ title, hint, action }) {
   );
 }
 
+function pinnedBuildingKey(user) {
+  return `ktx_pinned_buildings_${user?.id || user?.username || "guest"}`;
+}
+
+function BuildingsHome({ buildings, selectedBuildingId, setSelectedBuildingId, setTab, user }) {
+  const storageKey = pinnedBuildingKey(user);
+  const [query, setQuery] = useState("");
+  const [pinnedIds, setPinnedIds] = useState(() => {
+    try {
+      const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      setPinnedIds(Array.isArray(rows) ? rows : []);
+    } catch {
+      setPinnedIds([]);
+    }
+  }, [storageKey]);
+
+  function savePins(next) {
+    setPinnedIds(next);
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  }
+
+  function pinBuilding(id) {
+    if (!id || pinnedIds.includes(id)) return;
+    savePins([...pinnedIds, id]);
+  }
+
+  function unpinBuilding(id) {
+    savePins(pinnedIds.filter((x) => x !== id));
+  }
+
+  function openBuilding(id) {
+    setSelectedBuildingId(id);
+    setTab("ktx");
+  }
+
+  const pinnedBuildings = useMemo(
+    () => buildings.filter((b) => pinnedIds.includes(b.id)),
+    [buildings, pinnedIds],
+  );
+  const searchResults = useMemo(() => {
+    const text = query.trim().toLowerCase();
+    if (!text) return [];
+    return buildings.filter((b) => `${b.code || ""} ${b.name || ""}`.toLowerCase().includes(text));
+  }, [buildings, query]);
+
+  return (
+    <div className="mx-auto w-full max-w-md px-4 pb-24 space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tìm tòa nhà để ghim"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          />
+          {query ? (
+            <button className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100" onClick={() => setQuery("")}>Xóa</button>
+          ) : null}
+        </div>
+      </div>
+
+      {query.trim() ? (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-slate-500">Kết quả tìm kiếm</div>
+          {searchResults.length ? (
+            <div className="grid grid-cols-2 gap-2">
+              {searchResults.map((b) => {
+                const pinned = pinnedIds.includes(b.id);
+                return (
+                  <div key={b.id} className="rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-sky-100">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">{b.code || "-"}</div>
+                      <div className="mt-0.5 truncate text-xs font-medium text-slate-700">{b.name}</div>
+                    </div>
+                    <button
+                      disabled={pinned}
+                      className={`mt-2 w-full rounded-xl px-2 py-1.5 text-xs font-semibold ${pinned ? "bg-slate-100 text-slate-400" : "bg-sky-600 text-white"}`}
+                      onClick={() => pinBuilding(b.id)}
+                    >
+                      <span className="inline-flex items-center justify-center gap-1.5"><Pin className="h-3.5 w-3.5" />{pinned ? "Đã ghim" : "Ghim"}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-500">Không tìm thấy tòa nhà phù hợp.</div>
+          )}
+        </div>
+      ) : null}
+
+      {pinnedBuildings.length ? (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-slate-500">Tòa nhà đã ghim</div>
+          <div className="grid grid-cols-2 gap-2">
+            {pinnedBuildings.map((b) => {
+              const active = b.id === selectedBuildingId;
+              const canManage = b.accessRole === "manager" || b.accessRole === "owner";
+              return (
+                <div
+                  key={b.id}
+                  className={`rounded-2xl bg-white p-2.5 text-left shadow-sm ring-1 ${active ? "ring-sky-300" : "ring-slate-100"}`}
+                >
+                  <button className="w-full text-left" onClick={() => openBuilding(b.id)}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-slate-900">{b.code || "-"}</div>
+                        <div className="mt-0.5 truncate text-xs font-medium text-slate-700">{b.name}</div>
+                      </div>
+                      <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${b.expired ? "bg-rose-400" : "bg-emerald-400"}`} />
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-slate-500">{canManage ? "Quản lý" : "Chỉ xem"}</div>
+                  </button>
+                  <div className="mt-2 flex items-center justify-between gap-1">
+                    <span className="truncate text-[11px] font-medium text-slate-400">{b.public_view ? "Công khai" : "Được gán"}</span>
+                    <button className="rounded-lg bg-slate-100 p-1.5 text-slate-500" onClick={() => unpinBuilding(b.id)} title="Bỏ ghim">
+                      <PinOff className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <Empty title="Chưa ghim tòa nhà" hint="Tìm tòa nhà ở ô phía trên, sau đó bấm Ghim để lưu vào danh sách chính." />
+      )}
+    </div>
+  );
+}
 function LazyFallback() {
   return <div className="px-4 py-6 text-sm text-slate-500">Đang tải...</div>;
 }
@@ -195,30 +341,102 @@ import {
   stayService,
   electricityService,
   settingsService,
+  buildingService,
+  authService,
 } from "./services/api-services";
 import { message } from "antd";
 
 // ... existing imports ...
 
+const ADMIN_USER_CACHE_KEY = "ktx_admin_created_users";
+
+function readAdminUserCache() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(ADMIN_USER_CACHE_KEY) || "[]");
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAdminUserCache(rows) {
+  localStorage.setItem(ADMIN_USER_CACHE_KEY, JSON.stringify(rows || []));
+}
+
+function mergeUsers(primary = [], fallback = []) {
+  const map = new Map();
+  for (const row of [...fallback, ...primary]) {
+    const key = row?.id || row?.username;
+    if (key) map.set(key, row);
+  }
+  return [...map.values()].sort((a, b) => String(a.username || a.name || "").localeCompare(String(b.username || b.name || "")));
+}
+
 // ---------------------------
 // Main App
 // ---------------------------
 export default function App() {
-  const { user, token, logout: authLogout } = useAuth();
+  const { user, token, logout: authLogout, loading } = useAuth();
   const [state, setState] = useState(() => loadPersistedState());
-  const [auth, setAuth] = useState({ isAdmin: false });
+  const [buildings, setBuildings] = useState([]);
+  const [buildingUsers, setBuildingUsers] = useState([]);
+  const [buildingMembers, setBuildingMembers] = useState([]);
+  const [authSettings, setAuthSettings] = useState({ require_approval: true });
+  const [selectedBuildingId, setSelectedBuildingIdState] = useState(
+    () => localStorage.getItem("ktx_current_building_id") || "",
+  );
+  const [auth, setAuth] = useState({
+    isAdmin: false,
+    systemAdmin: false,
+    canWrite: false,
+    canView: false,
+    user: null,
+  });
 
-  // Sync auth state with AuthContext
+  const setSelectedBuildingId = useCallback((id) => {
+    const next = id || "";
+    setSelectedBuildingIdState(next);
+    if (next) localStorage.setItem("ktx_current_building_id", next);
+    else localStorage.removeItem("ktx_current_building_id");
+  }, []);
+
+  const systemAdmin = !!(user?.role === "admin" || user?.isAdmin === true);
+  const currentBuilding = useMemo(
+    () => buildings.find((b) => b.id === selectedBuildingId) || null,
+    [buildings, selectedBuildingId],
+  );
+  const currentBuildingExpired = !!currentBuilding?.expired;
+  const currentAccessRole = currentBuilding?.accessRole || "viewer";
+  const canWriteBuilding = !!(
+    currentBuilding &&
+    (systemAdmin ||
+      (!currentBuildingExpired &&
+        ["admin", "owner", "manager"].includes(currentAccessRole)))
+  );
+  const canViewBuilding = !!currentBuilding;
+
   useEffect(() => {
-    if (user) {
-      setAuth({ isAdmin: true, user });
-    } else {
-      setAuth({ isAdmin: false, user: null });
-    }
-  }, [user]);
-  const [loginEmail, setLoginEmail] = useState("");
+    setAuth({
+      isAdmin: canWriteBuilding,
+      systemAdmin,
+      canWrite: canWriteBuilding,
+      canView: canViewBuilding,
+      building: currentBuilding,
+      accessRole: currentAccessRole,
+      user: user || null,
+    });
+  }, [canViewBuilding, canWriteBuilding, currentAccessRole, currentBuilding, systemAdmin, user]);
+
+  const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [tab, setTab] = useState("ktx"); // ktx | stats | workers | settings
+  const lastUserIdRef = useRef(null);
+  useEffect(() => {
+    const id = user?.id || "";
+    if (!id || lastUserIdRef.current === id) return;
+    lastUserIdRef.current = id;
+    setTab(systemAdmin ? "admin" : "buildings");
+  }, [systemAdmin, user?.id]);
 
   const [q, setQ] = useState("");
   const [floorId, setFloorId] = useState(() => state.floors?.[0]?.id || "");
@@ -247,39 +465,96 @@ export default function App() {
   // Table: app_settings (id=1, data=jsonb)
   // ---------------------------
 
+  const refreshBuildings = useCallback(async () => {
+    try {
+      const rows = await buildingService.getAll(token);
+      setBuildings(Array.isArray(rows) ? rows : []);
+      if (systemAdmin && token) {
+        const settings = await buildingService.getAuthSettings(token);
+        setAuthSettings({ require_approval: settings?.require_approval !== false });
+        try {
+          const users = await buildingService.getUsers(token);
+          setBuildingUsers(mergeUsers(Array.isArray(users) ? users : [], readAdminUserCache()));
+        } catch (err) {
+          console.error("Load users error:", err);
+          setBuildingUsers(readAdminUserCache());
+        }
+      } else {
+        setBuildingUsers([]);
+        setAuthSettings({ require_approval: true });
+      }
+    } catch (err) {
+      console.error("Load buildings error:", err);
+      setBuildings([]);
+      setBuildingUsers([]);
+    }
+  }, [systemAdmin, token]);
+
+  useEffect(() => {
+    refreshBuildings();
+  }, [refreshBuildings]);
+
+  useEffect(() => {
+    if (!buildings.length) {
+      if (selectedBuildingId) setSelectedBuildingId("");
+      return;
+    }
+    if (!buildings.some((b) => b.id === selectedBuildingId)) {
+      setSelectedBuildingId(buildings[0].id);
+    }
+  }, [buildings, selectedBuildingId, setSelectedBuildingId]);
+
+  const refreshBuildingMembers = useCallback(async () => {
+    try {
+      if (!systemAdmin || !selectedBuildingId || !token) {
+        setBuildingMembers([]);
+        return;
+      }
+      const rows = await buildingService.getMembers(selectedBuildingId, token);
+      setBuildingMembers(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error("Load building members error:", err);
+      setBuildingMembers([]);
+    }
+  }, [selectedBuildingId, systemAdmin, token]);
+
+  useEffect(() => {
+    refreshBuildingMembers();
+  }, [refreshBuildingMembers]);
+
   const loadAllFromDb = useCallback(async () => {
     try {
-      // Ưu tiên gọi API Backend mới
-      console.log(
-        "🚀 [DATABASE] Đang kết nối tới: BACKEND API (Node.js + Postgres)",
-      );
+      if (!selectedBuildingId) {
+        setState((s) => ({ ...s, floors: [], workers: [] }));
+        setFloorId("");
+        return;
+      }
+      console.log("[DATABASE] PocketBase:", selectedBuildingId);
       const data = await dataLoader.loadAll(token);
       if (data) {
         setState((s) => ({ ...s, ...data }));
-        setFloorId((prev) => prev || data.floors?.[0]?.id || "");
+        setFloorId((prev) =>
+          data.floors?.some((f) => f.id === prev)
+            ? prev
+            : data.floors?.[0]?.id || "",
+        );
       }
     } catch (err) {
-      // Nếu là lỗi 401 (token hết hạn), xóa token cũ và thử tải lại như khách
       if (err?.response?.status === 401) {
-        if (token) {
-          dataLoader.removeToken();
-          setToken(null);
-        }
-        console.log("Chế độ khách: Đang chờ đăng nhập hoặc dữ liệu công khai.");
+        authLogout?.();
       } else {
-        console.error("Lỗi kết nối hệ thống:", err);
+        console.error("Load KTX data error:", err);
       }
     }
-  }, [token]);
+  }, [authLogout, selectedBuildingId, token]);
 
   useAppBootstrap({
     loadAllFromDb,
     setState,
-    setAuth,
     defaultSettings: DEFAULT_SETTINGS,
-    token, // Pass token here
+    token,
+    selectedBuildingId,
   });
-
   const saveSettingsToDb = useCallback(
     async (nextSettings) => {
       if (!token) throw new Error("Unauthorized");
@@ -434,16 +709,31 @@ export default function App() {
   // Mutations
   // ---------------------------
   function requireAdmin(action) {
-    if (!auth.isAdmin) {
+    if (!user || !token) {
       setLoginModal(true);
       return;
     }
-    // allow async actions too
-    action();
+    if (!selectedBuildingId) {
+      alert("Chưa chọn tòa nhà.");
+      return;
+    }
+    if (currentBuildingExpired && !systemAdmin) {
+      alert("Tòa nhà đã hết hạn.");
+      return;
+    }
+    if (!auth.canWrite) {
+      alert("Tài khoản này chỉ có quyền xem.");
+      return;
+    }
+    return action?.();
   }
 
   const handleLogout = useCallback(() => {
     authLogout?.();
+    setSelectedBuildingId("");
+    setBuildings([]);
+    setBuildingUsers([]);
+    setBuildingMembers([]);
     setState({
       floors: [],
       workers: [],
@@ -451,7 +741,7 @@ export default function App() {
     });
     setFloorId("");
     setTab("ktx");
-  }, [authLogout]);
+  }, [authLogout, setSelectedBuildingId]);
 
   async function addFloor(name) {
     try {
@@ -691,6 +981,122 @@ export default function App() {
         token,
       );
       await loadAllFromDb();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+  async function createBuilding(payload) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      const created = await buildingService.create(payload, token);
+      await refreshBuildings();
+      if (created?.id) setSelectedBuildingId(created.id);
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function deleteBuilding(id) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      if (!window.confirm("Xóa tòa nhà này?")) return;
+      await buildingService.delete(id, token);
+      await refreshBuildings();
+      if (selectedBuildingId === id) setSelectedBuildingId("");
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function updateBuilding(id, patch) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      await buildingService.update(id, patch, token);
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function createAdminUser(payload) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      const created = await buildingService.createUser(payload, token);
+      const nextUser = { ...created, username: created?.username || payload.username, name: created?.name || payload.name, role: created?.role || payload.role || "user" };
+      const nextCache = mergeUsers([nextUser], readAdminUserCache());
+      writeAdminUserCache(nextCache);
+      setBuildingUsers((prev) => mergeUsers([nextUser], prev));
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function updateAuthApprovalSetting(requireApproval) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      const next = await buildingService.updateAuthSettings({ require_approval: !!requireApproval }, token);
+      setAuthSettings({ require_approval: next?.require_approval !== false });
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function updateAdminUser(id, patch) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      const updated = await buildingService.updateUser(id, patch, token);
+      const nextCache = readAdminUserCache().map((u) => (u.id === id ? { ...u, ...patch, ...updated } : u));
+      writeAdminUserCache(nextCache);
+      setBuildingUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch, ...updated } : u)));
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function deleteAdminUser(id) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      if (!window.confirm("Xóa tài khoản này?")) return;
+      await buildingService.deleteUser(id, token);
+      const nextCache = readAdminUserCache().filter((u) => u.id !== id);
+      writeAdminUserCache(nextCache);
+      setBuildingUsers((prev) => prev.filter((u) => u.id !== id));
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function addBuildingMember(payload) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      await buildingService.addMember(payload, token);
+      await refreshBuildingMembers();
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function updateBuildingMember(id, patch) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      await buildingService.updateMember(id, patch, token);
+      await refreshBuildingMembers();
+      await refreshBuildings();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
+  async function deleteBuildingMember(id) {
+    try {
+      if (!systemAdmin || !token) return setLoginModal(true);
+      await buildingService.deleteMember(id, token);
+      await refreshBuildingMembers();
+      await refreshBuildings();
     } catch (e) {
       alert(e.message || String(e));
     }
@@ -987,17 +1393,21 @@ export default function App() {
                     ? "Thống kê"
                     : tab === "workers"
                       ? "Danh sách NLĐ"
-                      : "Cài đặt"}
+                      : tab === "admin" || tab === "buildings"
+                        ? "Quản lý tòa nhà"
+                        : "Cài đặt"}
               </div>
-              {auth.isAdmin ? (
-                <Pill icon={Shield} text="Admin" tone="violet" />
+              {systemAdmin ? (
+                <Pill icon={ShieldCheck} text="System" tone="violet" />
+              ) : auth.isAdmin ? (
+                <Pill icon={Shield} text="Quản lý" tone="green" />
               ) : (
                 <Pill icon={Home} text="Xem" tone="slate" />
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {auth.isAdmin ? (
+            {user ? (
               <button
                 className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
                 onClick={handleLogout}
@@ -1025,50 +1435,77 @@ export default function App() {
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-          <Search className="h-4 w-4 text-slate-400" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Tìm theo tên NLĐ…"
-            className="w-full bg-transparent text-sm outline-none"
-          />
-          {q ? (
-            <button
-              className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              onClick={() => setQ("")}
-            >
-              Xóa
-            </button>
-          ) : null}
-        </div>
+        {tab !== "buildings" ? (
+          <>
+            <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+              <Building2 className="h-4 w-4 text-slate-400" />
+              <select
+                value={selectedBuildingId}
+                onChange={(e) => setSelectedBuildingId(e.target.value)}
+                className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
+              >
+                {buildings.length ? null : <option value="">Chưa có tòa nhà</option>}
+                {buildings.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code ? `${b.code} - ` : ""}{b.name}
+                  </option>
+                ))}
+              </select>
+              {currentBuilding?.expired ? (
+                <Pill icon={Clock} text="Hết hạn" tone="rose" />
+              ) : currentBuilding ? (
+                <Pill icon={Users} text={auth.isAdmin ? "Sửa" : "Xem"} tone={auth.isAdmin ? "green" : "slate"} />
+              ) : systemAdmin ? (
+                <button className="rounded-xl bg-slate-900 px-2 py-1 text-xs font-semibold text-white" onClick={() => setTab("admin")}>Tạo</button>
+              ) : null}
+            </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-            <div className="flex items-center justify-between">
-              <Pill
-                icon={Building2}
-                text={`${state.floors.length} tầng`}
-                tone="sky"
+            <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+              <Search className="h-4 w-4 text-slate-400" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Tìm theo tên NLĐ…"
+                className="w-full bg-transparent text-sm outline-none"
               />
-              <div className="text-xs text-slate-500">Tổng</div>
+              {q ? (
+                <button
+                  className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={() => setQ("")}
+                >
+                  Xóa
+                </button>
+              ) : null}
             </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-900">
-              {totalRooms}
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <div className="flex items-center justify-between">
+                  <Pill
+                    icon={Building2}
+                    text={`${state.floors.length} tầng`}
+                    tone="sky"
+                  />
+                  <div className="text-xs text-slate-500">Tổng</div>
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {totalRooms}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-600">Phòng</div>
+              </div>
+              <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <div className="flex items-center justify-between">
+                  <Pill icon={Users} text="Đang ở" tone="green" />
+                  <div className="text-xs text-slate-500">Tổng</div>
+                </div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">
+                  {totalCurrentWorkers}
+                </div>
+                <div className="mt-0.5 text-xs text-slate-600">NLĐ</div>
+              </div>
             </div>
-            <div className="mt-0.5 text-xs text-slate-600">Phòng</div>
-          </div>
-          <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-            <div className="flex items-center justify-between">
-              <Pill icon={Users} text="Đang ở" tone="green" />
-              <div className="text-xs text-slate-500">Tổng</div>
-            </div>
-            <div className="mt-2 text-2xl font-semibold text-slate-900">
-              {totalCurrentWorkers}
-            </div>
-            <div className="mt-0.5 text-xs text-slate-600">NLĐ</div>
-          </div>
-        </div>
+          </>
+        ) : null}
 
         <div className="h-3" />
       </div>
@@ -1198,6 +1635,67 @@ export default function App() {
   // ---------------------------
   // Render
   // ---------------------------
+  if (loading) {
+    return <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-500">Đang tải...</div>;
+  }
+
+  if (!user) {
+    return (
+      <Suspense fallback={<LazyFallback />}>
+        <AuthScreen />
+      </Suspense>
+    );
+  }
+
+  if (systemAdmin) {
+    return (
+      <div className="min-h-screen bg-sky-50 text-slate-900">
+        <div className="sticky top-0 z-40 bg-gradient-to-b from-sky-50 to-sky-50/80 backdrop-blur">
+          <div className="mx-auto w-full max-w-md px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-slate-500">Quản trị hệ thống</div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <div className="truncate text-lg font-semibold text-slate-900">Tài khoản và tòa nhà</div>
+                  <Pill icon={ShieldCheck} text="Admin" tone="violet" />
+                </div>
+              </div>
+              <button
+                className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-sky-100"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+        </div>
+        <Suspense fallback={<LazyFallback />}>
+          <AdminBuildingsView
+            buildings={buildings}
+            users={buildingUsers}
+            authSettings={authSettings}
+            selectedBuildingId={selectedBuildingId}
+            setSelectedBuildingId={setSelectedBuildingId}
+            members={buildingMembers}
+            actions={{
+              createBuilding,
+              updateBuilding,
+              deleteBuilding,
+              createUser: createAdminUser,
+              updateUser: updateAdminUser,
+              deleteUser: deleteAdminUser,
+              updateAuthSettings: updateAuthApprovalSetting,
+              addMember: addBuildingMember,
+              updateMember: updateBuildingMember,
+              deleteMember: deleteBuildingMember,
+            }}
+          />
+        </Suspense>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {Header}
@@ -1250,11 +1748,42 @@ export default function App() {
           />
         ) : null}
         {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
+        {tab === "buildings" ? (
+          <BuildingsHome buildings={buildings} selectedBuildingId={selectedBuildingId} setSelectedBuildingId={setSelectedBuildingId} setTab={setTab} user={user} />
+        ) : null}
+        {tab === "admin" && systemAdmin ? (
+          <AdminBuildingsView
+            buildings={buildings}
+            users={buildingUsers}
+            authSettings={authSettings}
+            selectedBuildingId={selectedBuildingId}
+            setSelectedBuildingId={setSelectedBuildingId}
+            members={buildingMembers}
+            actions={{
+              createBuilding,
+              updateBuilding,
+              deleteBuilding,
+              createUser: createAdminUser,
+              updateUser: updateAdminUser,
+              deleteUser: deleteAdminUser,
+              updateAuthSettings: updateAuthApprovalSetting,
+              addMember: addBuildingMember,
+              updateMember: updateBuildingMember,
+              deleteMember: deleteBuildingMember,
+            }}
+          />
+        ) : null}
       </Suspense>
       {/* bottom nav */}
       <div className="fixed inset-x-0 bottom-0 z-40">
         <div className="mx-auto w-full max-w-md px-4 pb-4">
-          <div className="grid grid-cols-4 overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-slate-200">
+          <div className="grid grid-cols-5 overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-slate-200">
+            <TabButton
+              icon={Building2}
+              label="Tòa nhà"
+              active={tab === "admin" || tab === "buildings"}
+              onClick={() => setTab(systemAdmin ? "admin" : "buildings")}
+            />
             <TabButton
               icon={Home}
               label="KTX"
@@ -1601,8 +2130,8 @@ export default function App() {
           <LoginModal
             open={loginModal}
             onClose={() => setLoginModal(false)}
-            loginEmail={loginEmail}
-            setLoginEmail={setLoginEmail}
+            loginUsername={loginUsername}
+            setLoginUsername={setLoginUsername}
             loginPassword={loginPassword}
             setLoginPassword={setLoginPassword}
             authIsAdmin={auth.isAdmin}
@@ -1677,13 +2206,17 @@ export default function App() {
               });
             }}
             onConfirm={async () => {
-              if (deletePass !== state.settings.adminPassword) {
-                alert("Mật khẩu không đúng.");
+              const identity = auth.user?.username;
+              if (!identity) {
+                alert("Tài khoản đăng nhập chưa có username.");
                 return;
               }
-
               try {
+                await authService.login(identity, deletePass);
                 await deletePassModal.onDelete?.();
+              } catch (e) {
+                alert("Mật khẩu đăng nhập không đúng.");
+                return;
               } finally {
                 setDeletePass("");
                 setDeletePassModal({

@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const pb = require("../config/pocketbase");
 
 function normalizeGender(value) {
   if (value == null) return null;
@@ -10,84 +10,64 @@ function normalizeGender(value) {
 }
 
 const roomController = {
-  getAll: async (req, res) => {
+  getAll: async (_req, res) => {
     try {
-      const { rows } = await db.query("SELECT * FROM rooms ORDER BY sort ASC");
-      res.json(rows);
+      const rows = await pb.list("rooms", { sort: "+sort" });
+      res.json(rows.map((r) => ({ ...r, gender: r.gender || null })));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
   getById: async (req, res) => {
     try {
-      const { id } = req.params;
-      const { rows } = await db.query("SELECT * FROM rooms WHERE id = $1", [
-        id,
-      ]);
-      if (rows.length === 0)
-        return res.status(404).json({ error: "Not found" });
-      res.json(rows[0]);
+      const row = await pb.request("rooms", `/${req.params.id}`);
+      res.json({ ...row, gender: row.gender || null });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.status === 404 ? "Not found" : err.message });
     }
   },
 
   create: async (req, res) => {
     try {
       const { floor_id, code, sort } = req.body;
-      const { rows } = await db.query(
-        "INSERT INTO rooms (floor_id, code, sort) VALUES ($1, $2, $3) RETURNING *",
-        [floor_id, code, sort],
-      );
-      res.status(201).json(rows[0]);
+      const row = await pb.request("rooms", "", {
+        method: "POST",
+        body: JSON.stringify({ floor_id, code, sort: Number(sort || 0) }),
+      });
+      res.status(201).json(row);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
   update: async (req, res) => {
     try {
-      const { id } = req.params;
       const fields = { ...req.body };
       if (Object.prototype.hasOwnProperty.call(fields, "gender")) {
         const g = normalizeGender(fields.gender);
         if (g === "__invalid__") {
-          return res.status(400).json({
-            error: 'gender không hợp lệ. Chỉ nhận: "male", "female" hoặc null.',
-          });
+          return res.status(400).json({ error: 'gender không hợp lệ. Chỉ nhận: "male", "female" hoặc null.' });
         }
         fields.gender = g;
       }
-      const keys = Object.keys(fields);
-      if (keys.length === 0)
-        return res.status(400).json({ error: "No fields to update" });
-
-      const setClause = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
-      const values = [id, ...Object.values(fields)];
-
-      const { rows } = await db.query(
-        `UPDATE rooms SET ${setClause} WHERE id = $1 RETURNING *`,
-        values,
-      );
-      if (rows.length === 0)
-        return res.status(404).json({ error: "Not found" });
-      res.json(rows[0]);
+      if (Object.keys(fields).length === 0) return res.status(400).json({ error: "No fields to update" });
+      const row = await pb.request("rooms", `/${req.params.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(fields),
+      });
+      res.json({ ...row, gender: row.gender || null });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.status === 404 ? "Not found" : err.message });
     }
   },
 
   delete: async (req, res) => {
     try {
-      const { id } = req.params;
-      const { rowCount } = await db.query("DELETE FROM rooms WHERE id = $1", [
-        id,
-      ]);
-      if (rowCount === 0) return res.status(404).json({ error: "Not found" });
+      await pb.request("rooms", `/${req.params.id}`, { method: "DELETE" });
       res.json({ message: "Deleted successfully" });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 };

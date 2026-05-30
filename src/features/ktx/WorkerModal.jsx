@@ -69,7 +69,7 @@ export default function WorkerModal({
 
   return (
     <>
-      <Modal open={open} title={title} onClose={onClose}>
+      <Modal open={open} title={title} onClose={onClose} zIndex="z-[70]">
         {!worker ? (
           <div className="text-sm text-slate-600">Không tìm thấy NLĐ.</div>
         ) : (

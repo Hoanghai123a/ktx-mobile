@@ -1,7 +1,6 @@
 export const DEFAULT_SETTINGS = {
   siteName: "KTX",
   roomGridCols: 3,
-  adminPassword: "123456",
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
   about: {

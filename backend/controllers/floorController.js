@@ -1,35 +1,34 @@
-const db = require("../config/db");
+const pb = require("../config/pocketbase");
 
 const floorController = {
-  getAll: async (req, res) => {
+  getAll: async (_req, res) => {
     try {
-      const { rows } = await db.query("SELECT * FROM floors ORDER BY sort ASC");
+      const rows = await pb.list("floors", { sort: "+sort" });
       res.json(rows);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
   create: async (req, res) => {
     try {
       const { name, sort } = req.body;
-      const { rows } = await db.query(
-        "INSERT INTO floors (name, sort) VALUES ($1, $2) RETURNING *",
-        [name, sort]
-      );
-      res.status(201).json(rows[0]);
+      const row = await pb.request("floors", "", {
+        method: "POST",
+        body: JSON.stringify({ name, sort: Number(sort || 0) }),
+      });
+      res.status(201).json(row);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
   delete: async (req, res) => {
     try {
-      const { id } = req.params;
-      await db.query("DELETE FROM floors WHERE id = $1", [id]);
+      await pb.request("floors", `/${req.params.id}`, { method: "DELETE" });
       res.json({ message: "Deleted successfully" });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 };

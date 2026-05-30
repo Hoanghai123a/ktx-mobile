@@ -1,21 +1,73 @@
-const db = require("../config/db");
+const pb = require("../config/pocketbase");
+
+const DEFAULT_SETTINGS = {
+  siteName: "KTX",
+  roomGridCols: 3,
+  canDeleteStructure: false,
+  requirePasswordOnDelete: true,
+  electricityPrice: 0,
+  billingMonth: "",
+  about: {
+    companyName: "Ký túc xá",
+    address: "",
+    hotline: "0343.751.753",
+    email: "",
+    website: "",
+    mapUrl: "",
+    workingHours: "",
+    services: [],
+    rules: "",
+    bankInfo: "",
+    description: "",
+    adminNotice: "",
+  },
+};
+
+function fromRecord(row) {
+  if (!row) return DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    siteName: row.site_name ?? DEFAULT_SETTINGS.siteName,
+    roomGridCols: row.room_grid_cols ?? DEFAULT_SETTINGS.roomGridCols,
+    canDeleteStructure: !!row.can_delete_structure,
+    requirePasswordOnDelete: row.require_password_on_delete !== false,
+    electricityPrice: row.electricity_price ?? 0,
+    billingMonth: row.billing_month || "",
+    about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
+  };
+}
+
+function toRecord(data) {
+  return {
+    key: "default",
+    site_name: data.siteName,
+    room_grid_cols: Number(data.roomGridCols || 3),
+    can_delete_structure: !!data.canDeleteStructure,
+    require_password_on_delete: !!data.requirePasswordOnDelete,
+    electricity_price: Number(data.electricityPrice || 0),
+    billing_month: data.billingMonth || "",
+    about: data.about || {},
+  };
+}
+
+async function getSettingsRecord() {
+  return await pb.first("app_settings", { filter: pb.eq("key", "default") });
+}
 
 const settingsController = {
-  get: async (req, res) => {
+  get: async (_req, res) => {
     try {
-      const { rows } = await db.query(
-        "SELECT data FROM app_settings WHERE id = 1",
-      );
-      if (rows.length === 0) {
-        const ins = await db.query(
-          "INSERT INTO app_settings (id, data) VALUES (1, $1) RETURNING data",
-          [{}],
-        );
-        return res.json(ins.rows[0]?.data || {});
+      const row = await getSettingsRecord();
+      if (!row) {
+        const created = await pb.request("app_settings", "", {
+          method: "POST",
+          body: JSON.stringify(toRecord(DEFAULT_SETTINGS)),
+        });
+        return res.json(fromRecord(created));
       }
-      res.json(rows[0]?.data || {});
+      res.json(fromRecord(row));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
@@ -25,21 +77,16 @@ const settingsController = {
       if (!data || typeof data !== "object" || Array.isArray(data)) {
         return res.status(400).json({ error: "Dữ liệu settings không hợp lệ" });
       }
-
-      const { rows } = await db.query(
-        `INSERT INTO app_settings (id, data)
-         VALUES (1, $1)
-         ON CONFLICT (id) DO UPDATE
-         SET data = EXCLUDED.data, updated_at = now()
-         RETURNING data`,
-        [data],
-      );
-      res.json(rows[0]?.data || {});
+      const payload = toRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) } });
+      const current = await getSettingsRecord();
+      const row = current
+        ? await pb.request("app_settings", `/${current.id}`, { method: "PATCH", body: JSON.stringify(payload) })
+        : await pb.request("app_settings", "", { method: "POST", body: JSON.stringify(payload) });
+      res.json(fromRecord(row));
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 };
 
 module.exports = settingsController;
-

@@ -1,181 +1,140 @@
-const db = require("../config/db");
+const pb = require("../config/pocketbase");
+
+function stayOut(s) {
+  return {
+    id: s.id,
+    workerId: s.worker_id,
+    roomId: s.room_id,
+    dateIn: pb.dateOnly(s.date_in),
+    dateOut: pb.dateOnly(s.date_out),
+  };
+}
+
+function workerOut(w) {
+  return {
+    id: w.id,
+    employeeCode: w.employee_code || "",
+    fullName: w.full_name,
+    hometown: w.hometown || "",
+    recruiter: w.recruiter || "",
+    dob: pb.dateOnly(w.dob) || "",
+    phone: w.phone || "",
+    note: w.note || "",
+  };
+}
+
+async function deleteAll(collection) {
+  const rows = await pb.list(collection, { sort: "-created" });
+  for (const row of rows) {
+    await pb.request(collection, `/${row.id}`, { method: "DELETE" });
+  }
+}
 
 const dataController = {
-  loadAll: async (req, res) => {
+  loadAll: async (_req, res) => {
     try {
-      // 1. Lấy tất cả tầng
-      const floorsRes = await db.query(
-        "SELECT * FROM floors ORDER BY sort ASC",
-      );
-      const floorsData = floorsRes.rows;
+      const [floorsData, roomsData, workersData, staysData, elecData] = await Promise.all([
+        pb.list("floors", { sort: "+sort" }),
+        pb.list("rooms", { sort: "+sort" }),
+        pb.list("workers", { sort: "+employee_code,+full_name" }),
+        pb.list("stays", { sort: "-date_in" }),
+        pb.list("electricities", { sort: "-month" }),
+      ]);
 
-      // 2. Lấy tất cả phòng
-      const roomsRes = await db.query(
-        "SELECT id, floor_id, code, sort, gender FROM rooms ORDER BY sort ASC",
-      );
-      const roomsData = roomsRes.rows;
+      const staysByRoom = new Map();
+      for (const s of staysData) {
+        if (!staysByRoom.has(s.room_id)) staysByRoom.set(s.room_id, []);
+        staysByRoom.get(s.room_id).push(stayOut(s));
+      }
 
-      // 3. Lấy tất cả NLĐ
-      const workersRes = await db.query(
-        "SELECT * FROM workers ORDER BY employee_code NULLS LAST, full_name ASC",
-      );
-      const workersData = workersRes.rows;
+      const elecByRoom = new Map();
+      for (const e of elecData) {
+        if (!elecByRoom.has(e.room_id)) elecByRoom.set(e.room_id, []);
+        elecByRoom.get(e.room_id).push(e);
+      }
 
-      // 4. Lấy tất cả lượt ở (stays)
-      const staysRes = await db.query(
-        "SELECT * FROM stays ORDER BY date_in DESC",
-      );
-      const staysData = staysRes.rows;
-
-      // 5. Lấy tất cả bản ghi điện (electricities)
-      const elecRes = await db.query(
-        "SELECT * FROM electricities ORDER BY month DESC",
-      );
-      const elecData = elecRes.rows;
-
-      // Tổ chức lại dữ liệu theo cấu trúc App.jsx mong đợi
       const roomsByFloor = new Map();
-      roomsData.forEach((r) => {
+      for (const r of roomsData) {
         if (!roomsByFloor.has(r.floor_id)) roomsByFloor.set(r.floor_id, []);
-        const roomObj = {
+        roomsByFloor.get(r.floor_id).push({
           id: r.id,
           code: r.code,
           sort: r.sort,
-          gender: r.gender || null, // Ensure gender is at least null so it's sent in JSON
-          stays: staysData
-            .filter((s) => s.room_id === r.id)
-            .map((s) => ({
-              id: s.id,
-              workerId: s.worker_id,
-              roomId: s.room_id,
-              dateIn: s.date_in,
-              dateOut: s.date_out,
-            })),
-          electricity: elecData.filter((e) => e.room_id === r.id),
-        };
-        roomsByFloor.get(r.floor_id).push(roomObj);
-      });
+          gender: r.gender || null,
+          stays: staysByRoom.get(r.id) || [],
+          electricity: elecByRoom.get(r.id) || [],
+        });
+      }
 
-      const formattedFloors = floorsData.map((f) => {
-        const rooms = roomsByFloor.get(f.id) || [];
-        return {
-          id: f.id,
-          name: f.name,
-          sort: f.sort,
-          rooms,
-        };
-      });
-
-      const formattedWorkers = workersData.map((w) => ({
-        id: w.id,
-        employeeCode: w.employee_code || "",
-        fullName: w.full_name,
-        hometown: w.hometown || "",
-        recruiter: w.recruiter || "",
-        dob: w.dob || "",
-        phone: w.phone || "",
-        note: w.note || "",
+      const floors = floorsData.map((f) => ({
+        id: f.id,
+        name: f.name,
+        sort: f.sort,
+        rooms: roomsByFloor.get(f.id) || [],
       }));
 
-      res.json({
-        floors: formattedFloors,
-        workers: formattedWorkers,
-      });
+      res.json({ floors, workers: workersData.map(workerOut) });
     } catch (err) {
-      console.error("Load all error:", err);
-      res.status(500).json({ error: err.message });
+      console.error("Load all PocketBase error:", err);
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
   initKtx: async (req, res) => {
     try {
-      const { floors, roomsPerFloor, startNo } = req.body;
-      const F = Number(floors);
-      const R = Number(roomsPerFloor);
-      const S = Number(startNo);
+      const F = Number(req.body.floors);
+      const R = Number(req.body.roomsPerFloor);
+      const S = Number(req.body.startNo);
 
-      console.log(
-        `🏗️ Bắt đầu khởi tạo KTX: ${F} tầng, ${R} phòng/tầng, bắt đầu từ ${S}`,
-      );
+      if (!Number.isInteger(F) || F <= 0 || F > 100) return res.status(400).json({ error: "Số tầng không hợp lệ (1-100)." });
+      if (!Number.isInteger(R) || R <= 0 || R > 300) return res.status(400).json({ error: "Số phòng/tầng không hợp lệ (1-300)." });
+      if (!Number.isInteger(S) || S <= 0) return res.status(400).json({ error: "Số bắt đầu không hợp lệ." });
 
-      if (!Number.isInteger(F) || F <= 0 || F > 100)
-        return res.status(400).json({ error: "Số tầng không hợp lệ (1-100)." });
-      if (!Number.isInteger(R) || R <= 0 || R > 300)
-        return res
-          .status(400)
-          .json({ error: "Số phòng/tầng không hợp lệ (1-300)." });
-      if (!Number.isInteger(S) || S <= 0)
-        return res.status(400).json({ error: "Số bắt đầu không hợp lệ." });
+      const existing = await pb.first("floors");
+      if (existing) return res.status(400).json({ error: "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại." });
 
-      // Kiểm tra xem đã có dữ liệu chưa
-      const checkRes = await db.query("SELECT id FROM floors LIMIT 1");
-      if (checkRes.rowCount > 0) {
-        return res.status(400).json({
-          error: "KTX đã có tầng/phòng. Hãy Reset DB trước khi khởi tạo lại.",
+      for (let i = 0; i < F; i++) {
+        const floor = await pb.request("floors", "", {
+          method: "POST",
+          body: JSON.stringify({ name: `Tầng ${i + 1}`, sort: i + 1 }),
         });
-      }
-
-      await db.query("BEGIN");
-
-      // Tạo các tầng
-      const floorIds = [];
-      for (let i = 0; i < F; i++) {
-        const name = `Tầng ${i + 1}`;
-        const sort = i + 1;
-        const insFloor = await db.query(
-          "INSERT INTO floors (name, sort) VALUES ($1, $2) RETURNING id",
-          [name, sort],
-        );
-        floorIds.push(insFloor.rows[0].id);
-      }
-      console.log(`✅ Đã tạo ${F} tầng.`);
-
-      // Tạo các phòng
-      let roomCount = 0;
-      for (let i = 0; i < F; i++) {
-        const floorId = floorIds[i];
         for (let j = 0; j < R; j++) {
-          const code = String(S + i * R + j);
-          const sort = j + 1;
-          await db.query(
-            "INSERT INTO rooms (floor_id, code, sort) VALUES ($1, $2, $3)",
-            [floorId, code, sort],
-          );
-          roomCount++;
+          await pb.request("rooms", "", {
+            method: "POST",
+            body: JSON.stringify({ floor_id: floor.id, code: String(S + i * R + j), sort: j + 1 }),
+          });
         }
       }
-      console.log(`✅ Đã tạo ${roomCount} phòng.`);
 
-      await db.query("COMMIT");
-      console.log("🎉 Khởi tạo cấu trúc KTX hoàn tất!");
       res.json({ message: "Initialized successfully" });
     } catch (err) {
-      await db.query("ROLLBACK");
-      console.error("❌ Lỗi Init KTX:", err.message);
-      res.status(500).json({ error: err.message });
+      console.error("Init KTX PocketBase error:", err);
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 
-  wipeDatabase: async (req, res) => {
+  wipeDatabase: async (_req, res) => {
     try {
-      console.log("🧹 Đang xóa sạch dữ liệu database...");
-      await db.query("BEGIN");
-      // Xóa theo thứ tự để tránh lỗi khóa ngoại (Foreign Key)
-      await db.query("DELETE FROM general_notes");
-      await db.query("DELETE FROM payments");
-      await db.query("DELETE FROM water_records");
-      await db.query("DELETE FROM electricities");
-      await db.query("DELETE FROM stays");
-      await db.query("DELETE FROM workers");
-      await db.query("DELETE FROM rooms");
-      await db.query("DELETE FROM floors");
-      await db.query("COMMIT");
-      console.log("✅ Đã xóa sạch dữ liệu.");
+      for (const collection of [
+        "general_notes",
+        "payments",
+        "water_records",
+        "electricities",
+        "stays",
+        "workers",
+        "rooms",
+        "floors",
+      ]) {
+        try {
+          await deleteAll(collection);
+        } catch (err) {
+          if (err.status !== 404) throw err;
+        }
+      }
       res.json({ message: "Database wiped successfully" });
     } catch (err) {
-      await db.query("ROLLBACK");
-      console.error("❌ Lỗi Reset Database:", err.message);
-      res.status(500).json({ error: err.message });
+      console.error("Wipe PocketBase error:", err);
+      res.status(err.status || 500).json({ error: err.message });
     }
   },
 };

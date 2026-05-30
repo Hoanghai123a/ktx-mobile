@@ -7,6 +7,7 @@ import authService from "./authService.js";
 import dataLoader from "./dataLoader.js";
 import noteService from "./noteService.js";
 import electricityService from "./electricityService.js";
+import buildingService from "./buildingService.js";
 
 export {
   workerService,
@@ -18,4 +19,5 @@ export {
   dataLoader,
   noteService,
   electricityService,
+  buildingService,
 };

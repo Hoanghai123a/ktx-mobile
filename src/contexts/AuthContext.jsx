@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import api from "../api";
 
 const AuthContext = createContext();
@@ -9,32 +9,44 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Khởi tạo thông tin người dùng từ token nếu có
+    let cancelled = false;
     const storedToken = api.getToken();
-    if (storedToken) {
-      setToken(storedToken);
-      // Giả sử có endpoint /me để lấy thông tin user
-      // api.get("/me/", storedToken)
-      //   .then(res => setUser(res))
-      //   .catch(() => {
-      //     api.removeToken();
-      //     setToken(null);
-      //   })
-      //   .finally(() => setLoading(false));
-      
-      // Tạm thời set loading false nếu chưa có /me
+    if (!storedToken) {
       setLoading(false);
-    } else {
-      setLoading(false);
+      return () => {
+        cancelled = true;
+      };
     }
+
+    setToken(storedToken);
+    api
+      .get("/me/", storedToken)
+      .then((res) => {
+        if (!cancelled) setUser(res);
+      })
+      .catch(() => {
+        api.removeToken();
+        if (!cancelled) {
+          setToken(null);
+          setUser(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = (userData) => {
-    setUser(userData);
+    const nextUser = userData?.data || userData || null;
+    setUser(nextUser);
     if (userData?.access_token) {
       setToken(userData.access_token);
       api.saveToken(userData.access_token);
-      api.setCookie("token", userData.access_token, userData.expires_in || 3600);
+      api.setCookie("token", userData.access_token, userData.expires_in || 604800);
     }
   };
 
@@ -43,6 +55,7 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
     api.removeToken();
     api.removeCookie("token");
+    localStorage.removeItem("ktx_current_building_id");
   };
 
   return (
