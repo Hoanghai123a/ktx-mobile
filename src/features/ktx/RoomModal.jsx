@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { message } from "antd";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
@@ -14,9 +14,19 @@ import {
   Edit,
   Mars,
   Venus,
+  Upload,
+  Camera,
+  ScanLine,
 } from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
+import { formatDate } from "../../services/dateFormat";
+import {
+  decodeQrFromCanvas,
+  decodeQrFromImageFile,
+  parseWorkerQr,
+  workerGenderLabel,
+} from "../../services/qrWorkerParser";
 
 export default function RoomModal({
   open,
@@ -50,12 +60,23 @@ export default function RoomModal({
 
   const [employeeCode, setEmployeeCode] = useState("");
   const [fullName, setFullName] = useState("");
+  const [workerGender, setWorkerGender] = useState("");
+  const [identityNumber, setIdentityNumber] = useState("");
   const [dob, setDob] = useState("");
   const [hometown, setHometown] = useState("");
   const [phone, setPhone] = useState("");
   const [recruiter, setRecruiter] = useState("");
+  const [electricityFee, setElectricityFee] = useState(0);
+  const [waterFee, setWaterFee] = useState(0);
   const [note, setNote] = useState("");
   const [dateIn, setDateIn] = useState(todayISO());
+  const [qrBusy, setQrBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const scanTimerRef = useRef(null);
 
   const [errors, setErrors] = useState({});
   const [checkOutCtx, setCheckOutCtx] = useState({
@@ -70,10 +91,14 @@ export default function RoomModal({
     setPickerQuery("");
     setEmployeeCode("");
     setFullName("");
+    setWorkerGender("");
+    setIdentityNumber("");
     setDob("");
     setHometown("");
     setPhone("");
     setRecruiter("");
+    setElectricityFee(0);
+    setWaterFee(0);
     setNote("");
     setDateIn(todayISO());
     setErrors({});
@@ -92,6 +117,95 @@ export default function RoomModal({
   }, [room]);
 
   const recentDepartures = useMemo(() => history.slice(0, 5), [history]);
+
+  const applyQrPayload = (payload) => {
+    if (!payload) return false;
+    if (payload.fullName) setFullName(payload.fullName);
+    if (payload.gender) setWorkerGender(payload.gender);
+    if (payload.dob) setDob(payload.dob);
+    if (payload.identityNumber) setIdentityNumber(payload.identityNumber);
+    if (payload.hometown) setHometown(payload.hometown);
+    setErrors({});
+    return !!(
+      payload.fullName ||
+      payload.gender ||
+      payload.dob ||
+      payload.identityNumber ||
+      payload.hometown
+    );
+  };
+
+  const applyQrText = (text) => {
+    const payload = parseWorkerQr(text);
+    if (!applyQrPayload(payload)) {
+      message.warning("Không đọc được thông tin NLĐ từ mã QR.");
+      return false;
+    }
+    message.success("Đã điền thông tin từ mã QR.");
+    return true;
+  };
+
+  const stopCamera = () => {
+    if (scanTimerRef.current) window.clearTimeout(scanTimerRef.current);
+    scanTimerRef.current = null;
+    streamRef.current?.getTracks?.().forEach((track) => track.stop());
+    streamRef.current = null;
+  };
+
+  const scanCameraFrame = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!cameraOpen || !video || !canvas) return;
+    if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const text = decodeQrFromCanvas(canvas);
+      if (text && applyQrText(text)) {
+        setCameraOpen(false);
+        stopCamera();
+        return;
+      }
+    }
+    scanTimerRef.current = window.setTimeout(scanCameraFrame, 250);
+  };
+
+  useEffect(() => {
+    if (!cameraOpen) {
+      stopCamera();
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        scanCameraFrame();
+      } catch {
+        message.error("Không mở được camera. Hãy kiểm tra quyền truy cập camera.");
+        setCameraOpen(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraOpen]);
 
   // title shown in modal header; include both label and code for clarity
   const title = room ? `Chi tiết phòng ${room.code}` : "Chi tiết phòng";
@@ -238,7 +352,10 @@ export default function RoomModal({
                             : w?.fullName || w?.name || s.workerId}
                         </div>
                         <div className="text-xs text-slate-600">
-                          Vào: {s.dateIn ? String(s.dateIn).slice(0, 10) : "-"}
+                          Vào: {formatDate(s.dateIn)}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Điện: {Number(w?.electricityFee || 0).toLocaleString("vi-VN")}đ · Nước: {Number(w?.waterFee || 0).toLocaleString("vi-VN")}đ
                         </div>
                       </button>
 
@@ -313,7 +430,7 @@ export default function RoomModal({
                           </div>
                         </div>
                         <div className="shrink-0 text-xs font-semibold text-slate-600">
-                          {s.dateOut ? String(s.dateOut).slice(0, 10) : "?"}
+                          {formatDate(s.dateOut, "?")}
                         </div>
                       </div>
                     );
@@ -364,6 +481,52 @@ export default function RoomModal({
               ) : null}
             </div>
             <div className="mt-2 space-y-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  setQrBusy(true);
+                  try {
+                    const text = await decodeQrFromImageFile(file);
+                    if (!text) {
+                      message.warning("Không tìm thấy mã QR trong ảnh.");
+                      return;
+                    }
+                    applyQrText(text);
+                  } catch {
+                    message.error("Không đọc được ảnh QR.");
+                  } finally {
+                    setQrBusy(false);
+                  }
+                }}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm disabled:opacity-60"
+                  disabled={!auth?.isAdmin || qrBusy}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Upload className="h-4 w-4" />
+                    Tải ảnh QR
+                  </span>
+                </button>
+                <button
+                  className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 shadow-sm disabled:opacity-60"
+                  disabled={!auth?.isAdmin || qrBusy}
+                  onClick={() => setCameraOpen(true)}
+                >
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Camera className="h-4 w-4" />
+                    Quét camera
+                  </span>
+                </button>
+              </div>
               <TextField
                 label="Mã nhân viên"
                 value={employeeCode}
@@ -380,6 +543,28 @@ export default function RoomModal({
                 error={errors.fullName}
                 disabled={!auth?.isAdmin}
               />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block space-y-1">
+                  <div className="text-xs font-medium text-slate-600">Giới tính</div>
+                  <select
+                    value={workerGender}
+                    onChange={(e) => setWorkerGender(e.target.value)}
+                    disabled={!auth?.isAdmin}
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400 disabled:opacity-60"
+                  >
+                    <option value="">Chưa chọn</option>
+                    <option value="male">Nam</option>
+                    <option value="female">Nữ</option>
+                  </select>
+                </label>
+                <TextField
+                  label="Số CCCD"
+                  value={identityNumber}
+                  onChange={(v) => setIdentityNumber(String(v || "").replace(/\D/g, ""))}
+                  placeholder="12 số"
+                  disabled={!auth?.isAdmin}
+                />
+              </div>
               <TextField
                 label="Ngày sinh"
                 value={dob}
@@ -408,6 +593,24 @@ export default function RoomModal({
                 placeholder="VD: Lan HRP"
                 disabled={!auth?.isAdmin}
               />
+              <div className="grid grid-cols-2 gap-2">
+                <TextField
+                  label="Tiền điện"
+                  value={electricityFee}
+                  onChange={(v) => setElectricityFee(v)}
+                  type="number"
+                  placeholder="0"
+                  disabled={!auth?.isAdmin}
+                />
+                <TextField
+                  label="Tiền nước"
+                  value={waterFee}
+                  onChange={(v) => setWaterFee(v)}
+                  type="number"
+                  placeholder="0"
+                  disabled={!auth?.isAdmin}
+                />
+              </div>
               <TextField
                 label="Ghi chú"
                 value={note}
@@ -477,9 +680,13 @@ export default function RoomModal({
                           patch: {
                             employeeCode: code,
                             fullName: name,
+                            gender: workerGender || "",
+                            identityNumber: identityNumber || "",
                             dob: dob || null,
                             hometown: hometown || "",
                             recruiter: recruiter || "",
+                            electricityFee: Number(electricityFee || 0),
+                            waterFee: Number(waterFee || 0),
                             phone: phone || "",
                             note: note || "",
                           },
@@ -490,9 +697,13 @@ export default function RoomModal({
                       const w = await actions.addWorker({
                         employeeCode: code,
                         fullName: name,
+                        gender: workerGender || "",
+                        identityNumber: identityNumber.trim(),
                         hometown: hometown.trim(),
                         phone: phone.trim(),
                         recruiter: recruiter.trim(),
+                        electricityFee: Number(electricityFee || 0),
+                        waterFee: Number(waterFee || 0),
                         dob,
                         note: note.trim(),
                       });
@@ -529,6 +740,37 @@ export default function RoomModal({
               Làm mới
             </button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={cameraOpen}
+        title="Quét mã QR"
+        onClose={() => setCameraOpen(false)}
+        zIndex="z-[80]"
+      >
+        <div className="space-y-3">
+          <div className="overflow-hidden rounded-3xl bg-slate-900 ring-1 ring-slate-200">
+            <video
+              ref={videoRef}
+              className="aspect-[3/4] w-full object-cover"
+              playsInline
+              muted
+            />
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+          <div className="rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <span className="inline-flex items-center gap-2">
+              <ScanLine className="h-4 w-4" />
+              Đưa mã QR CCCD vào giữa khung hình.
+            </span>
+          </div>
+          <button
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+            onClick={() => setCameraOpen(false)}
+          >
+            Đóng camera
+          </button>
         </div>
       </Modal>
 
@@ -698,10 +940,14 @@ export default function RoomModal({
                     setSelectedWorkerId(w.id);
                     setEmployeeCode(String(w.employeeCode || "").toUpperCase());
                     setFullName(w.fullName || "");
+                    setWorkerGender(w.gender || "");
+                    setIdentityNumber(w.identityNumber || w.identity_number || "");
                     setDob(w.dob || "");
                     setHometown(w.hometown || "");
                     setPhone(w.phone || "");
                     setRecruiter(w.recruiter || "");
+                    setElectricityFee(Number(w.electricityFee || w.electricity_fee || 0));
+                    setWaterFee(Number(w.waterFee || w.water_fee || 0));
                     setNote(w.note || "");
                     setErrors({});
                     setPickerOpen(false);
@@ -716,6 +962,12 @@ export default function RoomModal({
                       </div>
                       <div className="text-xs text-slate-600">
                         {w.phone || "-"}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {workerGenderLabel(w.gender) || "Chưa có giới tính"}
+                        {w.identityNumber || w.identity_number
+                          ? ` · CCCD ${w.identityNumber || w.identity_number}`
+                          : ""}
                       </div>
                     </div>
                     {occupiedWorkerIds?.has(w.id) ? (

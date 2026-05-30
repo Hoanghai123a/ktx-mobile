@@ -3,6 +3,7 @@ import {
   FileDown,
   Plus,
   Trash2,
+  Building2,
   DoorClosed,
   DoorOpen,
   Mars,
@@ -34,6 +35,7 @@ export default function KtxView({
   setAddRoomModal,
   setLoginModal,
   setAddFloorModal,
+  setTab,
 
   guardDelete,
   deleteFloor,
@@ -44,6 +46,30 @@ export default function KtxView({
   }, [state.floors, floorId]);
 
   const cols = Math.min(4, Math.max(2, state?.settings?.roomGridCols || 3));
+
+  if (!auth?.building) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 pb-24">
+        <div className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-slate-100">
+          <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-slate-100">
+            <Building2 className="h-6 w-6 text-slate-500" />
+          </div>
+          <div className="text-lg font-semibold text-slate-900">
+            Chưa chọn tòa nhà
+          </div>
+          <div className="mt-1 text-sm text-slate-600">
+            Thông tin KTX chỉ hiển thị theo tòa nhà bạn đã chọn trước đó.
+          </div>
+          <button
+            className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+            onClick={() => setTab?.(auth?.systemAdmin ? "admin" : "buildings")}
+          >
+            Chọn tòa nhà
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!state?.floors?.length) {
     return (

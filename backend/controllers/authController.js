@@ -25,7 +25,7 @@ async function authWithPassword(username, password) {
 
   const record = payload?.record || {};
   if (record.role !== "admin" && record.approved === false) {
-    throw makeError(403, { error: "TÃ i khoáº£n Ä‘ang chá» admin phÃª duyá»‡t." });
+    throw makeError(403, { error: "Tài khoản đang chờ admin phê duyệt." });
   }
 
   return {
@@ -45,7 +45,7 @@ const authController = {
     try {
       const username = String(req.body?.username || "").trim();
       const password = String(req.body?.password || "");
-      if (!username || !password) return res.status(400).json({ error: "Nháº­p username vÃ  máº­t kháº©u." });
+      if (!username || !password) return res.status(400).json({ error: "Nhập username và mật khẩu." });
       res.json(await authWithPassword(username, password));
     } catch (err) {
       res.status(err.status || 500).json(err.data || { error: err.message });
@@ -58,7 +58,7 @@ const authController = {
       const password = String(req.body?.password || "");
       const name = String(req.body?.name || "").trim();
       const email = String(req.body?.email || (username.includes("@") ? username : `${username}@ktx.local`)).trim().toLowerCase();
-      if (!username || !password) return res.status(400).json({ error: "Nháº­p username vÃ  máº­t kháº©u." });
+      if (!username || !password) return res.status(400).json({ error: "Nhập username và mật khẩu." });
 
       const authSettings = await getAuthSettings();
       const approved = authSettings.require_approval === false;
@@ -79,7 +79,7 @@ const authController = {
       if (!approved) {
         return res.json({
           pending_approval: true,
-          message: "TÃ i khoáº£n Ä‘Ã£ Ä‘Æ°á»£c táº¡o vÃ  Ä‘ang chá» admin phÃª duyá»‡t.",
+          message: "Tài khoản đã được tạo và đang chờ admin phê duyệt.",
         });
       }
 

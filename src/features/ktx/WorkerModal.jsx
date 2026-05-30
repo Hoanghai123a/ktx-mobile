@@ -1,31 +1,33 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { message } from "antd";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Confirm from "../../components/ui/Confirm";
 import clsx from "../../components/ui/clsx";
-import { Save, Trash2, StickyNote } from "lucide-react";
+import { PhoneCall, Save, Trash2, StickyNote } from "lucide-react";
 import NoteList from "../../components/ui/NoteList";
+import { formatDate } from "../../services/dateFormat";
 
 export default function WorkerModal({
   open,
   onClose,
-
-  worker, // { id, fullName, phone, note }
-  stays, // list stays of worker (optional)
-  roomById, // Map(roomId -> room) optional
-
+  worker,
+  stays,
+  roomById,
   auth,
   requireAdmin,
-
-  actions, // { updateWorker, deleteWorker }
+  actions,
 }) {
   const [employeeCode, setEmployeeCode] = useState(worker?.employeeCode || "");
   const [fullName, setFullName] = useState(worker?.fullName || "");
+  const [workerGender, setWorkerGender] = useState(worker?.gender || "");
+  const [identityNumber, setIdentityNumber] = useState(worker?.identityNumber || "");
   const [dob, setDob] = useState(worker?.dob || "");
   const [hometown, setHometown] = useState(worker?.hometown || "");
   const [recruiter, setRecruiter] = useState(worker?.recruiter || "");
   const [phone, setPhone] = useState(worker?.phone || "");
+  const [electricityFee, setElectricityFee] = useState(worker?.electricityFee || 0);
+  const [waterFee, setWaterFee] = useState(worker?.waterFee || 0);
   const [note, setNote] = useState(worker?.note || "");
   const [confirmDel, setConfirmDel] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -33,26 +35,32 @@ export default function WorkerModal({
   useEffect(() => {
     setEmployeeCode(worker?.employeeCode || "");
     setFullName(worker?.fullName || "");
+    setWorkerGender(worker?.gender || "");
+    setIdentityNumber(worker?.identityNumber || "");
     setDob(worker?.dob || "");
     setHometown(worker?.hometown || "");
     setRecruiter(worker?.recruiter || "");
     setPhone(worker?.phone || "");
+    setElectricityFee(Number(worker?.electricityFee || 0));
+    setWaterFee(Number(worker?.waterFee || 0));
     setNote(worker?.note || "");
   }, [
     worker?.id,
     worker?.employeeCode,
     worker?.fullName,
+    worker?.gender,
+    worker?.identityNumber,
     worker?.dob,
     worker?.hometown,
     worker?.recruiter,
     worker?.phone,
+    worker?.electricityFee,
+    worker?.waterFee,
     worker?.note,
   ]);
 
   const title = worker
-    ? `${worker.employeeCode ? `${worker.employeeCode} - ` : ""}${
-        worker.fullName || "NLĐ"
-      }`
+    ? `${worker.employeeCode ? `${worker.employeeCode} - ` : ""}${worker.fullName || "NLĐ"}`
     : "NLĐ";
 
   const currentStay = useMemo(() => {
@@ -87,9 +95,7 @@ export default function WorkerModal({
                   </span>
                 </button>
               </div>
-              {showNotes && (
-                <NoteList targetId={worker.id} targetType="worker" />
-              )}
+              {showNotes ? <NoteList targetId={worker.id} targetType="worker" /> : null}
             </div>
 
             <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
@@ -99,9 +105,7 @@ export default function WorkerModal({
                 <TextField
                   label="Mã nhân viên"
                   value={employeeCode}
-                  onChange={(v) =>
-                    setEmployeeCode(String(v || "").toUpperCase())
-                  }
+                  onChange={(v) => setEmployeeCode(String(v || "").toUpperCase())}
                   placeholder="VD: NV001"
                   disabled={!auth?.isAdmin}
                 />
@@ -112,6 +116,28 @@ export default function WorkerModal({
                   placeholder="Nguyễn Văn A"
                   disabled={!auth?.isAdmin}
                 />
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block space-y-1">
+                    <div className="text-xs font-medium text-slate-600">Giới tính</div>
+                    <select
+                      value={workerGender}
+                      onChange={(e) => setWorkerGender(e.target.value)}
+                      disabled={!auth?.isAdmin}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400 disabled:opacity-60"
+                    >
+                      <option value="">Chưa chọn</option>
+                      <option value="male">Nam</option>
+                      <option value="female">Nữ</option>
+                    </select>
+                  </label>
+                  <TextField
+                    label="Số CCCD"
+                    value={identityNumber}
+                    onChange={(v) => setIdentityNumber(String(v || "").replace(/\D/g, ""))}
+                    placeholder="12 số"
+                    disabled={!auth?.isAdmin}
+                  />
+                </div>
                 <TextField
                   label="Ngày sinh"
                   value={dob}
@@ -133,29 +159,66 @@ export default function WorkerModal({
                   placeholder="Nguyễn Văn B"
                   disabled={!auth?.isAdmin}
                 />
-                <TextField
-                  label="SĐT"
-                  value={phone}
-                  onChange={setPhone}
-                  placeholder="09xxxxxxx"
-                  disabled={!auth?.isAdmin}
-                />
+                <label className="block space-y-1">
+                  <div className="text-xs font-medium text-slate-600">SĐT</div>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="09xxxxxxx"
+                      disabled={!auth?.isAdmin}
+                      className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-12 text-sm outline-none focus:border-slate-400 disabled:opacity-60"
+                    />
+                    <a
+                      href={phone ? `tel:${String(phone).replace(/[^0-9+]/g, "")}` : undefined}
+                      onClick={(e) => {
+                        if (!phone) e.preventDefault();
+                      }}
+                      className={clsx(
+                        "absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-xl transition",
+                        phone
+                          ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "bg-slate-100 text-slate-300 pointer-events-none",
+                      )}
+                      title="Gọi điện"
+                      aria-label="Gọi điện"
+                    >
+                      <PhoneCall className="h-4 w-4" />
+                    </a>
+                  </div>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <TextField
+                    label="Tiền điện"
+                    value={electricityFee}
+                    onChange={(v) => setElectricityFee(v)}
+                    type="number"
+                    placeholder="0"
+                    disabled={!auth?.isAdmin}
+                  />
+                  <TextField
+                    label="Tiền nước"
+                    value={waterFee}
+                    onChange={(v) => setWaterFee(v)}
+                    type="number"
+                    placeholder="0"
+                    disabled={!auth?.isAdmin}
+                  />
+                </div>
                 <TextField
                   label="Ghi chú"
                   value={note}
                   onChange={setNote}
                   placeholder="Ghi chú thêm về NLĐ"
                   disabled={!auth?.isAdmin}
-                />
-              </div>
+                />              </div>
 
               <div className="mt-3 flex gap-2">
                 <button
                   className={clsx(
                     "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold",
-                    auth?.isAdmin
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-600",
+                    auth?.isAdmin ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600",
                   )}
                   onClick={() =>
                     requireAdmin(async () => {
@@ -165,9 +228,7 @@ export default function WorkerModal({
                       }
                       const code = (employeeCode || "").trim().toUpperCase();
                       if (code && !/^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code)) {
-                        message.warning(
-                          "Mã nhân viên không hợp lệ. Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.",
-                        );
+                        message.warning("Mã nhân viên không hợp lệ. Chỉ cho phép A-Z, 0-9, _ và -, dài 2-32 ký tự.");
                         return;
                       }
                       const nextName = (fullName || "").trim();
@@ -175,12 +236,16 @@ export default function WorkerModal({
                         message.warning("Tên không được rỗng.");
                         return;
                       }
-                      console.log("WorkerModal: calling updateWorker...");
+
                       const result = await actions.updateWorker({
                         workerId: worker.id,
                         patch: {
                           employeeCode: code,
                           fullName: nextName,
+                          gender: workerGender || "",
+                          identityNumber: identityNumber || "",
+                          electricityFee: Number(electricityFee || 0),
+                          waterFee: Number(waterFee || 0),
                           dob: dob || null,
                           hometown: hometown || "",
                           recruiter: recruiter || "",
@@ -189,9 +254,8 @@ export default function WorkerModal({
                         },
                       });
 
-                      // Kiểm tra nếu có kết quả trả về (không bị lỗi)
                       if (result) {
-                        message.success("Cập nhật thông tin thành công!"); // Thêm thông báo để người dùng biết
+                        message.success("Cập nhật thông tin thành công!");
                         onClose?.();
                       } else {
                         message.error("Lưu thất bại, vui lòng thử lại.");
@@ -208,9 +272,7 @@ export default function WorkerModal({
                 <button
                   className={clsx(
                     "rounded-2xl px-4 py-3 text-sm font-semibold",
-                    auth?.isAdmin
-                      ? "bg-rose-600 text-white"
-                      : "bg-slate-100 text-slate-600",
+                    auth?.isAdmin ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600",
                   )}
                   onClick={() => requireAdmin(() => setConfirmDel(true))}
                 >
@@ -227,35 +289,12 @@ export default function WorkerModal({
               <div className="mt-2 text-sm text-slate-700">
                 {currentStay
                   ? (() => {
-                      let roomCode = "—";
-                      // Add detailed fallback handling
+                      let roomCode = "-";
                       if (currentStay.roomId) {
-                        if (roomById) {
-                          const room = roomById.get(currentStay.roomId);
-                          if (room) {
-                            roomCode = room.code || currentStay.roomId;
-                          } else {
-                            // Room not found in map, use ID as fallback
-                            roomCode = currentStay.roomId;
-                          }
-                        } else {
-                          // roomById is undefined, use ID as fallback
-                          roomCode = currentStay.roomId;
-                        }
+                        const room = roomById?.get(currentStay.roomId);
+                        roomCode = room?.code || currentStay.roomId;
                       }
-                      // Format date properly
-                      let dateStr = "-";
-                      if (currentStay.dateIn) {
-                        if (typeof currentStay.dateIn === "string") {
-                          // If it's a string like "2025-12-23" or "2025-12-23T10:00:00Z"
-                          dateStr = currentStay.dateIn.split("T")[0];
-                        } else if (currentStay.dateIn instanceof Date) {
-                          // If it's a Date object
-                          dateStr = currentStay.dateIn
-                            .toISOString()
-                            .split("T")[0];
-                        }
-                      }
+                      const dateStr = formatDate(currentStay.dateIn);
                       return `Đang ở phòng: ${roomCode} (vào ${dateStr})`;
                     })()
                   : "Hiện không ở phòng nào."}
@@ -277,16 +316,13 @@ export default function WorkerModal({
                           Phòng {room?.code || s.roomId}
                         </div>
                         <div className="text-[10px] text-slate-500">
-                          {s.dateIn ? String(s.dateIn).slice(0, 10) : "?"} ➔{" "}
-                          {s.dateOut ? String(s.dateOut).slice(0, 10) : "?"}
+                          {formatDate(s.dateIn, "?")} - {formatDate(s.dateOut, "?")}
                         </div>
                       </div>
                     );
                   })
                 ) : (
-                  <div className="py-1 text-center text-xs text-slate-400">
-                    Chưa có lịch sử.
-                  </div>
+                  <div className="py-1 text-center text-xs text-slate-400">Chưa có lịch sử.</div>
                 )}
               </div>
             </div>
@@ -315,3 +351,5 @@ export default function WorkerModal({
     </>
   );
 }
+
+

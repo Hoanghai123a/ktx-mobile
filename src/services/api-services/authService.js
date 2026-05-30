@@ -63,6 +63,14 @@ export const authService = {
       throw error;
     }
   },
+  changePassword: async (userId, { currentPassword, newPassword }) => {
+    if (!userId) throw makeError(400, { error: "Không tìm thấy tài khoản." });
+    return api.patch(`/users/${userId}/`, {
+      oldPassword: currentPassword,
+      password: newPassword,
+      passwordConfirm: newPassword,
+    });
+  },
   logout: () => {
     api.removeToken();
     api.removeCookie("token");

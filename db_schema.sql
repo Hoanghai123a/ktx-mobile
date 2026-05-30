@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS workers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_code text,
     full_name text NOT NULL,
+    gender text,
+    identity_number text,
+    electricity_fee numeric DEFAULT 0,
+    water_fee numeric DEFAULT 0,
     hometown text,
     phone text,
     dob date,
@@ -44,6 +48,18 @@ CREATE TABLE IF NOT EXISTS workers (
 
 ALTER TABLE workers
     ADD COLUMN IF NOT EXISTS employee_code text;
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS gender text;
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS identity_number text;
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS electricity_fee numeric DEFAULT 0;
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS water_fee numeric DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS workers_employee_code_unique
     ON workers (employee_code)

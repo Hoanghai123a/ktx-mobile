@@ -3,6 +3,13 @@ export const DEFAULT_SETTINGS = {
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
+  adminContact: {
+    name: "",
+    phone: "",
+    email: "",
+    zalo: "",
+    note: "",
+  },
   about: {
     companyName: "Ký túc xá",
     address: "",

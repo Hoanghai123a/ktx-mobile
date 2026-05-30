@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import Modal from "../../components/ui/Modal";
+import { formatDateTime, formatMonth } from "../../services/dateFormat";
 
 function monthToTime(month) {
   // month dạng "YYYY-MM"
@@ -72,7 +73,7 @@ export default function ElectricityHistoryModal({
       <div className="space-y-3">
         <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
           <div className="text-sm font-semibold">
-            {month ? `Tháng: ${month} • ` : ""}
+            {month ? `Tháng: ${formatMonth(month)} • ` : ""}
             Tổng bản ghi: {rows.length}
           </div>
         </div>
@@ -90,13 +91,11 @@ export default function ElectricityHistoryModal({
                       Phòng {r.roomCode}
                     </div>
                     <div className="text-xs text-slate-600">
-                      Tháng {r.month}
+                      Tháng {formatMonth(r.month)}
                     </div>
                     <div className="text-xs text-slate-500">
                       Thanh toán:{" "}
-                      {r.paidAt
-                        ? new Date(r.paidAt).toLocaleString("vi-VN")
-                        : "--"}
+                      {formatDateTime(r.paidAt, "--")}
                     </div>
                   </div>
 

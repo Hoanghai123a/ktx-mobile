@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import { message } from "antd";
 import { UserPlus, UserRound } from "lucide-react";
 import Modal from "../../components/ui/Modal";
@@ -14,10 +14,14 @@ export default function AddWorkerModal({
 }) {
   const [employeeCode, setEmployeeCode] = useState("");
   const [fullName, setFullName] = useState("");
+  const [workerGender, setWorkerGender] = useState("");
+  const [identityNumber, setIdentityNumber] = useState("");
   const [dob, setDob] = useState("");
   const [phone, setPhone] = useState("");
   const [hometown, setHometown] = useState("");
   const [recruiter, setRecruiter] = useState("");
+  const [electricityFee, setElectricityFee] = useState(0);
+  const [waterFee, setWaterFee] = useState(0);
   const [note, setNote] = useState("");
   const [showOld, setShowOld] = useState(false);
   const [oldCode, setOldCode] = useState("");
@@ -27,10 +31,14 @@ export default function AddWorkerModal({
     if (open) {
       setEmployeeCode("");
       setFullName("");
+      setWorkerGender("");
+      setIdentityNumber("");
       setDob("");
       setPhone("");
       setHometown("");
       setRecruiter("");
+      setElectricityFee(0);
+      setWaterFee(0);
       setNote("");
       setShowOld(false);
       setOldCode("");
@@ -121,10 +129,14 @@ export default function AddWorkerModal({
 
                       setEmployeeCode(found.employeeCode || code);
                       setFullName(found.fullName || "");
+                      setWorkerGender(found.gender || "");
+                      setIdentityNumber(found.identityNumber || found.identity_number || "");
                       setDob(found.dob || "");
                       setPhone(found.phone || "");
                       setHometown(found.hometown || "");
                       setRecruiter(found.recruiter || "");
+                      setElectricityFee(Number(found.electricityFee || found.electricity_fee || 0));
+                      setWaterFee(Number(found.waterFee || found.water_fee || 0));
                       setNote(found.note || "");
                       setShowOld(false);
                       setOldCode("");
@@ -148,7 +160,26 @@ export default function AddWorkerModal({
           onChange={setFullName}
           placeholder="Nguyễn Văn A"
         />
-        <TextField
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block space-y-1">
+            <div className="text-xs font-medium text-slate-600">Giới tính</div>
+            <select
+              value={workerGender}
+              onChange={(e) => setWorkerGender(e.target.value)}
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+            >
+              <option value="">Chưa chọn</option>
+              <option value="male">Nam</option>
+              <option value="female">Nữ</option>
+            </select>
+          </label>
+          <TextField
+            label="Số CCCD"
+            value={identityNumber}
+            onChange={(v) => setIdentityNumber(String(v || "").replace(/\D/g, ""))}
+            placeholder="12 số"
+          />
+        </div>        <TextField
           label="Ngày sinh"
           value={dob}
           onChange={setDob}
@@ -172,6 +203,22 @@ export default function AddWorkerModal({
           onChange={setRecruiter}
           placeholder="Anh/Chị ..."
         />
+        <div className="grid grid-cols-2 gap-2">
+          <TextField
+            label="Tiền điện"
+            value={electricityFee}
+            onChange={(v) => setElectricityFee(v)}
+            type="number"
+            placeholder="0"
+          />
+          <TextField
+            label="Tiền nước"
+            value={waterFee}
+            onChange={(v) => setWaterFee(v)}
+            type="number"
+            placeholder="0"
+          />
+        </div>
         <TextField
           label="Ghi chú"
           value={note}
@@ -200,6 +247,10 @@ export default function AddWorkerModal({
               addWorker({
                 employeeCode: code,
                 fullName: fullName.trim(),
+                gender: workerGender || "",
+                identityNumber: identityNumber.trim(),
+                electricityFee: Number(electricityFee || 0),
+                waterFee: Number(waterFee || 0),
                 dob: dob || "",
                 phone: phone.trim(),
                 hometown: hometown.trim(),
@@ -219,3 +270,4 @@ export default function AddWorkerModal({
     </Modal>
   );
 }
+

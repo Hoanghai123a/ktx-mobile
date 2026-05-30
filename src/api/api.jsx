@@ -192,7 +192,7 @@ function isExpired(building) {
 
 function normalizeWorker(row) {
   if (!row) return row;
-  return { ...row, employee_code: row.employee_code || null, dob: dateOnly(row.dob) };
+  return { ...row, employee_code: row.employee_code || null, dob: dateOnly(row.dob), gender: row.gender || null, identity_number: row.identity_number || "", electricity_fee: Number(row.electricity_fee || 0), water_fee: Number(row.water_fee || 0) };
 }
 
 function workerOut(w) {
@@ -200,6 +200,10 @@ function workerOut(w) {
     id: w.id,
     employeeCode: w.employee_code || "",
     fullName: w.full_name || "",
+    gender: w.gender || "",
+    identityNumber: w.identity_number || "",
+    electricityFee: Number(w.electricity_fee || 0),
+    waterFee: Number(w.water_fee || 0),
     hometown: w.hometown || "",
     recruiter: w.recruiter || "",
     dob: dateOnly(w.dob) || "",
@@ -253,6 +257,13 @@ const DEFAULT_SETTINGS = {
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
+  adminContact: {
+    name: "",
+    phone: "",
+    email: "",
+    zalo: "",
+    note: "",
+  },
   electricityPrice: 0,
   billingMonth: "",
   about: {
@@ -282,6 +293,7 @@ function settingsFromRecord(row) {
     electricityPrice: row.electricity_price ?? 0,
     billingMonth: row.billing_month || "",
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
+    adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(row.admin_contact || row.adminContact || row.about?.adminContact || {}) },
   };
 }
 
@@ -295,7 +307,7 @@ function settingsToRecord(data) {
     require_password_on_delete: !!data.requirePasswordOnDelete,
     electricity_price: Number(data.electricityPrice || 0),
     billing_month: data.billingMonth || "",
-    about: data.about || {},
+    about: { ...(data.about || {}), adminContact: data.adminContact || {} },
   };
 }
 
@@ -487,8 +499,11 @@ function userPayload(data = {}, includePassword = false) {
   if (Object.prototype.hasOwnProperty.call(data, "approved")) payload.approved = data.approved !== false;
   if (includePassword || data.password) {
     payload.password = String(data.password || "");
-    payload.passwordConfirm = payload.password;
+    payload.passwordConfirm = Object.prototype.hasOwnProperty.call(data, "passwordConfirm")
+      ? String(data.passwordConfirm || "")
+      : payload.password;
   }
+  if (Object.prototype.hasOwnProperty.call(data, "oldPassword")) payload.oldPassword = String(data.oldPassword || "");
   return payload;
 }
 
@@ -543,7 +558,7 @@ async function handlePost(url, data, signal) {
     return { message: "Database wiped successfully" };
   }
   if (path === "/workers/") {
-    const payload = { ...data, building_id, employee_code: data.employee_code ? String(data.employee_code).trim().toUpperCase() : null, dob: dateValue(data.dob) };
+    const payload = { ...data, building_id, employee_code: data.employee_code ? String(data.employee_code).trim().toUpperCase() : null, dob: dateValue(data.dob), gender: data.gender || null, identity_number: data.identity_number || "", electricity_fee: Number(data.electricity_fee || 0), water_fee: Number(data.water_fee || 0) };
     return normalizeWorker(await pbRequest("workers", "", { method: "POST", body: payload, signal }));
   }
   if (path === "/floors/") return pbRequest("floors", "", { method: "POST", body: { ...data, building_id, sort: Number(data.sort || 0) }, signal });
@@ -585,7 +600,7 @@ async function handlePatch(url, data, signal) {
     return pbRequest("building_members", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });
   }
   if (path === "/settings/") {
-    const payload = settingsToRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) } });
+    const payload = settingsToRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) }, adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(data.adminContact || {}) } });
     const current = await getSettingsRecord(signal);
     const row = current
       ? await pbRequest("app_settings", `/${current.id}`, { method: "PATCH", body: payload, signal })
@@ -596,6 +611,10 @@ async function handlePatch(url, data, signal) {
     const payload = { ...data };
     if (Object.prototype.hasOwnProperty.call(payload, "employee_code")) payload.employee_code = payload.employee_code ? String(payload.employee_code).trim().toUpperCase() : null;
     if (Object.prototype.hasOwnProperty.call(payload, "dob")) payload.dob = dateValue(payload.dob);
+    if (Object.prototype.hasOwnProperty.call(payload, "gender")) payload.gender = payload.gender || null;
+    if (Object.prototype.hasOwnProperty.call(payload, "identity_number")) payload.identity_number = payload.identity_number || "";
+    if (Object.prototype.hasOwnProperty.call(payload, "electricity_fee")) payload.electricity_fee = Number(payload.electricity_fee || 0);
+    if (Object.prototype.hasOwnProperty.call(payload, "water_fee")) payload.water_fee = Number(payload.water_fee || 0);
     return normalizeWorker(await pbRequest("workers", `/${path.split("/")[2]}`, { method: "PATCH", body: payload, signal }));
   }
   if (/^\/floors\/[^/]+\/?$/.test(path)) return pbRequest("floors", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });

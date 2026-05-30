@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from "react";
-import { Building2, Eye, KeyRound, Pencil, Plus, Save, ShieldCheck, Trash2, Users, X } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Building2, Eye, KeyRound, Pencil, Plus, Save, Settings, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import Pill from "../../components/ui/Pill";
 import TextField from "../../components/ui/TextField";
 import SelectField from "../../components/ui/SelectField";
+import { formatDate } from "../../services/dateFormat";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -38,6 +39,7 @@ export default function AdminBuildingsView({
   buildings = [],
   users = [],
   authSettings = { require_approval: true },
+  settings = {},
   selectedBuildingId,
   setSelectedBuildingId,
   members = [],
@@ -52,6 +54,11 @@ export default function AdminBuildingsView({
   const [editingUserId, setEditingUserId] = useState("");
   const [userDraft, setUserDraft] = useState(emptyUserDraft);
   const [memberDraft, setMemberDraft] = useState({ user_id: "", role: "manager" });
+  const [contactDraft, setContactDraft] = useState(settings.adminContact || {});
+
+  useEffect(() => {
+    setContactDraft(settings.adminContact || {});
+  }, [settings.adminContact]);
 
   const byId = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const current = buildings.find((b) => b.id === selectedBuildingId) || buildings[0] || null;
@@ -129,6 +136,21 @@ export default function AdminBuildingsView({
     setShowUserForm(true);
   }
 
+  async function saveAdminContact() {
+    const nextSettings = {
+      ...settings,
+      adminContact: {
+        name: contactDraft.name || "",
+        phone: contactDraft.phone || "",
+        email: contactDraft.email || "",
+        zalo: contactDraft.zalo || "",
+        note: contactDraft.note || "",
+      },
+    };
+    await actions.updateSettings?.(nextSettings);
+    alert("Đã lưu thông tin liên hệ admin.");
+  }
+
   async function saveUser() {
     const payload = { ...userDraft, username: userDraft.username.trim(), name: userDraft.name.trim() };
     if (!payload.username) return alert("Nhập username.");
@@ -143,20 +165,50 @@ export default function AdminBuildingsView({
 
   return (
     <div className="mx-auto w-full max-w-md space-y-4 px-4 pb-8">
-      <div className="grid grid-cols-2 gap-2 rounded-3xl bg-sky-100 p-1 shadow-sm ring-1 ring-sky-200">
+      <div className="grid grid-cols-3 gap-2 rounded-3xl bg-sky-100 p-1 shadow-sm ring-1 ring-sky-200">
         <button
-          className={`rounded-2xl px-3 py-3 text-sm font-semibold transition ${page === "buildings" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "buildings" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
           onClick={() => setPage("buildings")}
         >
-          <span className="inline-flex items-center justify-center gap-2"><Building2 className="h-4 w-4" />Tòa nhà</span>
+          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Building2 className="h-4 w-4" />Tòa nhà</span>
         </button>
         <button
-          className={`rounded-2xl px-3 py-3 text-sm font-semibold transition ${page === "users" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "users" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
           onClick={() => setPage("users")}
         >
-          <span className="inline-flex items-center justify-center gap-2"><Users className="h-4 w-4" />Tài khoản</span>
+          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Users className="h-4 w-4" />Tài khoản</span>
+        </button>
+        <button
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "settings" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          onClick={() => setPage("settings")}
+        >
+          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Settings className="h-4 w-4" />Cài đặt</span>
         </button>
       </div>
+
+
+
+      {page === "settings" ? (
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Liên hệ admin</div>
+              <div className="mt-1 text-xs text-slate-600">Thông tin này hiển thị tại Tài khoản - Liên hệ admin.</div>
+            </div>
+            <Pill icon={Settings} text="Admin" tone="sky" />
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <TextField label="Tên admin phụ trách" value={contactDraft.name || ""} onChange={(v) => setContactDraft((d) => ({ ...d, name: v }))} />
+            <TextField label="Số điện thoại" value={contactDraft.phone || ""} onChange={(v) => setContactDraft((d) => ({ ...d, phone: v }))} />
+            <TextField label="Email" value={contactDraft.email || ""} onChange={(v) => setContactDraft((d) => ({ ...d, email: v }))} />
+            <TextField label="Zalo" value={contactDraft.zalo || ""} onChange={(v) => setContactDraft((d) => ({ ...d, zalo: v }))} placeholder="Số Zalo hoặc link Zalo" />
+            <TextField label="Ghi chú hỗ trợ" value={contactDraft.note || ""} onChange={(v) => setContactDraft((d) => ({ ...d, note: v }))} />
+            <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveAdminContact}>
+              <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Lưu liên hệ admin</span>
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {page === "users" ? (
       <>
@@ -173,30 +225,34 @@ export default function AdminBuildingsView({
           <input type="checkbox" checked={authSettings.require_approval !== false} onChange={(e) => actions.updateAuthSettings?.(e.target.checked)} />
         </label>
         <button className="mt-3 w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateUser}>
-          <span className="inline-flex items-center justify-center gap-2"><Plus className="h-4 w-4" />Tạo mới tài khoản</span>
+          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Plus className="h-4 w-4" />Tạo mới tài khoản</span>
         </button>
       </section>
 
       <section className="space-y-2">
         <div className="mt-3 space-y-2">
           {users.length ? users.map((u) => (
-            <div key={u.id} className="flex items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-white px-3 py-2 shadow-sm">
+            <div key={u.id} className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-white px-3 py-2 shadow-sm">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-slate-900">{userLabel(u)}</div>
                 <div className="truncate text-xs text-slate-500">{u.name || u.email || u.id}</div>
                 <div className="mt-1 text-[11px] font-medium text-slate-400">
-                  {u.approved === false ? "Chờ phê duyệt" : u.role === "admin" ? "Quản trị hệ thống" : "Tài khoản user"}
+                  {u.role === "admin" ? "Quản trị hệ thống" : u.approved === false ? "Chờ phê duyệt" : "Tài khoản user"}
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col gap-1">
-                <button className="rounded-xl bg-sky-50 p-2 text-sky-700" onClick={() => editUser(u)} title="Sửa tài khoản"><Pencil className="h-4 w-4" /></button>
-                {u.approved === false ? (
-                  <button className="rounded-xl bg-emerald-50 p-2 text-emerald-700" onClick={() => actions.updateUser?.(u.id, { approved: true })} title="Phê duyệt tài khoản"><ShieldCheck className="h-4 w-4" /></button>
-                ) : null}
-                {u.role === "admin" ? null : (
-                  <button className="rounded-xl bg-violet-50 p-2 text-violet-700" onClick={() => actions.updateUser?.(u.id, { role: "admin" })} title="Chuyển thành admin"><ShieldCheck className="h-4 w-4" /></button>
+              <div className="grid shrink-0 grid-cols-2 gap-1">
+                <button className="rounded-lg bg-sky-50 p-1.5 text-sky-700" onClick={() => editUser(u)} title="Sửa tài khoản"><Pencil className="h-3.5 w-3.5" /></button>
+                {u.role !== "admin" && u.approved === false ? (
+                  <button className="rounded-lg bg-emerald-50 p-1.5 text-emerald-700" onClick={() => actions.updateUser?.(u.id, { approved: true })} title="Phê duyệt tài khoản"><ShieldCheck className="h-3.5 w-3.5" /></button>
+                ) : (
+                  <span className="h-6 w-6" />
                 )}
-                <button className="rounded-xl bg-rose-50 p-2 text-rose-600" onClick={() => actions.deleteUser?.(u.id)} title="Xóa tài khoản"><Trash2 className="h-4 w-4" /></button>
+                {u.role === "admin" ? (
+                  <span className="h-6 w-6" />
+                ) : (
+                  <button className="rounded-lg bg-violet-50 p-1.5 text-violet-700" onClick={() => actions.updateUser?.(u.id, { role: "admin" })} title="Chuyển thành admin"><ShieldCheck className="h-3.5 w-3.5" /></button>
+                )}
+                <button className="rounded-lg bg-rose-50 p-1.5 text-rose-600" onClick={() => actions.deleteUser?.(u.id)} title="Xóa tài khoản"><Trash2 className="h-3.5 w-3.5" /></button>
               </div>
             </div>
           )) : (
@@ -220,7 +276,7 @@ export default function AdminBuildingsView({
           <Pill icon={Building2} text={`${buildings.length} nhà`} tone="sky" />
         </div>
         <button className="mt-3 w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateBuilding}>
-          <span className="inline-flex items-center justify-center gap-2"><Plus className="h-4 w-4" />Tạo mới tòa nhà</span>
+          <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Plus className="h-4 w-4" />Tạo mới tòa nhà</span>
         </button>
       </section>
 
@@ -238,7 +294,8 @@ export default function AdminBuildingsView({
                   </div>
                   <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${b.expired ? "bg-rose-400" : "bg-emerald-400"}`} />
                 </div>
-                <div className="mt-1 truncate text-[11px] text-slate-500">{userLabel(owner) || b.owner_id || "Chưa gán"}</div>
+                <div className="mt-1 truncate text-[11px] text-slate-500">Hạn: {formatDate(b.end_date)}</div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-500">{userLabel(owner) || b.owner_id || "Chưa gán"}</div>
               </button>
               <div className="mt-2 flex items-center justify-between gap-1">
                 <span className="truncate text-[11px] font-medium text-slate-400">{b.public_view ? "Cho xem" : "Riêng tư"}</span>
@@ -280,7 +337,7 @@ export default function AdminBuildingsView({
                   <SelectField label="User" value={memberDraft.user_id} onChange={(v) => setMemberDraft((s) => ({ ...s, user_id: v }))} options={userOptions} />
                   <SelectField label="Quyền" value={memberDraft.role} onChange={(v) => setMemberDraft((s) => ({ ...s, role: v }))} options={[{ value: "manager", label: "Được xử lý" }, { value: "viewer", label: "Chỉ xem" }]} />
                   <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={addMember}>
-                    <span className="inline-flex items-center justify-center gap-2"><Save className="h-4 w-4" />Gán quyền</span>
+                    <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Gán quyền</span>
                   </button>
                 </div>
               </div>
@@ -344,10 +401,10 @@ export default function AdminBuildingsView({
                     <input type="checkbox" checked={draft.public_view} onChange={(e) => setDraft((s) => ({ ...s, public_view: e.target.checked }))} />
                   </label>
                   <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveBuilding}>
-                    <span className="inline-flex items-center justify-center gap-2">{editId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editId ? "Lưu thay đổi" : "Tạo tòa nhà"}</span>
+                    <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">{editId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editId ? "Lưu thay đổi" : "Tạo tòa nhà"}</span>
                   </button>
                   <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700" onClick={resetDraft}>
-                    <span className="inline-flex items-center justify-center gap-2"><X className="h-4 w-4" />Đóng</span>
+                    <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><X className="h-4 w-4" />Đóng</span>
                   </button>
                 </div>
               </div>
@@ -384,10 +441,10 @@ export default function AdminBuildingsView({
                   )}
                   <TextField label={editingUserId ? "Mật khẩu mới" : "Mật khẩu"} value={userDraft.password} onChange={(v) => setUserDraft((s) => ({ ...s, password: v }))} placeholder={editingUserId ? "Bỏ trống nếu không đổi" : "Nhập mật khẩu"} type="password" />
                   <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveUser}>
-                    <span className="inline-flex items-center justify-center gap-2">{editingUserId ? <KeyRound className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editingUserId ? "Lưu tài khoản" : "Tạo tài khoản"}</span>
+                    <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">{editingUserId ? <KeyRound className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editingUserId ? "Lưu tài khoản" : "Tạo tài khoản"}</span>
                   </button>
                   <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700" onClick={resetUserDraft}>
-                    <span className="inline-flex items-center justify-center gap-2"><X className="h-4 w-4" />Đóng</span>
+                    <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><X className="h-4 w-4" />Đóng</span>
                   </button>
                 </div>
               </div>

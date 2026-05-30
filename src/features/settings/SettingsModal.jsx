@@ -38,8 +38,10 @@ export default function SettingsModal({
   const mergedDraft = useMemo(() => {
     const base = DEFAULT_SETTINGS ?? {};
     const baseAbout = base.about ?? {};
+    const baseAdminContact = base.adminContact ?? {};
     const d = draft ?? {};
     const dAbout = d.about ?? {};
+    const dAdminContact = d.adminContact ?? {};
 
     return {
       ...base,
@@ -48,8 +50,19 @@ export default function SettingsModal({
         ...baseAbout,
         ...dAbout,
       },
+      adminContact: {
+        ...baseAdminContact,
+        ...dAdminContact,
+      },
     };
   }, [DEFAULT_SETTINGS, draft]);
+
+  const setAdminContactField = (key, value) => {
+    setDraft((prev) => ({
+      ...prev,
+      adminContact: { ...(prev.adminContact || {}), [key]: value },
+    }));
+  };
 
   return (
     <Modal open={open} title="Cài đặt" onClose={onClose}>
@@ -95,6 +108,43 @@ export default function SettingsModal({
                 </span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* ADMIN CONTACT SETTINGS */}
+        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="text-sm font-semibold">Li?n h? admin</div>
+          <div className="mt-1 text-xs text-slate-600">
+            Th?ng tin n?y hi?n th? trong tab T?i kho?n.
+          </div>
+
+          <div className="mt-3 space-y-3">
+            <TextField
+              label="T?n admin ph? tr?ch"
+              value={mergedDraft.adminContact.name || ""}
+              onChange={(v) => setAdminContactField("name", v)}
+            />
+            <TextField
+              label="S? ?i?n tho?i"
+              value={mergedDraft.adminContact.phone || ""}
+              onChange={(v) => setAdminContactField("phone", v)}
+            />
+            <TextField
+              label="Email"
+              value={mergedDraft.adminContact.email || ""}
+              onChange={(v) => setAdminContactField("email", v)}
+            />
+            <TextField
+              label="Zalo"
+              value={mergedDraft.adminContact.zalo || ""}
+              onChange={(v) => setAdminContactField("zalo", v)}
+              placeholder="S? Zalo ho?c link Zalo"
+            />
+            <TextField
+              label="Ghi ch? h? tr?"
+              value={mergedDraft.adminContact.note || ""}
+              onChange={(v) => setAdminContactField("note", v)}
+            />
           </div>
         </div>
 
@@ -298,7 +348,8 @@ export default function SettingsModal({
                   }
                 />
                 <div className="rounded-2xl bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                  Khi xóa tầng/phòng, hệ thống sẽ yêu cầu nhập lại mật khẩu đăng nhập hiện tại.
+                  Khi xóa tầng/phòng, hệ thống sẽ yêu cầu nhập lại mật khẩu đăng
+                  nhập hiện tại.
                 </div>
               </div>
             </div>

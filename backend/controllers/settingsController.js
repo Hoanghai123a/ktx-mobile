@@ -5,6 +5,13 @@ const DEFAULT_SETTINGS = {
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
+  adminContact: {
+    name: "",
+    phone: "",
+    email: "",
+    zalo: "",
+    note: "",
+  },
   electricityPrice: 0,
   billingMonth: "",
   about: {
@@ -34,6 +41,7 @@ function fromRecord(row) {
     electricityPrice: row.electricity_price ?? 0,
     billingMonth: row.billing_month || "",
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
+    adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(row.admin_contact || row.adminContact || row.about?.adminContact || {}) },
   };
 }
 
@@ -46,7 +54,7 @@ function toRecord(data) {
     require_password_on_delete: !!data.requirePasswordOnDelete,
     electricity_price: Number(data.electricityPrice || 0),
     billing_month: data.billingMonth || "",
-    about: data.about || {},
+    about: { ...(data.about || {}), adminContact: data.adminContact || {} },
   };
 }
 
@@ -77,7 +85,7 @@ const settingsController = {
       if (!data || typeof data !== "object" || Array.isArray(data)) {
         return res.status(400).json({ error: "Dữ liệu settings không hợp lệ" });
       }
-      const payload = toRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) } });
+      const payload = toRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) }, adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(data.adminContact || {}) } });
       const current = await getSettingsRecord();
       const row = current
         ? await pb.request("app_settings", `/${current.id}`, { method: "PATCH", body: JSON.stringify(payload) })

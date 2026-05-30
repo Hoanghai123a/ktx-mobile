@@ -18,6 +18,7 @@ import {
   Users,
   LogIn,
   LogOut,
+  Settings,
   Building2,
   DoorClosed,
   DoorOpen,
@@ -56,11 +57,15 @@ import TabButton from "./components/ui/TabButton";
 
 // Services
 import { importExcelFileToDb } from "./services/excelImportService";
-import { exportExcel as exportExcelSvc } from "./services/excelExportService";
+import {
+  exportExcel as exportExcelSvc,
+  exportPaymentExcel as exportPaymentExcelSvc,
+} from "./services/excelExportService";
 import Pill from "./components/ui/Pill";
 import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
+import { formatDate } from "./services/dateFormat";
 
 const AuthScreen = lazy(() => import("./features/auth/AuthScreen"));
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
@@ -85,8 +90,10 @@ const WorkersView = lazy(() => import("./features/workers/WorkersView"));
 const AddWorkerModal = lazy(() => import("./features/workers/AddWorkerModal"));
 const StatsView = lazy(() => import("./features/stats/StatsView"));
 const RecruiterModal = lazy(() => import("./features/stats/RecruiterModal"));
-const AboutView = lazy(() => import("./features/about/AboutView"));
-const AdminBuildingsView = lazy(() => import("./features/admin/AdminBuildingsView"));
+const AccountView = lazy(() => import("./features/account/AccountView"));
+const AdminBuildingsView = lazy(
+  () => import("./features/admin/AdminBuildingsView"),
+);
 
 function clsx(...arr) {
   return arr.filter(Boolean).join(" ");
@@ -192,7 +199,28 @@ function pinnedBuildingKey(user) {
   return `ktx_pinned_buildings_${user?.id || user?.username || "guest"}`;
 }
 
-function BuildingsHome({ buildings, selectedBuildingId, setSelectedBuildingId, setTab, user }) {
+function lastBuildingKey(user) {
+  return `ktx_last_building_${user?.id || user?.username || "guest"}`;
+}
+
+function readPinnedBuildingIds(user) {
+  try {
+    const rows = JSON.parse(
+      localStorage.getItem(pinnedBuildingKey(user)) || "[]",
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function BuildingsHome({
+  buildings,
+  selectedBuildingId,
+  setSelectedBuildingId,
+  setTab,
+  user,
+}) {
   const storageKey = pinnedBuildingKey(user);
   const [query, setQuery] = useState("");
   const [pinnedIds, setPinnedIds] = useState(() => {
@@ -239,7 +267,9 @@ function BuildingsHome({ buildings, selectedBuildingId, setSelectedBuildingId, s
   const searchResults = useMemo(() => {
     const text = query.trim().toLowerCase();
     if (!text) return [];
-    return buildings.filter((b) => `${b.code || ""} ${b.name || ""}`.toLowerCase().includes(text));
+    return buildings.filter((b) =>
+      `${b.code || ""} ${b.name || ""}`.toLowerCase().includes(text),
+    );
   }, [buildings, query]);
 
   return (
@@ -254,66 +284,108 @@ function BuildingsHome({ buildings, selectedBuildingId, setSelectedBuildingId, s
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
           {query ? (
-            <button className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100" onClick={() => setQuery("")}>Xóa</button>
+            <button
+              className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              onClick={() => setQuery("")}
+            >
+              Xóa
+            </button>
           ) : null}
         </div>
       </div>
 
       {query.trim() ? (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500">Kết quả tìm kiếm</div>
+          <div className="text-xs font-semibold text-slate-500">
+            Kết quả tìm kiếm
+          </div>
           {searchResults.length ? (
             <div className="grid grid-cols-2 gap-2">
               {searchResults.map((b) => {
                 const pinned = pinnedIds.includes(b.id);
                 return (
-                  <div key={b.id} className="rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-sky-100">
+                  <div
+                    key={b.id}
+                    className="rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-sky-100"
+                  >
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">{b.code || "-"}</div>
-                      <div className="mt-0.5 truncate text-xs font-medium text-slate-700">{b.name}</div>
+                      <div className="truncate text-sm font-semibold text-slate-900">
+                        {b.code || "-"}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs font-medium text-slate-700">
+                        {b.name}
+                      </div>
                     </div>
                     <button
                       disabled={pinned}
                       className={`mt-2 w-full rounded-xl px-2 py-1.5 text-xs font-semibold ${pinned ? "bg-slate-100 text-slate-400" : "bg-sky-600 text-white"}`}
                       onClick={() => pinBuilding(b.id)}
                     >
-                      <span className="inline-flex items-center justify-center gap-1.5"><Pin className="h-3.5 w-3.5" />{pinned ? "Đã ghim" : "Ghim"}</span>
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <Pin className="h-3.5 w-3.5" />
+                        {pinned ? "Đã ghim" : "Ghim"}
+                      </span>
                     </button>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-500">Không tìm thấy tòa nhà phù hợp.</div>
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-500">
+              Không tìm thấy tòa nhà phù hợp.
+            </div>
           )}
         </div>
       ) : null}
 
       {pinnedBuildings.length ? (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500">Tòa nhà đã ghim</div>
+          <div className="text-xs font-semibold text-slate-500">
+            Tòa nhà đã ghim
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {pinnedBuildings.map((b) => {
               const active = b.id === selectedBuildingId;
-              const canManage = b.accessRole === "manager" || b.accessRole === "owner";
+              const canManage =
+                b.accessRole === "manager" || b.accessRole === "owner";
               return (
                 <div
                   key={b.id}
                   className={`rounded-2xl bg-white p-2.5 text-left shadow-sm ring-1 ${active ? "ring-sky-300" : "ring-slate-100"}`}
                 >
-                  <button className="w-full text-left" onClick={() => openBuilding(b.id)}>
+                  <button
+                    className="w-full text-left"
+                    onClick={() => openBuilding(b.id)}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">{b.code || "-"}</div>
-                        <div className="mt-0.5 truncate text-xs font-medium text-slate-700">{b.name}</div>
+                        <div className="truncate text-sm font-semibold text-slate-900">
+                          {b.code || "-"}
+                        </div>
+                        <div className="mt-0.5 truncate text-xs font-medium text-slate-700">
+                          {b.name}
+                        </div>
                       </div>
-                      <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${b.expired ? "bg-rose-400" : "bg-emerald-400"}`} />
+                      <span
+                        className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${b.expired ? "bg-rose-400" : "bg-emerald-400"}`}
+                      />
                     </div>
-                    <div className="mt-1 truncate text-[11px] text-slate-500">{canManage ? "Quản lý" : "Chỉ xem"}</div>
+                    <div className="mt-1 truncate text-[11px] text-slate-500">
+                      Hạn: {formatDate(b.end_date)}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                      {canManage ? "Quản lý" : "Chỉ xem"}
+                    </div>
                   </button>
                   <div className="mt-2 flex items-center justify-between gap-1">
-                    <span className="truncate text-[11px] font-medium text-slate-400">{b.public_view ? "Công khai" : "Được gán"}</span>
-                    <button className="rounded-lg bg-slate-100 p-1.5 text-slate-500" onClick={() => unpinBuilding(b.id)} title="Bỏ ghim">
+                    <span className="truncate text-[11px] font-medium text-slate-400">
+                      {b.public_view ? "Công khai" : "Được gán"}
+                    </span>
+                    <button
+                      className="rounded-lg bg-slate-100 p-1.5 text-slate-500"
+                      onClick={() => unpinBuilding(b.id)}
+                      title="Bỏ ghim"
+                    >
                       <PinOff className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -323,7 +395,10 @@ function BuildingsHome({ buildings, selectedBuildingId, setSelectedBuildingId, s
           </div>
         </div>
       ) : (
-        <Empty title="Chưa ghim tòa nhà" hint="Tìm tòa nhà ở ô phía trên, sau đó bấm Ghim để lưu vào danh sách chính." />
+        <Empty
+          title="Chưa ghim tòa nhà"
+          hint="Tìm tòa nhà ở ô phía trên, sau đó bấm Ghim để lưu vào danh sách chính."
+        />
       )}
     </div>
   );
@@ -369,7 +444,11 @@ function mergeUsers(primary = [], fallback = []) {
     const key = row?.id || row?.username;
     if (key) map.set(key, row);
   }
-  return [...map.values()].sort((a, b) => String(a.username || a.name || "").localeCompare(String(b.username || b.name || "")));
+  return [...map.values()].sort((a, b) =>
+    String(a.username || a.name || "").localeCompare(
+      String(b.username || b.name || ""),
+    ),
+  );
 }
 
 // ---------------------------
@@ -393,12 +472,20 @@ export default function App() {
     user: null,
   });
 
-  const setSelectedBuildingId = useCallback((id) => {
-    const next = id || "";
-    setSelectedBuildingIdState(next);
-    if (next) localStorage.setItem("ktx_current_building_id", next);
-    else localStorage.removeItem("ktx_current_building_id");
-  }, []);
+  const setSelectedBuildingId = useCallback(
+    (id) => {
+      const next = id || "";
+      setSelectedBuildingIdState(next);
+      if (next) {
+        localStorage.setItem("ktx_current_building_id", next);
+        if (user) localStorage.setItem(lastBuildingKey(user), next);
+      } else {
+        localStorage.removeItem("ktx_current_building_id");
+        if (user) localStorage.removeItem(lastBuildingKey(user));
+      }
+    },
+    [user],
+  );
 
   const systemAdmin = !!(user?.role === "admin" || user?.isAdmin === true);
   const currentBuilding = useMemo(
@@ -425,17 +512,25 @@ export default function App() {
       accessRole: currentAccessRole,
       user: user || null,
     });
-  }, [canViewBuilding, canWriteBuilding, currentAccessRole, currentBuilding, systemAdmin, user]);
+  }, [
+    canViewBuilding,
+    canWriteBuilding,
+    currentAccessRole,
+    currentBuilding,
+    systemAdmin,
+    user,
+  ]);
 
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [tab, setTab] = useState("ktx"); // ktx | stats | workers | settings
   const lastUserIdRef = useRef(null);
+  const lastAutoRouteUserRef = useRef(null);
   useEffect(() => {
     const id = user?.id || "";
     if (!id || lastUserIdRef.current === id) return;
     lastUserIdRef.current = id;
-    setTab(systemAdmin ? "admin" : "buildings");
+    if (systemAdmin) setTab("admin");
   }, [systemAdmin, user?.id]);
 
   const [q, setQ] = useState("");
@@ -471,10 +566,14 @@ export default function App() {
       setBuildings(Array.isArray(rows) ? rows : []);
       if (systemAdmin && token) {
         const settings = await buildingService.getAuthSettings(token);
-        setAuthSettings({ require_approval: settings?.require_approval !== false });
+        setAuthSettings({
+          require_approval: settings?.require_approval !== false,
+        });
         try {
           const users = await buildingService.getUsers(token);
-          setBuildingUsers(mergeUsers(Array.isArray(users) ? users : [], readAdminUserCache()));
+          setBuildingUsers(
+            mergeUsers(Array.isArray(users) ? users : [], readAdminUserCache()),
+          );
         } catch (err) {
           console.error("Load users error:", err);
           setBuildingUsers(readAdminUserCache());
@@ -495,14 +594,52 @@ export default function App() {
   }, [refreshBuildings]);
 
   useEffect(() => {
+    const userKey = user?.id || user?.username || "";
+    if (!userKey || systemAdmin || !buildings.length) return;
+    if (lastAutoRouteUserRef.current === userKey) return;
+
+    const accessibleIds = new Set(buildings.map((b) => b.id));
+    const lastBuildingId = localStorage.getItem(lastBuildingKey(user)) || "";
+    const pinnedIds = readPinnedBuildingIds(user).filter((id) =>
+      accessibleIds.has(id),
+    );
+    const nextBuildingId = accessibleIds.has(lastBuildingId)
+      ? lastBuildingId
+      : pinnedIds.length === 1
+        ? pinnedIds[0]
+        : "";
+
+    lastAutoRouteUserRef.current = userKey;
+    if (nextBuildingId) {
+      setSelectedBuildingId(nextBuildingId);
+      setTab("ktx");
+    } else {
+      setTab("buildings");
+    }
+  }, [buildings, setSelectedBuildingId, systemAdmin, user]);
+
+  useEffect(() => {
     if (!buildings.length) {
       if (selectedBuildingId) setSelectedBuildingId("");
       return;
     }
-    if (!buildings.some((b) => b.id === selectedBuildingId)) {
+
+    const hasSelectedBuilding = buildings.some(
+      (b) => b.id === selectedBuildingId,
+    );
+    if (selectedBuildingId && !hasSelectedBuilding) {
+      if (systemAdmin) setSelectedBuildingId(buildings[0].id);
+      else {
+        setSelectedBuildingIdState("");
+        localStorage.removeItem("ktx_current_building_id");
+      }
+      return;
+    }
+
+    if (systemAdmin && !selectedBuildingId) {
       setSelectedBuildingId(buildings[0].id);
     }
-  }, [buildings, selectedBuildingId, setSelectedBuildingId]);
+  }, [buildings, selectedBuildingId, setSelectedBuildingId, systemAdmin]);
 
   const refreshBuildingMembers = useCallback(async () => {
     try {
@@ -863,6 +1000,10 @@ export default function App() {
         {
           employee_code: worker.employeeCode,
           full_name: worker.fullName,
+          gender: worker.gender,
+          identity_number: worker.identityNumber,
+          electricity_fee: worker.electricityFee,
+          water_fee: worker.waterFee,
           hometown: worker.hometown,
           phone: worker.phone,
           dob: worker.dob,
@@ -893,6 +1034,10 @@ export default function App() {
         id: row.id,
         employeeCode: row.employee_code || row.employeeCode || normalized,
         fullName: row.full_name || row.fullName || "",
+        gender: row.gender || "",
+        identityNumber: row.identity_number || row.identityNumber || "",
+        electricityFee: Number(row.electricity_fee || row.electricityFee || 0),
+        waterFee: Number(row.water_fee || row.waterFee || 0),
         hometown: row.hometown || "",
         recruiter: row.recruiter || "",
         dob: row.dob || "",
@@ -911,6 +1056,10 @@ export default function App() {
       const fieldMap = {
         employeeCode: "employee_code",
         fullName: "full_name",
+        gender: "gender",
+        identityNumber: "identity_number",
+        electricityFee: "electricity_fee",
+        waterFee: "water_fee",
         hometown: "hometown",
         phone: "phone",
         dob: "dob",
@@ -920,7 +1069,9 @@ export default function App() {
 
       Object.keys(fieldMap).forEach((k) => {
         if (Object.prototype.hasOwnProperty.call(patch, k)) {
-          mappedPatch[fieldMap[k]] = patch[k] || null;
+          mappedPatch[fieldMap[k]] = ["electricityFee", "waterFee"].includes(k)
+            ? Number(patch[k] || 0)
+            : patch[k] || null;
         }
       });
 
@@ -1022,7 +1173,12 @@ export default function App() {
     try {
       if (!systemAdmin || !token) return setLoginModal(true);
       const created = await buildingService.createUser(payload, token);
-      const nextUser = { ...created, username: created?.username || payload.username, name: created?.name || payload.name, role: created?.role || payload.role || "user" };
+      const nextUser = {
+        ...created,
+        username: created?.username || payload.username,
+        name: created?.name || payload.name,
+        role: created?.role || payload.role || "user",
+      };
       const nextCache = mergeUsers([nextUser], readAdminUserCache());
       writeAdminUserCache(nextCache);
       setBuildingUsers((prev) => mergeUsers([nextUser], prev));
@@ -1035,7 +1191,10 @@ export default function App() {
   async function updateAuthApprovalSetting(requireApproval) {
     try {
       if (!systemAdmin || !token) return setLoginModal(true);
-      const next = await buildingService.updateAuthSettings({ require_approval: !!requireApproval }, token);
+      const next = await buildingService.updateAuthSettings(
+        { require_approval: !!requireApproval },
+        token,
+      );
       setAuthSettings({ require_approval: next?.require_approval !== false });
     } catch (e) {
       alert(e.message || String(e));
@@ -1046,9 +1205,13 @@ export default function App() {
     try {
       if (!systemAdmin || !token) return setLoginModal(true);
       const updated = await buildingService.updateUser(id, patch, token);
-      const nextCache = readAdminUserCache().map((u) => (u.id === id ? { ...u, ...patch, ...updated } : u));
+      const nextCache = readAdminUserCache().map((u) =>
+        u.id === id ? { ...u, ...patch, ...updated } : u,
+      );
       writeAdminUserCache(nextCache);
-      setBuildingUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch, ...updated } : u)));
+      setBuildingUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, ...patch, ...updated } : u)),
+      );
       await refreshBuildings();
     } catch (e) {
       alert(e.message || String(e));
@@ -1318,6 +1481,15 @@ export default function App() {
       todayISO,
     });
   }
+
+  function exportPaymentExcel() {
+    exportPaymentExcelSvc({
+      floors: state.floors,
+      workerById,
+      billingMonth: state.settings.billingMonth,
+      todayISO,
+    });
+  }
   function guardDelete({ title, message, onDelete }) {
     if (!auth.isAdmin) return setLoginModal(true);
 
@@ -1377,39 +1549,60 @@ export default function App() {
   // ---------------------------
   // Views
   // ---------------------------
+  const showBuildingSelector = tab !== "buildings" && systemAdmin;
+
+  const isUserRole =
+    auth.user?.role === "user" || (!systemAdmin && !auth.isAdmin);
+  const showSummaryCards =
+    tab !== "stats" && tab !== "about" && !(tab === "workers" && isUserRole);
+
   const Header = (
     <div className="sticky top-0 z-40 bg-gradient-to-b from-white to-white/80 backdrop-blur">
       <div className="mx-auto w-full max-w-md px-4 pt-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-slate-500">
-              {state.settings.siteName}
-            </div>
-            <div className="mt-0.5 flex items-center gap-2">
-              <div className="text-lg font-semibold text-slate-900">
-                {tab === "ktx"
-                  ? "Sơ đồ phòng"
-                  : tab === "stats"
-                    ? "Thống kê"
-                    : tab === "workers"
-                      ? "Danh sách NLĐ"
-                      : tab === "admin" || tab === "buildings"
-                        ? "Quản lý tòa nhà"
-                        : "Cài đặt"}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="truncate text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {state.settings.siteName}
               </div>
-              {systemAdmin ? (
-                <Pill icon={ShieldCheck} text="System" tone="violet" />
-              ) : auth.isAdmin ? (
-                <Pill icon={Shield} text="Quản lý" tone="green" />
-              ) : (
-                <Pill icon={Home} text="Xem" tone="slate" />
-              )}
+              <span
+                className={clsx(
+                  "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                  systemAdmin
+                    ? "bg-violet-50 text-violet-700 ring-1 ring-violet-100"
+                    : auth.isAdmin
+                      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100"
+                      : "bg-slate-100 text-slate-600 ring-1 ring-slate-200",
+                )}
+              >
+                {systemAdmin ? (
+                  <ShieldCheck className="h-3 w-3" />
+                ) : auth.isAdmin ? (
+                  <Shield className="h-3 w-3" />
+                ) : (
+                  <Home className="h-3 w-3" />
+                )}
+                {systemAdmin ? "System" : auth.isAdmin ? "Quản lý" : "Xem"}
+              </span>
+            </div>
+            <div className="mt-1 truncate text-xl font-semibold leading-7 text-slate-950">
+              {tab === "ktx"
+                ? "Sơ đồ phòng"
+                : tab === "stats"
+                  ? "Thống kê"
+                  : tab === "workers"
+                    ? "Danh sách NLĐ"
+                    : tab === "admin" || tab === "buildings"
+                      ? "Quản lý tòa nhà"
+                      : tab === "about"
+                        ? "Tài khoản"
+                        : "Cài đặt"}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 pt-1">
             {user ? (
               <button
-                className="flex items-center gap-1.5 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+                className="flex shrink-0 items-center gap-1.5 rounded-2xl bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-sky-100"
                 onClick={handleLogout}
               >
                 <LogOut className="h-3.5 w-3.5" />
@@ -1417,19 +1610,22 @@ export default function App() {
               </button>
             ) : (
               <button
-                className="flex items-center gap-1.5 rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-sm"
+                className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800"
                 onClick={() => setLoginModal(true)}
+                title="Đăng nhập"
+                aria-label="Đăng nhập"
               >
-                <LogIn className="h-3.5 w-3.5" />
-                Đăng nhập
+                <LogIn className="h-4 w-4" />
               </button>
             )}
             {tab !== "settings" ? (
               <button
-                className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200"
+                className="grid h-10 w-10 place-items-center rounded-2xl bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
                 onClick={() => setSettingsModal(true)}
+                title="Cài đặt"
+                aria-label="Cài đặt"
               >
-                Cài đặt
+                <Settings className="h-4 w-4" />
               </button>
             ) : null}
           </div>
@@ -1437,28 +1633,42 @@ export default function App() {
 
         {tab !== "buildings" ? (
           <>
-            <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-              <Building2 className="h-4 w-4 text-slate-400" />
-              <select
-                value={selectedBuildingId}
-                onChange={(e) => setSelectedBuildingId(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
-              >
-                {buildings.length ? null : <option value="">Chưa có tòa nhà</option>}
-                {buildings.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.code ? `${b.code} - ` : ""}{b.name}
-                  </option>
-                ))}
-              </select>
-              {currentBuilding?.expired ? (
-                <Pill icon={Clock} text="Hết hạn" tone="rose" />
-              ) : currentBuilding ? (
-                <Pill icon={Users} text={auth.isAdmin ? "Sửa" : "Xem"} tone={auth.isAdmin ? "green" : "slate"} />
-              ) : systemAdmin ? (
-                <button className="rounded-xl bg-slate-900 px-2 py-1 text-xs font-semibold text-white" onClick={() => setTab("admin")}>Tạo</button>
-              ) : null}
-            </div>
+            {showBuildingSelector ? (
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                <Building2 className="h-4 w-4 text-slate-400" />
+                <select
+                  value={selectedBuildingId}
+                  onChange={(e) => setSelectedBuildingId(e.target.value)}
+                  className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
+                >
+                  {buildings.length ? null : (
+                    <option value="">Chưa có tòa nhà</option>
+                  )}
+                  {buildings.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.code ? `${b.code} - ` : ""}
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {currentBuilding?.expired ? (
+                  <Pill icon={Clock} text="Hết hạn" tone="rose" />
+                ) : currentBuilding ? (
+                  <Pill
+                    icon={Users}
+                    text={auth.isAdmin ? "Sửa" : "Xem"}
+                    tone={auth.isAdmin ? "green" : "slate"}
+                  />
+                ) : systemAdmin ? (
+                  <button
+                    className="rounded-xl bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                    onClick={() => setTab("admin")}
+                  >
+                    Tạo
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
               <Search className="h-4 w-4 text-slate-400" />
@@ -1478,32 +1688,34 @@ export default function App() {
               ) : null}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-                <div className="flex items-center justify-between">
-                  <Pill
-                    icon={Building2}
-                    text={`${state.floors.length} tầng`}
-                    tone="sky"
-                  />
-                  <div className="text-xs text-slate-500">Tổng</div>
+            {showSummaryCards ? (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                  <div className="flex items-center justify-between">
+                    <Pill
+                      icon={Building2}
+                      text={`${state.floors.length} tầng`}
+                      tone="sky"
+                    />
+                    <div className="text-xs text-slate-500">Tổng</div>
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-900">
+                    {totalRooms}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-600">Phòng</div>
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">
-                  {totalRooms}
+                <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                  <div className="flex items-center justify-between">
+                    <Pill icon={Users} text="Đang ở" tone="green" />
+                    <div className="text-xs text-slate-500">Tổng</div>
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-slate-900">
+                    {totalCurrentWorkers}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-600">NLĐ</div>
                 </div>
-                <div className="mt-0.5 text-xs text-slate-600">Phòng</div>
               </div>
-              <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
-                <div className="flex items-center justify-between">
-                  <Pill icon={Users} text="Đang ở" tone="green" />
-                  <div className="text-xs text-slate-500">Tổng</div>
-                </div>
-                <div className="mt-2 text-2xl font-semibold text-slate-900">
-                  {totalCurrentWorkers}
-                </div>
-                <div className="mt-0.5 text-xs text-slate-600">NLĐ</div>
-              </div>
-            </div>
+            ) : null}
           </>
         ) : null}
 
@@ -1636,7 +1848,11 @@ export default function App() {
   // Render
   // ---------------------------
   if (loading) {
-    return <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-500">Đang tải...</div>;
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-500">
+        Đang tải...
+      </div>
+    );
   }
 
   if (!user) {
@@ -1654,9 +1870,13 @@ export default function App() {
           <div className="mx-auto w-full max-w-md px-4 py-4">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-xs font-medium text-slate-500">Quản trị hệ thống</div>
+                <div className="text-xs font-medium text-slate-500">
+                  Quản trị hệ thống
+                </div>
                 <div className="mt-0.5 flex items-center gap-2">
-                  <div className="truncate text-lg font-semibold text-slate-900">Tài khoản và tòa nhà</div>
+                  <div className="truncate text-lg font-semibold text-slate-900">
+                    Tài khoản và tòa nhà
+                  </div>
                   <Pill icon={ShieldCheck} text="Admin" tone="violet" />
                 </div>
               </div>
@@ -1675,6 +1895,7 @@ export default function App() {
             buildings={buildings}
             users={buildingUsers}
             authSettings={authSettings}
+            settings={state.settings}
             selectedBuildingId={selectedBuildingId}
             setSelectedBuildingId={setSelectedBuildingId}
             members={buildingMembers}
@@ -1686,6 +1907,10 @@ export default function App() {
               updateUser: updateAdminUser,
               deleteUser: deleteAdminUser,
               updateAuthSettings: updateAuthApprovalSetting,
+              updateSettings: async (nextSettings) => {
+                setState((prev) => ({ ...prev, settings: nextSettings }));
+                await saveSettingsToDb(nextSettings);
+              },
               addMember: addBuildingMember,
               updateMember: updateBuildingMember,
               deleteMember: deleteBuildingMember,
@@ -1716,6 +1941,7 @@ export default function App() {
             setAddRoomModal={setAddRoomModal}
             setLoginModal={setLoginModal}
             setAddFloorModal={setAddFloorModal}
+            setTab={setTab}
             guardDelete={guardDelete}
             deleteFloor={deleteFloor}
           />
@@ -1739,7 +1965,10 @@ export default function App() {
             recruiterStats={recruiterStats}
             setRecruiterModal={setRecruiterModal}
             exportExcel={exportExcel}
+            exportPaymentExcel={exportPaymentExcel}
             openStaysHistory={() => setStaysHistoryOpen(true)}
+            billingMonth={state.settings.billingMonth}
+            totalCurrentWorkers={totalCurrentWorkers}
             pendingElectricityCount={pendingElectricityCount}
             pendingElectricityAmount={pendingElectricityAmount}
             paidElectricityCount={paidElectricityCount}
@@ -1747,9 +1976,21 @@ export default function App() {
             openElectricityHistory={openHistory}
           />
         ) : null}
-        {tab === "about" ? <AboutView about={state.settings?.about} /> : null}
+        {tab === "about" ? (
+          <AccountView
+            user={user}
+            settings={state.settings}
+            onLogout={authLogout}
+          />
+        ) : null}
         {tab === "buildings" ? (
-          <BuildingsHome buildings={buildings} selectedBuildingId={selectedBuildingId} setSelectedBuildingId={setSelectedBuildingId} setTab={setTab} user={user} />
+          <BuildingsHome
+            buildings={buildings}
+            selectedBuildingId={selectedBuildingId}
+            setSelectedBuildingId={setSelectedBuildingId}
+            setTab={setTab}
+            user={user}
+          />
         ) : null}
         {tab === "admin" && systemAdmin ? (
           <AdminBuildingsView
@@ -1803,8 +2044,8 @@ export default function App() {
               onClick={() => setTab("workers")}
             />
             <TabButton
-              icon={Users}
-              label="Về chúng tôi"
+              icon={UserRound}
+              label="Tài khoản"
               active={tab === "about"}
               onClick={() => setTab("about")}
             />

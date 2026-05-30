@@ -19,6 +19,10 @@ function normalizeWorker(row) {
   return {
     ...row,
     employee_code: row.employee_code || null,
+    gender: row.gender || null,
+    identity_number: row.identity_number || "",
+    electricity_fee: Number(row.electricity_fee || 0),
+    water_fee: Number(row.water_fee || 0),
     dob: pb.dateOnly(row.dob),
   };
 }
@@ -58,7 +62,7 @@ const workerController = {
 
   create: async (req, res) => {
     try {
-      const { employee_code, full_name, hometown, phone, dob, recruiter, note } = req.body;
+      const { employee_code, full_name, gender, identity_number, electricity_fee, water_fee, hometown, phone, dob, recruiter, note } = req.body;
       const code = normalizeEmployeeCode(employee_code);
       if (!full_name || !String(full_name).trim()) {
         return res.status(400).json({ error: "full_name là bắt buộc" });
@@ -68,7 +72,7 @@ const workerController = {
       }
       const row = await pb.request("workers", "", {
         method: "POST",
-        body: JSON.stringify({ employee_code: code, full_name, hometown, phone, dob: pb.dateValue(dob), recruiter, note }),
+        body: JSON.stringify({ employee_code: code, full_name, gender: gender || null, identity_number: identity_number || "", electricity_fee: Number(electricity_fee || 0), water_fee: Number(water_fee || 0), hometown, phone, dob: pb.dateValue(dob), recruiter, note }),
       });
       res.status(201).json(normalizeWorker(row));
     } catch (err) {
@@ -86,6 +90,10 @@ const workerController = {
         }
       }
       if (Object.prototype.hasOwnProperty.call(fields, "dob")) fields.dob = pb.dateValue(fields.dob);
+      if (Object.prototype.hasOwnProperty.call(fields, "gender")) fields.gender = fields.gender || null;
+      if (Object.prototype.hasOwnProperty.call(fields, "identity_number")) fields.identity_number = fields.identity_number || "";
+      if (Object.prototype.hasOwnProperty.call(fields, "electricity_fee")) fields.electricity_fee = Number(fields.electricity_fee || 0);
+      if (Object.prototype.hasOwnProperty.call(fields, "water_fee")) fields.water_fee = Number(fields.water_fee || 0);
       if (Object.keys(fields).length === 0) return res.status(400).json({ error: "No fields to update" });
       const row = await pb.request("workers", `/${req.params.id}`, {
         method: "PATCH",

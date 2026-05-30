@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import Modal from "../../components/ui/Modal";
-import Pill from "../../components/ui/Pill";
+import { formatDate } from "../../services/dateFormat";
 
 export default function StaysHistoryModal({ open, onClose, stays = [], roomById, workerById, onExport }) {
   const rows = useMemo(() => {
@@ -55,8 +55,8 @@ export default function StaysHistoryModal({ open, onClose, stays = [], roomById,
                     <div className="text-xs text-slate-600">Phòng: {r.roomCode}</div>
                   </div>
                   <div className="text-xs text-slate-600 text-right">
-                    <div>Vào: {String(r.dateIn || "").split("T")[0] || "-"}</div>
-                    <div>Rời: {r.dateOut ? String(r.dateOut).split("T")[0] : "-"}</div>
+                    <div>Vào: {formatDate(r.dateIn)}</div>
+                    <div>Rời: {formatDate(r.dateOut)}</div>
                   </div>
                 </div>
               </div>

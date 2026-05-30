@@ -3,6 +3,7 @@ import { FileDown, UserPlus, UserRound } from "lucide-react";
 
 import clsx from "../../components/ui/clsx";
 import Empty from "../../components/ui/Empty";
+import { workerGenderLabel } from "../../services/qrWorkerParser";
 
 export default function WorkersView({
   state,
@@ -99,6 +100,13 @@ export default function WorkersView({
                   <div className="text-base font-semibold text-slate-900">
                     {w.employeeCode ? `${w.employeeCode} - ` : ""}
                     {w.fullName}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    {workerGenderLabel(w.gender) || "Chưa có giới tính"}
+                    {w.identityNumber ? ` · CCCD ${w.identityNumber}` : ""}
+                  </div>
+                  <div className="mt-0.5 text-xs text-slate-500">
+                    Điện: {Number(w.electricityFee || 0).toLocaleString("vi-VN")}đ · Nước: {Number(w.waterFee || 0).toLocaleString("vi-VN")}đ
                   </div>
                   <div className="flex gap-2 justify-space-between w-full">
                     <div className="w-2/3 overflow-ellipsis">
