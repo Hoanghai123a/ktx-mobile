@@ -14,6 +14,7 @@ export default function WorkersView({
   setAddWorkerModal,
   setWorkerModal,
   floors = [],
+  utilityChargesByWorkerId,
 }) {
   // Filter to only workers currently staying
   const occupiedWorkerIds = new Set();
@@ -60,7 +61,7 @@ export default function WorkersView({
           className={clsx(
             "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
             auth.isAdmin
-              ? "bg-slate-900 text-white"
+              ? "bg-[rgb(44_120_159)] text-white"
               : "bg-slate-100 text-slate-700",
           )}
           onClick={() => requireAdmin?.(() => setAddWorkerModal?.(true))}
@@ -84,7 +85,9 @@ export default function WorkersView({
               if (ac !== 0) return ac;
               return a.fullName.localeCompare(b.fullName, "vi");
             })
-            .map((w) => (
+            .map((w) => {
+              const charge = utilityChargesByWorkerId?.get?.(w.id) || {};
+              return (
               <button
                 key={w.id}
                 className="w-full rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-100"
@@ -106,7 +109,7 @@ export default function WorkersView({
                     {w.identityNumber ? ` · CCCD ${w.identityNumber}` : ""}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500">
-                    Điện: {Number(w.electricityFee || 0).toLocaleString("vi-VN")}đ · Nước: {Number(w.waterFee || 0).toLocaleString("vi-VN")}đ
+                    Điện: {Number(charge.electricityAmount || 0).toLocaleString("vi-VN")}đ · Nước: {Number(charge.waterAmount || 0).toLocaleString("vi-VN")}đ
                   </div>
                   <div className="flex gap-2 justify-space-between w-full">
                     <div className="w-2/3 overflow-ellipsis">
@@ -132,7 +135,8 @@ export default function WorkersView({
                   </div>
                 </div>
               </button>
-            ))
+              );
+            })
         ) : (
           <Empty
             title="Không có NLĐ đang ở"
@@ -144,7 +148,7 @@ export default function WorkersView({
             action={
               <button
                 onClick={() => requireAdmin?.(() => setAddWorkerModal?.(true))}
-                className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
               >
                 Thêm NLĐ
               </button>

@@ -3,6 +3,11 @@ export const DEFAULT_SETTINGS = {
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
+  electricityPrice: 0,
+  waterPrice: 0,
+  waterBillingMode: "shared",
+  billingMonth: "",
+  billingCloseDay: 10,
   adminContact: {
     name: "",
     phone: "",

@@ -103,7 +103,7 @@ export default function AddWorkerModal({
                 placeholder="VD: NV001"
               />
               <button
-                className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
                 disabled={loadingOld}
                 onClick={() =>
                   requireAdmin(async () => {
@@ -226,7 +226,7 @@ export default function AddWorkerModal({
           placeholder=""
         />
         <button
-          className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+          className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
           onClick={() =>
             requireAdmin(async () => {
               const code = (employeeCode || "").trim().toUpperCase();

@@ -8,10 +8,10 @@ function normalize(row) {
   };
 }
 
-const electricityController = {
+const waterController = {
   getAll: async (_req, res) => {
     try {
-      const rows = await pb.list("electricities", { sort: "-month" });
+      const rows = await pb.list("water_records", { sort: "-month" });
       res.json(rows.map(normalize));
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
@@ -20,7 +20,7 @@ const electricityController = {
 
   getByRoom: async (req, res) => {
     try {
-      const rows = await pb.list("electricities", {
+      const rows = await pb.list("water_records", {
         filter: pb.eq("room_id", req.params.roomId),
         sort: "-month",
       });
@@ -45,21 +45,21 @@ const electricityController = {
 
       let row;
       if (id) {
-        row = await pb.request("electricities", `/${id}`, {
+        row = await pb.request("water_records", `/${id}`, {
           method: "PATCH",
           body: JSON.stringify(payload),
         });
       } else {
-        const existing = await pb.first("electricities", {
+        const existing = await pb.first("water_records", {
           filter: `${pb.eq("room_id", room_id)} && ${pb.eq("month", month)}`,
         });
         if (existing) {
-          row = await pb.request("electricities", `/${existing.id}`, {
+          row = await pb.request("water_records", `/${existing.id}`, {
             method: "PATCH",
             body: JSON.stringify(payload),
           });
         } else {
-          row = await pb.request("electricities", "", {
+          row = await pb.request("water_records", "", {
             method: "POST",
             body: JSON.stringify(payload),
           });
@@ -73,7 +73,7 @@ const electricityController = {
 
   markPaid: async (req, res) => {
     try {
-      const row = await pb.request("electricities", `/${req.params.id}`, {
+      const row = await pb.request("water_records", `/${req.params.id}`, {
         method: "PATCH",
         body: JSON.stringify({ paid: true, paid_at: new Date().toISOString() }),
       });
@@ -85,7 +85,7 @@ const electricityController = {
 
   delete: async (req, res) => {
     try {
-      await pb.request("electricities", `/${req.params.id}`, { method: "DELETE" });
+      await pb.request("water_records", `/${req.params.id}`, { method: "DELETE" });
       res.json({ message: "Deleted successfully" });
     } catch (err) {
       res.status(err.status || 500).json({ error: err.message });
@@ -93,4 +93,4 @@ const electricityController = {
   },
 };
 
-module.exports = electricityController;
+module.exports = waterController;

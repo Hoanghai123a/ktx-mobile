@@ -7,6 +7,29 @@ import clsx from "../../components/ui/clsx";
 import { PhoneCall, Save, Trash2, StickyNote } from "lucide-react";
 import NoteList from "../../components/ui/NoteList";
 import { formatDate } from "../../services/dateFormat";
+import { getBillingPeriod, normalizeBillingMonth } from "../../services/utilityBilling";
+
+function numberOrBlank(value) {
+  if (value === "" || value == null) return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? n : "";
+}
+
+function startReadingForWorker({ type, stay, room, billingMonth, billingCloseDay }) {
+  if (!stay) return "";
+  const prefix = type === "water" ? "water" : "electricity";
+  const stayStart = numberOrBlank(stay?.[`${prefix}StartReading`] ?? stay?.[`${prefix}_start_reading`]);
+  const month = normalizeBillingMonth(billingMonth);
+  const period = getBillingPeriod(month, billingCloseDay || 1);
+  const list = Array.isArray(room?.[type === "water" ? "water" : "electricity"])
+    ? room[type === "water" ? "water" : "electricity"]
+    : [];
+  const record = list.find((row) => String(row?.month || "").slice(0, 7) === month) || null;
+  const roomStart = numberOrBlank(record?.start_reading ?? record?.startReading);
+  const dateIn = String(stay?.dateIn || stay?.date_in || "").slice(0, 10);
+  if (dateIn && dateIn > period.start) return stayStart;
+  return roomStart !== "" ? roomStart : stayStart;
+}
 
 export default function WorkerModal({
   open,
@@ -14,6 +37,7 @@ export default function WorkerModal({
   worker,
   stays,
   roomById,
+  utilityCharge,
   auth,
   requireAdmin,
   actions,
@@ -67,6 +91,26 @@ export default function WorkerModal({
     const list = stays || [];
     return list.find((s) => !s.dateOut) || null;
   }, [stays]);
+
+  const startReadings = useMemo(() => {
+    const room = currentStay?.roomId ? roomById?.get?.(currentStay.roomId) : null;
+    return {
+      electricity: startReadingForWorker({
+        type: "electricity",
+        stay: currentStay,
+        room,
+        billingMonth: actions?.billingMonth,
+        billingCloseDay: actions?.billingCloseDay,
+      }),
+      water: startReadingForWorker({
+        type: "water",
+        stay: currentStay,
+        room,
+        billingMonth: actions?.billingMonth,
+        billingCloseDay: actions?.billingCloseDay,
+      }),
+    };
+  }, [actions?.billingCloseDay, actions?.billingMonth, currentStay, roomById]);
 
   const stayHistory = useMemo(() => {
     const list = stays || [];
@@ -189,22 +233,18 @@ export default function WorkerModal({
                   </div>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
-                  <TextField
-                    label="Tiền điện"
-                    value={electricityFee}
-                    onChange={(v) => setElectricityFee(v)}
-                    type="number"
-                    placeholder="0"
-                    disabled={!auth?.isAdmin}
-                  />
-                  <TextField
-                    label="Tiền nước"
-                    value={waterFee}
-                    onChange={(v) => setWaterFee(v)}
-                    type="number"
-                    placeholder="0"
-                    disabled={!auth?.isAdmin}
-                  />
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-medium text-slate-600">Số điện đầu vào</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {startReadings.electricity === "" ? "Chưa có" : Number(startReadings.electricity).toLocaleString("vi-VN")}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-medium text-slate-600">Số nước đầu vào</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {startReadings.water === "" ? "Chưa có" : Number(startReadings.water).toLocaleString("vi-VN")}
+                    </div>
+                  </div>
                 </div>
                 <TextField
                   label="Ghi chú"
@@ -218,7 +258,7 @@ export default function WorkerModal({
                 <button
                   className={clsx(
                     "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold",
-                    auth?.isAdmin ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600",
+                    auth?.isAdmin ? "bg-[rgb(44_120_159)] text-white" : "bg-slate-100 text-slate-600",
                   )}
                   onClick={() =>
                     requireAdmin(async () => {

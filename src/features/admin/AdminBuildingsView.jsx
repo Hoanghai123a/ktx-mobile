@@ -167,19 +167,19 @@ export default function AdminBuildingsView({
     <div className="mx-auto w-full max-w-md space-y-4 px-4 pb-8">
       <div className="grid grid-cols-3 gap-2 rounded-3xl bg-sky-100 p-1 shadow-sm ring-1 ring-sky-200">
         <button
-          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "buildings" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "buildings" ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-sky-800"}`}
           onClick={() => setPage("buildings")}
         >
           <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Building2 className="h-4 w-4" />Tòa nhà</span>
         </button>
         <button
-          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "users" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "users" ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-sky-800"}`}
           onClick={() => setPage("users")}
         >
           <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Users className="h-4 w-4" />Tài khoản</span>
         </button>
         <button
-          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "settings" ? "bg-sky-600 text-white shadow-sm" : "text-sky-800"}`}
+          className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "settings" ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-sky-800"}`}
           onClick={() => setPage("settings")}
         >
           <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Settings className="h-4 w-4" />Cài đặt</span>
@@ -203,7 +203,7 @@ export default function AdminBuildingsView({
             <TextField label="Email" value={contactDraft.email || ""} onChange={(v) => setContactDraft((d) => ({ ...d, email: v }))} />
             <TextField label="Zalo" value={contactDraft.zalo || ""} onChange={(v) => setContactDraft((d) => ({ ...d, zalo: v }))} placeholder="Số Zalo hoặc link Zalo" />
             <TextField label="Ghi chú hỗ trợ" value={contactDraft.note || ""} onChange={(v) => setContactDraft((d) => ({ ...d, note: v }))} />
-            <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveAdminContact}>
+            <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveAdminContact}>
               <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Lưu liên hệ admin</span>
             </button>
           </div>
@@ -224,7 +224,7 @@ export default function AdminBuildingsView({
           <span className="font-medium text-slate-700">Yêu cầu admin phê duyệt đăng ký</span>
           <input type="checkbox" checked={authSettings.require_approval !== false} onChange={(e) => actions.updateAuthSettings?.(e.target.checked)} />
         </label>
-        <button className="mt-3 w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateUser}>
+        <button className="mt-3 w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateUser}>
           <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Plus className="h-4 w-4" />Tạo mới tài khoản</span>
         </button>
       </section>
@@ -275,7 +275,7 @@ export default function AdminBuildingsView({
           </div>
           <Pill icon={Building2} text={`${buildings.length} nhà`} tone="sky" />
         </div>
-        <button className="mt-3 w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateBuilding}>
+        <button className="mt-3 w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={startCreateBuilding}>
           <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Plus className="h-4 w-4" />Tạo mới tòa nhà</span>
         </button>
       </section>
@@ -336,7 +336,7 @@ export default function AdminBuildingsView({
                 <div className="grid grid-cols-1 gap-2">
                   <SelectField label="User" value={memberDraft.user_id} onChange={(v) => setMemberDraft((s) => ({ ...s, user_id: v }))} options={userOptions} />
                   <SelectField label="Quyền" value={memberDraft.role} onChange={(v) => setMemberDraft((s) => ({ ...s, role: v }))} options={[{ value: "manager", label: "Được xử lý" }, { value: "viewer", label: "Chỉ xem" }]} />
-                  <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={addMember}>
+                  <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={addMember}>
                     <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Gán quyền</span>
                   </button>
                 </div>
@@ -400,7 +400,7 @@ export default function AdminBuildingsView({
                     <span className="font-medium text-slate-700">User khác được xem</span>
                     <input type="checkbox" checked={draft.public_view} onChange={(e) => setDraft((s) => ({ ...s, public_view: e.target.checked }))} />
                   </label>
-                  <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveBuilding}>
+                  <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveBuilding}>
                     <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">{editId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editId ? "Lưu thay đổi" : "Tạo tòa nhà"}</span>
                   </button>
                   <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700" onClick={resetDraft}>
@@ -440,7 +440,7 @@ export default function AdminBuildingsView({
                     <SelectField label="Quyền hệ thống" value={userDraft.role} onChange={(v) => setUserDraft((s) => ({ ...s, role: v }))} options={[{ value: "user", label: "User" }, { value: "admin", label: "Admin" }]} />
                   )}
                   <TextField label={editingUserId ? "Mật khẩu mới" : "Mật khẩu"} value={userDraft.password} onChange={(v) => setUserDraft((s) => ({ ...s, password: v }))} placeholder={editingUserId ? "Bỏ trống nếu không đổi" : "Nhập mật khẩu"} type="password" />
-                  <button className="rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveUser}>
+                  <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveUser}>
                     <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap">{editingUserId ? <KeyRound className="h-4 w-4" /> : <Plus className="h-4 w-4" />}{editingUserId ? "Lưu tài khoản" : "Tạo tài khoản"}</span>
                   </button>
                   <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700" onClick={resetUserDraft}>

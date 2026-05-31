@@ -73,7 +73,7 @@ export default function AuthScreen() {
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-sky-600 text-white shadow-sm">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[rgb(44_120_159)] text-white shadow-sm">
               <Building2 className="h-5 w-5" />
             </div>
             <div>
@@ -89,14 +89,14 @@ export default function AuthScreen() {
             <div className="mb-4 grid grid-cols-2 rounded-2xl bg-sky-50 p-1 ring-1 ring-sky-100">
               <button
                 type="button"
-                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${!isRegister ? "bg-sky-600 text-white shadow-sm" : "text-slate-500"}`}
+                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${!isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
                 onClick={() => setMode("login")}
               >
                 Đăng nhập
               </button>
               <button
                 type="button"
-                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isRegister ? "bg-sky-600 text-white shadow-sm" : "text-slate-500"}`}
+                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
                 onClick={() => setMode("register")}
               >
                 Đăng ký
@@ -116,7 +116,7 @@ export default function AuthScreen() {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 disabled:opacity-60"
+                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[rgb(36_99_132)] disabled:opacity-60"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   {isRegister ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}

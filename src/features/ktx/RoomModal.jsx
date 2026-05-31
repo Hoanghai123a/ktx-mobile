@@ -17,10 +17,17 @@ import {
   Upload,
   Camera,
   ScanLine,
+  Droplets,
+  LoaderCircle,
+  Zap,
 } from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
 import { formatDate } from "../../services/dateFormat";
+import {
+  calculateRoomUtility,
+  getUtilityCheckoutBounds,
+} from "../../services/utilityBilling";
 import {
   decodeQrFromCanvas,
   decodeQrFromImageFile,
@@ -47,10 +54,11 @@ export default function RoomModal({
   actions,
 }) {
   const [confirmDel, setConfirmDel] = useState(false);
-  const [elecModal, setElecModal] = useState(false);
+  const [utilityModal, setUtilityModal] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [genderOpen, setGenderOpen] = useState(false);
   const [genderBusy, setGenderBusy] = useState(false);
+  const [genderPending, setGenderPending] = useState(null);
 
   // manual check-in form state
   const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -68,6 +76,8 @@ export default function RoomModal({
   const [recruiter, setRecruiter] = useState("");
   const [electricityFee, setElectricityFee] = useState(0);
   const [waterFee, setWaterFee] = useState(0);
+  const [electricityStartReading, setElectricityStartReading] = useState("");
+  const [waterStartReading, setWaterStartReading] = useState("");
   const [note, setNote] = useState("");
   const [dateIn, setDateIn] = useState(todayISO());
   const [qrBusy, setQrBusy] = useState(false);
@@ -82,8 +92,13 @@ export default function RoomModal({
   const [checkOutCtx, setCheckOutCtx] = useState({
     open: false,
     stayId: null,
+    workerId: null,
     workerName: "",
     dateOut: todayISO(),
+    electricityStartReading: "",
+    waterStartReading: "",
+    electricityEndReading: "",
+    waterEndReading: "",
   });
 
   const resetAddForm = () => {
@@ -99,6 +114,8 @@ export default function RoomModal({
     setRecruiter("");
     setElectricityFee(0);
     setWaterFee(0);
+    setElectricityStartReading("");
+    setWaterStartReading("");
     setNote("");
     setDateIn(todayISO());
     setErrors({});
@@ -117,6 +134,116 @@ export default function RoomModal({
   }, [room]);
 
   const recentDepartures = useMemo(() => history.slice(0, 5), [history]);
+
+  const readingValue = (value) => {
+    if (value === "" || value == null) return "";
+    const n = Number(value);
+    return Number.isFinite(n) ? String(n) : "";
+  };
+
+  const stayEndReading = (stay, type) => {
+    const prefix = type === "water" ? "water" : "electricity";
+    return readingValue(stay?.[`${prefix}EndReading`] ?? stay?.[`${prefix}_end_reading`]);
+  };
+
+  const getCheckOutReadings = (stay, dateOutValue = todayISO()) => {
+    const billingMonth = actions?.billingMonth || String(dateOutValue || todayISO()).slice(0, 7);
+    const electricity = getUtilityCheckoutBounds({
+      room,
+      stay,
+      type: "electricity",
+      billingMonth,
+      billingCloseDay: actions?.billingCloseDay || 1,
+      dateOut: dateOutValue,
+    });
+    const water = getUtilityCheckoutBounds({
+      room,
+      stay,
+      type: "water",
+      billingMonth,
+      billingCloseDay: actions?.billingCloseDay || 1,
+      dateOut: dateOutValue,
+    });
+    return {
+      electricityStartReading: electricity.startReading,
+      waterStartReading: water.startReading,
+      electricityEndReading: electricity.endSource === "room" ? electricity.endReading : stayEndReading(stay, "electricity"),
+      waterEndReading: water.endSource === "room" ? water.endReading : stayEndReading(stay, "water"),
+    };
+  };
+
+  const checkOutAmount = useMemo(() => {
+    const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
+    const workerId = checkOutCtx.workerId || stay?.workerId;
+    const hasInputs =
+      stay &&
+      workerId &&
+      checkOutCtx.dateOut &&
+      checkOutCtx.electricityStartReading !== "" &&
+      checkOutCtx.electricityEndReading !== "" &&
+      checkOutCtx.waterStartReading !== "" &&
+      checkOutCtx.waterEndReading !== "";
+    if (!hasInputs) return { electricityAmount: 0, waterAmount: 0, totalAmount: 0 };
+
+    const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
+    const electricityBounds = getUtilityCheckoutBounds({
+      room,
+      stay: {
+        ...stay,
+        dateOut: checkOutCtx.dateOut,
+        electricityStartReading: Number(checkOutCtx.electricityStartReading || 0),
+        electricityEndReading: Number(checkOutCtx.electricityEndReading || 0),
+      },
+      type: "electricity",
+      billingMonth,
+      billingCloseDay: actions?.billingCloseDay || 1,
+      dateOut: checkOutCtx.dateOut,
+    });
+    const waterBounds = getUtilityCheckoutBounds({
+      room,
+      stay: {
+        ...stay,
+        dateOut: checkOutCtx.dateOut,
+        waterStartReading: Number(checkOutCtx.waterStartReading || 0),
+        waterEndReading: Number(checkOutCtx.waterEndReading || 0),
+      },
+      type: "water",
+      billingMonth,
+      billingCloseDay: actions?.billingCloseDay || 1,
+      dateOut: checkOutCtx.dateOut,
+    });
+    const patchedStay = {
+      ...stay,
+      dateIn: electricityBounds.effectiveStartDate,
+      dateOut: electricityBounds.effectiveEndDate,
+      electricityStartReading: Number(electricityBounds.startReading || 0),
+      electricityEndReading: Number(electricityBounds.endReading || 0),
+      waterStartReading: Number(waterBounds.startReading || 0),
+      waterEndReading: Number(waterBounds.endReading || 0),
+    };
+    const patchedRoom = {
+      ...room,
+      stays: (room?.stays || []).map((s) => (s.id === stay.id ? patchedStay : s)),
+    };
+    const settings = {
+      billingMonth,
+      billingCloseDay: actions?.billingCloseDay,
+      electricityPrice: actions?.electricityPrice,
+      waterPrice: actions?.waterPrice,
+      waterBillingMode: actions?.waterBillingMode,
+      periodStart: electricityBounds.effectiveStartDate,
+      periodEnd: electricityBounds.effectiveEndDate,
+    };
+    const electricity = calculateRoomUtility({ room: patchedRoom, type: "electricity", settings });
+    const water = calculateRoomUtility({
+      room: patchedRoom,
+      type: "water",
+      settings: { ...settings, periodStart: waterBounds.effectiveStartDate, periodEnd: waterBounds.effectiveEndDate },
+    });
+    const electricityAmount = electricity.amountByWorkerId.get(workerId) || 0;
+    const waterAmount = water.amountByWorkerId.get(workerId) || 0;
+    return { electricityAmount, waterAmount, totalAmount: electricityAmount + waterAmount };
+  }, [actions, checkOutCtx, room]);
 
   const applyQrPayload = (payload) => {
     if (!payload) return false;
@@ -195,7 +322,9 @@ export default function RoomModal({
         }
         scanCameraFrame();
       } catch {
-        message.error("Không mở được camera. Hãy kiểm tra quyền truy cập camera.");
+        message.error(
+          "Không mở được camera. Hãy kiểm tra quyền truy cập camera.",
+        );
         setCameraOpen(false);
       }
     })();
@@ -204,11 +333,27 @@ export default function RoomModal({
       cancelled = true;
       stopCamera();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameraOpen]);
 
   // title shown in modal header; include both label and code for clarity
   const title = room ? `Chi tiết phòng ${room.code}` : "Chi tiết phòng";
+
+  async function updateRoomGender(nextGender) {
+    if (!actions?.updateRoom) return;
+    setGenderPending(nextGender || "none");
+    setGenderBusy(true);
+    try {
+      const ok = await actions.updateRoom(room.id, { gender: nextGender });
+      if (ok !== false) {
+        setGenderOpen(false);
+        onClose?.();
+      }
+    } finally {
+      setGenderBusy(false);
+      setGenderPending(null);
+    }
+  }
 
   if (!room) {
     return (
@@ -223,82 +368,89 @@ export default function RoomModal({
       <Modal open={open} title={title} onClose={onClose}>
         <div className="space-y-3">
           <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
-            <div className="text-xs font-semibold text-slate-900">
-              {floor?.name || "Tầng"}
-            </div>
-            <div className="mt-1 text-xs text-slate-400">
-              {/* hint only shown when caller handles viewing worker details */}
-              {actions?.onViewWorker ? "Click NLĐ để xem" : ""}
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <div className="flex gap-2 justify-center items-center">
-                <div className="text-base font-semibold text-slate-900">
-                  Phòng {room.code}
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <div className="shrink-0 text-xs font-semibold text-slate-900">
+                    {floor?.name || "Tầng"}
+                  </div>
+                  <div className="truncate text-base font-semibold text-slate-900">
+                    Phòng {room.code}
+                  </div>
                 </div>
-                {auth?.isAdmin ? (
-                  <button
-                    className="mt-1 grid h-7 w-7 place-items-center rounded-2xl bg-white/70 ring-1 ring-slate-200 hover:bg-white"
-                    onClick={() => {
-                      // allow editing the code directly from top panel
-                      const next = prompt("Mã phòng", room.code) || room.code;
-                      if (next !== room.code && next.trim()) {
-                        requireAdmin(async () => {
-                          console.log("Updating room code:", {
-                            roomId: room.id,
-                            code: next,
-                          });
-                          const ok = await actions.updateRoom(room.id, {
-                            code: next,
-                          });
-                          console.log("Update room code result:", ok);
-                          if (ok) onClose?.();
-                        });
-                      }
-                    }}
-                    title="Sửa mã phòng"
-                  >
-                    <Edit className="h-4 w-4 text-slate-600" />
-                  </button>
-                ) : null}
+                <div className="mt-1 text-xs text-slate-400">
+                  {actions?.onViewWorker ? "Click NLĐ để xem" : ""}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              {auth?.isAdmin ? (
                 <button
-                  className={clsx(
-                    "rounded-2xl px-3 py-1 text-xs font-semibold",
-                    auth?.isAdmin
-                      ? "bg-sky-500 text-white"
-                      : "bg-slate-200 text-slate-500",
-                  )}
-                  onClick={() => setElecModal(true)}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-2xl bg-white/80 ring-1 ring-slate-200 hover:bg-white"
+                  onClick={() => {
+                    const next = prompt("Mã phòng", room.code) || room.code;
+                    if (next !== room.code && next.trim()) {
+                      requireAdmin(async () => {
+                        const ok = await actions.updateRoom(room.id, {
+                          code: next,
+                        });
+                        if (ok) onClose?.();
+                      });
+                    }
+                  }}
+                  title="Sửa mã phòng"
                 >
-                  Tiền điện
+                  <Edit className="h-4 w-4 text-slate-600" />
                 </button>
-                <button
-                  className={clsx(
-                    "rounded-2xl px-3 py-1 text-xs font-semibold",
-                    auth?.isAdmin
-                      ? "bg-white/70 text-slate-700 ring-1 ring-slate-200"
-                      : "bg-slate-200 text-slate-500",
+              ) : null}
+            </div>
+            <div className="mt-3 flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5">
+              <button
+                className="shrink-0 rounded-2xl bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-100"
+                onClick={() => setUtilityModal("electricity")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Zap className="h-3.5 w-3.5" />
+                  Điện
+                </span>
+              </button>
+              <button
+                className="shrink-0 rounded-2xl bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 ring-1 ring-sky-100"
+                onClick={() => setUtilityModal("water")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Droplets className="h-3.5 w-3.5" />
+                  Nước
+                </span>
+              </button>
+              <button
+                className={clsx(
+                  "shrink-0 rounded-2xl px-3 py-1.5 text-xs font-semibold",
+                  auth?.isAdmin
+                    ? "bg-white/70 text-slate-700 ring-1 ring-slate-200"
+                    : "bg-slate-200 text-slate-500",
+                )}
+                onClick={() => requireAdmin(() => setGenderOpen(true))}
+                disabled={genderBusy}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {genderBusy ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin text-slate-500" />
+                  ) : room.gender === "male" || room.gender === "Nam" ? (
+                    <Mars className="h-4 w-4 text-sky-600" />
+                  ) : room.gender === "female" || room.gender === "Nữ" ? (
+                    <Venus className="h-4 w-4 text-pink-600" />
+                  ) : (
+                    <div className="h-4 w-4 rounded-full border border-dashed border-slate-300" />
                   )}
-                  onClick={() => requireAdmin(() => setGenderOpen(true))}
-                >
-                  <span className="inline-flex items-center gap-2">
-                    {room.gender === "male" || room.gender === "Nam" ? (
-                      <Mars className="h-4 w-4 text-sky-600" />
-                    ) : room.gender === "female" || room.gender === "Nữ" ? (
-                      <Venus className="h-4 w-4 text-pink-600" />
-                    ) : (
-                      <div className="h-4 w-4 rounded-full border border-dashed border-slate-300" />
-                    )}
-                    {roomGenderLabel(room.gender)}
-                  </span>
-                </button>
+                  {roomGenderLabel(room.gender)}
+                </span>
+              </button>
+              <span className="shrink-0">
                 <Pill
                   icon={Users}
-                  text={`${current.length} đang ở`}
+                  text={`${current.length}`}
                   tone={current.length ? "green" : "slate"}
                 />
-              </div>
+              </span>
             </div>
           </div>
 
@@ -316,7 +468,7 @@ export default function RoomModal({
                 className={clsx(
                   "rounded-2xl px-3 py-2 text-xs font-semibold",
                   auth?.isAdmin
-                    ? "bg-slate-900 text-white"
+                    ? "bg-[rgb(44_120_159)] text-white"
                     : "bg-slate-50 text-slate-400",
                 )}
                 onClick={() =>
@@ -337,6 +489,8 @@ export default function RoomModal({
               {current.length ? (
                 current.map((s) => {
                   const w = workerById?.get(s.workerId);
+                  const charge =
+                    actions?.utilityChargesByWorkerId?.get?.(s.workerId) || {};
                   return (
                     <div
                       key={s.id}
@@ -355,7 +509,15 @@ export default function RoomModal({
                           Vào: {formatDate(s.dateIn)}
                         </div>
                         <div className="text-xs text-slate-500">
-                          Điện: {Number(w?.electricityFee || 0).toLocaleString("vi-VN")}đ · Nước: {Number(w?.waterFee || 0).toLocaleString("vi-VN")}đ
+                          Điện:{" "}
+                          {Number(charge.electricityAmount || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ · Nước:{" "}
+                          {Number(charge.waterAmount || 0).toLocaleString(
+                            "vi-VN",
+                          )}
+                          đ
                         </div>
                       </button>
 
@@ -386,11 +548,17 @@ export default function RoomModal({
                                 alert("Chưa nối actions.checkOut");
                                 return;
                               }
+                              const readings = getCheckOutReadings(s, todayISO());
                               setCheckOutCtx({
                                 open: true,
                                 stayId: s.id,
+                                workerId: s.workerId,
                                 workerName: w?.fullName || "",
                                 dateOut: todayISO(),
+                                electricityStartReading: readings.electricityStartReading,
+                                waterStartReading: readings.waterStartReading,
+                                electricityEndReading: readings.electricityEndReading,
+                                waterEndReading: readings.waterEndReading,
                               });
                             })
                           }
@@ -545,7 +713,9 @@ export default function RoomModal({
               />
               <div className="grid grid-cols-2 gap-2">
                 <label className="block space-y-1">
-                  <div className="text-xs font-medium text-slate-600">Giới tính</div>
+                  <div className="text-xs font-medium text-slate-600">
+                    Giới tính
+                  </div>
                   <select
                     value={workerGender}
                     onChange={(e) => setWorkerGender(e.target.value)}
@@ -560,7 +730,9 @@ export default function RoomModal({
                 <TextField
                   label="Số CCCD"
                   value={identityNumber}
-                  onChange={(v) => setIdentityNumber(String(v || "").replace(/\D/g, ""))}
+                  onChange={(v) =>
+                    setIdentityNumber(String(v || "").replace(/\D/g, ""))
+                  }
                   placeholder="12 số"
                   disabled={!auth?.isAdmin}
                 />
@@ -595,19 +767,21 @@ export default function RoomModal({
               />
               <div className="grid grid-cols-2 gap-2">
                 <TextField
-                  label="Tiền điện"
-                  value={electricityFee}
-                  onChange={(v) => setElectricityFee(v)}
+                  label="Số điện ngày vào"
+                  value={electricityStartReading}
+                  onChange={setElectricityStartReading}
                   type="number"
                   placeholder="0"
+                  error={errors.electricityStartReading}
                   disabled={!auth?.isAdmin}
                 />
                 <TextField
-                  label="Tiền nước"
-                  value={waterFee}
-                  onChange={(v) => setWaterFee(v)}
+                  label="Số nước ngày vào"
+                  value={waterStartReading}
+                  onChange={setWaterStartReading}
                   type="number"
                   placeholder="0"
+                  error={errors.waterStartReading}
                   disabled={!auth?.isAdmin}
                 />
               </div>
@@ -635,7 +809,7 @@ export default function RoomModal({
               className={clsx(
                 "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold",
                 auth?.isAdmin
-                  ? "bg-slate-900 text-white"
+                  ? "bg-[rgb(44_120_159)] text-white"
                   : "bg-slate-100 text-slate-600",
               )}
               onClick={() =>
@@ -652,6 +826,10 @@ export default function RoomModal({
                   }
                   if (!name) nextErrors.fullName = true;
                   if (!dateIn) nextErrors.dateIn = true;
+                  if (electricityStartReading === "")
+                    nextErrors.electricityStartReading = true;
+                  if (waterStartReading === "")
+                    nextErrors.waterStartReading = true;
 
                   setErrors(nextErrors);
                   if (Object.keys(nextErrors).length) return;
@@ -720,6 +898,10 @@ export default function RoomModal({
                       roomId: room.id,
                       workerId,
                       dateIn: dateIn || todayISO(),
+                      electricityStartReading: Number(
+                        electricityStartReading || 0,
+                      ),
+                      waterStartReading: Number(waterStartReading || 0),
                     });
 
                     setAddOpen(false);
@@ -795,67 +977,34 @@ export default function RoomModal({
               className={clsx(
                 "w-full rounded-2xl px-4 py-3 text-left text-sm font-semibold ring-1",
                 room.gender == null
-                  ? "bg-slate-900 text-white ring-slate-900"
+                  ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
                   : "bg-white text-slate-800 ring-slate-200",
               )}
               disabled={genderBusy}
               onClick={() =>
-                requireAdmin(async () => {
-                  if (!actions?.updateRoom) return;
-                  setGenderBusy(true);
-                  try {
-                    console.log(
-                      `[RoomModal] Updating gender for room ${room.id} to null`,
-                    );
-                    const ok = await actions.updateRoom(room.id, {
-                      gender: null,
-                    });
-                    console.log(`[RoomModal] Update gender (null) result:`, ok);
-                    if (ok !== false) {
-                      setGenderOpen(false);
-                      onClose?.();
-                    }
-                  } finally {
-                    setGenderBusy(false);
-                  }
-                })
+                requireAdmin(() => updateRoomGender(null))
               }
             >
-              Không chọn
+              <span className="inline-flex items-center gap-2">
+                {genderPending === "none" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                Không chọn
+              </span>
             </button>
 
             <button
               className={clsx(
                 "w-full rounded-2xl px-4 py-3 text-left text-sm font-semibold ring-1",
                 room.gender === "male" || room.gender === "Nam"
-                  ? "bg-sky-600 text-white ring-sky-600"
+                  ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
                   : "bg-white text-slate-800 ring-slate-200",
               )}
               disabled={genderBusy}
               onClick={() =>
-                requireAdmin(async () => {
-                  if (!actions?.updateRoom) return;
-                  setGenderBusy(true);
-                  try {
-                    console.log(
-                      `[RoomModal] Updating gender for room ${room.id} to male`,
-                    );
-                    const ok = await actions.updateRoom(room.id, {
-                      gender: "male",
-                    });
-                    console.log(`[RoomModal] Update gender (male) result:`, ok);
-                    if (ok !== false) {
-                      setGenderOpen(false);
-                      onClose?.();
-                    }
-                  } finally {
-                    setGenderBusy(false);
-                  }
-                })
+                requireAdmin(() => updateRoomGender("male"))
               }
             >
               <span className="inline-flex items-center gap-2">
-                <Mars className="h-4 w-4" />
+                {genderPending === "male" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mars className="h-4 w-4" />}
                 Nam
               </span>
             </button>
@@ -869,32 +1018,11 @@ export default function RoomModal({
               )}
               disabled={genderBusy}
               onClick={() =>
-                requireAdmin(async () => {
-                  if (!actions?.updateRoom) return;
-                  setGenderBusy(true);
-                  try {
-                    console.log(
-                      `[RoomModal] Updating gender for room ${room.id} to female`,
-                    );
-                    const ok = await actions.updateRoom(room.id, {
-                      gender: "female",
-                    });
-                    console.log(
-                      `[RoomModal] Update gender (female) result:`,
-                      ok,
-                    );
-                    if (ok !== false) {
-                      setGenderOpen(false);
-                      onClose?.();
-                    }
-                  } finally {
-                    setGenderBusy(false);
-                  }
-                })
+                requireAdmin(() => updateRoomGender("female"))
               }
             >
               <span className="inline-flex items-center gap-2">
-                <Venus className="h-4 w-4" />
+                {genderPending === "female" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Venus className="h-4 w-4" />}
                 Nữ
               </span>
             </button>
@@ -941,13 +1069,19 @@ export default function RoomModal({
                     setEmployeeCode(String(w.employeeCode || "").toUpperCase());
                     setFullName(w.fullName || "");
                     setWorkerGender(w.gender || "");
-                    setIdentityNumber(w.identityNumber || w.identity_number || "");
+                    setIdentityNumber(
+                      w.identityNumber || w.identity_number || "",
+                    );
                     setDob(w.dob || "");
                     setHometown(w.hometown || "");
                     setPhone(w.phone || "");
                     setRecruiter(w.recruiter || "");
-                    setElectricityFee(Number(w.electricityFee || w.electricity_fee || 0));
+                    setElectricityFee(
+                      Number(w.electricityFee || w.electricity_fee || 0),
+                    );
                     setWaterFee(Number(w.waterFee || w.water_fee || 0));
+                    setElectricityStartReading("");
+                    setWaterStartReading("");
                     setNote(w.note || "");
                     setErrors({});
                     setPickerOpen(false);
@@ -990,7 +1124,12 @@ export default function RoomModal({
         open={checkOutCtx.open}
         title="Chọn ngày rời đi"
         onClose={() =>
-          setCheckOutCtx((prev) => ({ ...prev, open: false, stayId: null }))
+          setCheckOutCtx((prev) => ({
+            ...prev,
+            open: false,
+            stayId: null,
+            workerId: null,
+          }))
         }
       >
         <div className="space-y-3">
@@ -1002,11 +1141,69 @@ export default function RoomModal({
           <TextField
             label="Ngày rời đi"
             value={checkOutCtx.dateOut}
-            onChange={(v) =>
-              setCheckOutCtx((prev) => ({ ...prev, dateOut: v }))
-            }
+            onChange={(v) => {
+              const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
+              const readings = getCheckOutReadings(stay, v);
+              setCheckOutCtx((prev) => ({
+                ...prev,
+                dateOut: v,
+                electricityStartReading: readings.electricityStartReading,
+                waterStartReading: readings.waterStartReading,
+                electricityEndReading: readings.electricityEndReading,
+                waterEndReading: readings.waterEndReading,
+              }));
+            }}
             type="date"
           />
+          <div className="grid grid-cols-2 gap-2">
+            <TextField
+              label="Số điện đầu"
+              value={checkOutCtx.electricityStartReading}
+              onChange={(v) =>
+                setCheckOutCtx((prev) => ({
+                  ...prev,
+                  electricityStartReading: v,
+                }))
+              }
+              type="number"
+            />
+            <TextField
+              label="Số điện khi rời"
+              value={checkOutCtx.electricityEndReading}
+              onChange={(v) =>
+                setCheckOutCtx((prev) => ({
+                  ...prev,
+                  electricityEndReading: v,
+                }))
+              }
+              type="number"
+            />
+            <TextField
+              label="Số nước đầu"
+              value={checkOutCtx.waterStartReading}
+              onChange={(v) =>
+                setCheckOutCtx((prev) => ({ ...prev, waterStartReading: v }))
+              }
+              type="number"
+            />
+            <TextField
+              label="Số nước khi rời"
+              value={checkOutCtx.waterEndReading}
+              onChange={(v) =>
+                setCheckOutCtx((prev) => ({ ...prev, waterEndReading: v }))
+              }
+              type="number"
+            />
+          </div>
+          <div className="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100">
+            <div className="text-xs font-medium text-sky-700">Thành tiền</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">
+              {Number(checkOutAmount.totalAmount || 0).toLocaleString("vi-VN")}đ
+            </div>
+            <div className="mt-1 text-xs text-slate-600">
+              Điện: {Number(checkOutAmount.electricityAmount || 0).toLocaleString("vi-VN")}đ · Nước: {Number(checkOutAmount.waterAmount || 0).toLocaleString("vi-VN")}đ
+            </div>
+          </div>
           <div className="flex gap-2">
             <button
               className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
@@ -1015,13 +1212,14 @@ export default function RoomModal({
                   ...prev,
                   open: false,
                   stayId: null,
+                  workerId: null,
                 }))
               }
             >
               Hủy
             </button>
             <button
-              className="flex-1 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              className="flex-1 rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
               onClick={() =>
                 requireAdmin(async () => {
                   if (!actions?.checkOut) {
@@ -1032,14 +1230,36 @@ export default function RoomModal({
                     alert("Vui lòng chọn ngày rời đi.");
                     return;
                   }
+                  if (
+                    checkOutCtx.electricityStartReading === "" ||
+                    checkOutCtx.electricityEndReading === "" ||
+                    checkOutCtx.waterStartReading === "" ||
+                    checkOutCtx.waterEndReading === ""
+                  ) {
+                    alert(
+                      "Vui lòng nhập đủ chỉ số điện/nước đầu và khi rời.",
+                    );
+                    return;
+                  }
                   await actions.checkOut({
                     stayId: checkOutCtx.stayId,
                     dateOut: checkOutCtx.dateOut,
+                    electricityStartReading: Number(
+                      checkOutCtx.electricityStartReading || 0,
+                    ),
+                    electricityEndReading: Number(
+                      checkOutCtx.electricityEndReading || 0,
+                    ),
+                    waterStartReading: Number(
+                      checkOutCtx.waterStartReading || 0,
+                    ),
+                    waterEndReading: Number(checkOutCtx.waterEndReading || 0),
                   });
                   setCheckOutCtx((prev) => ({
                     ...prev,
                     open: false,
                     stayId: null,
+                    workerId: null,
                   }));
                 })
               }
@@ -1087,18 +1307,25 @@ export default function RoomModal({
       />
 
       <ElectricityModal
-        key={`elec-${room?.id}-${room?.electricity?.id || "new"}-${actions?.billingMonth}-${elecModal}`}
-        open={elecModal}
-        onClose={() => setElecModal(false)}
+        key={`utility-${utilityModal || "none"}-${room?.id}-${actions?.billingMonth}-${actions?.billingCloseDay}`}
+        open={!!utilityModal}
+        onClose={() => setUtilityModal(null)}
         room={room}
-        electricity={room.electricity}
-        pricePerUnit={actions?.electricityPrice}
+        workerById={workerById}
+        utilityType={utilityModal || "electricity"}
+        records={utilityModal === "water" ? room.water : room.electricity}
+        pricePerUnit={
+          utilityModal === "water"
+            ? actions?.waterPrice
+            : actions?.electricityPrice
+        }
+        waterBillingMode={actions?.waterBillingMode}
         billingMonth={actions?.billingMonth}
+        billingCloseDay={actions?.billingCloseDay}
         auth={auth}
         requireAdmin={requireAdmin}
         actions={{
-          upsertElectricity: actions?.upsertElectricity,
-          markElectricityPaid: actions?.markElectricityPaid,
+          upsertUtility: actions?.upsertUtility,
         }}
       />
     </>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Shield, Save, LogIn, LogOut, FileUp, Download } from "lucide-react";
+import { Save, FileUp, Download } from "lucide-react";
 import { downloadExcelSample } from "../../services/excelSampleService";
 
 import clsx from "../../components/ui/clsx";
@@ -15,16 +15,12 @@ export default function SettingsModal({
   setState,
 
   auth,
-  setLoginModal,
-  onLogout,
-
   // excel import support
   importFileRef,
 
   DEFAULT_SETTINGS,
   saveSettingsToDb,
   requireAdmin,
-  wipeDatabase,
   onImportExcel,
 }) {
   const settings = state.settings;
@@ -57,232 +53,12 @@ export default function SettingsModal({
     };
   }, [DEFAULT_SETTINGS, draft]);
 
-  const setAdminContactField = (key, value) => {
-    setDraft((prev) => ({
-      ...prev,
-      adminContact: { ...(prev.adminContact || {}), [key]: value },
-    }));
-  };
+  const parseMoney = (value) =>
+    Math.max(0, Number(String(value || "").replace(/,/g, "")) || 0);
 
   return (
     <Modal open={open} title="Cài đặt" onClose={onClose}>
       <div className="space-y-4">
-        {/* AUTH */}
-        <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold">Quyền Admin</div>
-              <div className="mt-1 text-xs text-slate-600">
-                {auth.isAdmin
-                  ? "Bạn đang đăng nhập."
-                  : "Bạn đang ở chế độ xem."}
-              </div>
-            </div>
-            <Pill
-              icon={Shield}
-              text={auth.isAdmin ? "Admin" : "Viewer"}
-              tone={auth.isAdmin ? "green" : "slate"}
-            />
-
-            {!auth.isAdmin ? (
-              <button
-                className="mt-3 rounded-2xl bg-slate-900 px-2 py-2 text-sm font-semibold text-white"
-                onClick={() => setLoginModal?.(true)}
-              >
-                <span className="inline-flex items-center justify-center gap-2">
-                  <LogIn className="h-4 w-4" />
-                  Đăng nhập Admin
-                </span>
-              </button>
-            ) : (
-              <button
-                className="mt-3 rounded-2xl bg-slate-900 px-2 py-2 text-sm font-semibold text-white"
-                onClick={() => {
-                  onLogout?.();
-                  onClose?.();
-                }}
-              >
-                <span className="inline-flex items-center justify-center gap-2">
-                  <LogOut className="h-4 w-4" />
-                  Đăng xuất
-                </span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ADMIN CONTACT SETTINGS */}
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="text-sm font-semibold">Li?n h? admin</div>
-          <div className="mt-1 text-xs text-slate-600">
-            Th?ng tin n?y hi?n th? trong tab T?i kho?n.
-          </div>
-
-          <div className="mt-3 space-y-3">
-            <TextField
-              label="T?n admin ph? tr?ch"
-              value={mergedDraft.adminContact.name || ""}
-              onChange={(v) => setAdminContactField("name", v)}
-            />
-            <TextField
-              label="S? ?i?n tho?i"
-              value={mergedDraft.adminContact.phone || ""}
-              onChange={(v) => setAdminContactField("phone", v)}
-            />
-            <TextField
-              label="Email"
-              value={mergedDraft.adminContact.email || ""}
-              onChange={(v) => setAdminContactField("email", v)}
-            />
-            <TextField
-              label="Zalo"
-              value={mergedDraft.adminContact.zalo || ""}
-              onChange={(v) => setAdminContactField("zalo", v)}
-              placeholder="S? Zalo ho?c link Zalo"
-            />
-            <TextField
-              label="Ghi ch? h? tr?"
-              value={mergedDraft.adminContact.note || ""}
-              onChange={(v) => setAdminContactField("note", v)}
-            />
-          </div>
-        </div>
-
-        {/* ABOUT SETTINGS */}
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-          <div className="text-sm font-semibold">Về chúng tôi</div>
-
-          <div className="mt-3 space-y-3">
-            <TextField
-              label="Tên đơn vị"
-              value={mergedDraft.about.companyName || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), companyName: v },
-                }))
-              }
-            />
-            <TextField
-              label="Địa chỉ"
-              value={mergedDraft.about.address || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), address: v },
-                }))
-              }
-            />
-            <TextField
-              label="Hotline"
-              value={mergedDraft.about.hotline || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), hotline: v },
-                }))
-              }
-            />
-            <TextField
-              label="Email"
-              value={mergedDraft.about.email || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), email: v },
-                }))
-              }
-            />
-            <TextField
-              label="Website"
-              value={mergedDraft.about.website || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), website: v },
-                }))
-              }
-            />
-            <TextField
-              label="Giờ làm việc"
-              value={mergedDraft.about.workingHours || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), workingHours: v },
-                }))
-              }
-            />
-            <TextField
-              label="Link bản đồ (mapUrl)"
-              value={mergedDraft.about.mapUrl || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), mapUrl: v },
-                }))
-              }
-            />
-            <TextField
-              label="Mô tả"
-              value={mergedDraft.about.description || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), description: v },
-                }))
-              }
-            />
-            <TextField
-              label="Tiện ích (ngăn cách bằng dấu phẩy)"
-              value={(mergedDraft.about.services || []).join(", ")}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: {
-                    ...(s.about || {}),
-                    services: v
-                      .split(",")
-                      .map((x) => x.trim())
-                      .filter(Boolean),
-                  },
-                }))
-              }
-              placeholder="WiFi, Giặt sấy, Căn tin..."
-            />
-            <TextField
-              label="Nội quy"
-              value={mergedDraft.about.rules || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), rules: v },
-                }))
-              }
-            />
-            <TextField
-              label="Thông tin chuyển khoản"
-              value={mergedDraft.about.bankInfo || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), bankInfo: v },
-                }))
-              }
-            />
-            <TextField
-              label="Thông báo Admin"
-              value={mergedDraft.about.adminNotice || ""}
-              onChange={(v) =>
-                setDraft((s) => ({
-                  ...s,
-                  about: { ...(s.about || {}), adminNotice: v },
-                }))
-              }
-            />
-          </div>
-        </div>
-
         {/* MAIN SETTINGS */}
         <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
           <div className="text-sm font-semibold">Thiết lập hiển thị</div>
@@ -302,11 +78,68 @@ export default function SettingsModal({
             <TextField
               label="Tiền điện / số"
               type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
               value={String(mergedDraft.electricityPrice || 0)}
               onChange={(v) =>
                 setDraft((s) => ({
                   ...s,
-                  electricityPrice: Number(v),
+                  electricityPrice: parseMoney(v),
+                }))
+              }
+            />
+            <TextField
+              label="Tiền nước / số"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={String(mergedDraft.waterPrice || 0)}
+              onChange={(v) =>
+                setDraft((s) => ({
+                  ...s,
+                  waterPrice: parseMoney(v),
+                }))
+              }
+            />
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-slate-600">Cách tính tiền nước</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className={clsx(
+                    "rounded-2xl px-3 py-2 text-sm font-semibold ring-1",
+                    mergedDraft.waterBillingMode !== "no_split"
+                      ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
+                      : "bg-white text-slate-700 ring-slate-200",
+                  )}
+                  onClick={() => setDraft((s) => ({ ...s, waterBillingMode: "shared" }))}
+                >
+                  Chia theo người
+                </button>
+                <button
+                  type="button"
+                  className={clsx(
+                    "rounded-2xl px-3 py-2 text-sm font-semibold ring-1",
+                    mergedDraft.waterBillingMode === "no_split"
+                      ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
+                      : "bg-white text-slate-700 ring-slate-200",
+                  )}
+                  onClick={() => setDraft((s) => ({ ...s, waterBillingMode: "no_split" }))}
+                >
+                  Không chia
+                </button>
+              </div>
+            </div>
+            <TextField
+              label="Ngày chốt thanh toán"
+              type="number"
+              value={String(mergedDraft.billingCloseDay || 10)}
+              onChange={(v) =>
+                setDraft((s) => ({
+                  ...s,
+                  billingCloseDay: Math.min(31, Math.max(1, Number(v || 1))),
                 }))
               }
             />
@@ -321,48 +154,47 @@ export default function SettingsModal({
                 }))
               }
             />
+          </div>
+        </div>
 
-            <div className="rounded-2xl bg-slate-50 p-3">
-              <div className="text-xs font-semibold text-slate-900">
-                Bảo vệ xóa
-              </div>
-              <div className="mt-2 space-y-2">
-                <ToggleRow
-                  label="Cho phép xóa cấu trúc (tầng/phòng)"
-                  value={!!mergedDraft.canDeleteStructure}
-                  onChange={(val) =>
-                    setDraft((s) => ({
-                      ...s,
-                      canDeleteStructure: val,
-                    }))
-                  }
-                />
-                <ToggleRow
-                  label="Yêu cầu mật khẩu khi xóa"
-                  value={!!mergedDraft.requirePasswordOnDelete}
-                  onChange={(val) =>
-                    setDraft((s) => ({
-                      ...s,
-                      requirePasswordOnDelete: val,
-                    }))
-                  }
-                />
-                <div className="rounded-2xl bg-sky-50 px-3 py-2 text-xs text-sky-700">
-                  Khi xóa tầng/phòng, hệ thống sẽ yêu cầu nhập lại mật khẩu đăng
-                  nhập hiện tại.
-                </div>
-              </div>
+        {/* DELETE GUARD */}
+        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="text-sm font-semibold">Bảo vệ xóa</div>
+          <div className="mt-3 space-y-2">
+            <ToggleRow
+              label="Cho phép xóa cấu trúc (tầng/phòng)"
+              value={!!mergedDraft.canDeleteStructure}
+              onChange={(val) =>
+                setDraft((s) => ({
+                  ...s,
+                  canDeleteStructure: val,
+                }))
+              }
+            />
+            <ToggleRow
+              label="Yêu cầu mật khẩu khi xóa"
+              value={!!mergedDraft.requirePasswordOnDelete}
+              onChange={(val) =>
+                setDraft((s) => ({
+                  ...s,
+                  requirePasswordOnDelete: val,
+                }))
+              }
+            />
+            <div className="rounded-2xl bg-sky-50 px-3 py-2 text-xs text-sky-700">
+              Khi xóa tầng/phòng, hệ thống sẽ yêu cầu nhập lại mật khẩu đăng
+              nhập hiện tại.
             </div>
           </div>
         </div>
 
-        {/* DATA IMPORT */}
+        {/* DATA */}
         <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold">Dữ liệu</div>
               <div className="mt-1 text-xs text-slate-600">
-                (Admin) Nhập dữ liệu NLĐ từ Excel.
+                Nhập dữ liệu NLĐ từ Excel cho tòa nhà đang chọn.
               </div>
             </div>
             <Pill icon={FileUp} text="Excel" tone="sky" />
@@ -373,7 +205,7 @@ export default function SettingsModal({
               className={clsx(
                 "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
                 auth.isAdmin
-                  ? "bg-slate-900 text-white"
+                  ? "bg-[rgb(44_120_159)] text-white"
                   : "bg-slate-100 text-slate-500",
               )}
               onClick={() =>
@@ -411,34 +243,7 @@ export default function SettingsModal({
               e.target.value = null; // Reset input file để có thể chọn lại cùng file
             }}
           />
-        </div>
 
-        {/* DATABASE TOOLS */}
-        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100 border-red-100 border">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-semibold text-red-600">Hệ thống</div>
-              <div className="mt-1 text-xs text-slate-600">
-                Xóa toàn bộ dữ liệu để khởi tạo lại từ đầu.
-              </div>
-            </div>
-            <button
-              className="rounded-2xl bg-red-50 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-100"
-              onClick={() =>
-                requireAdmin(() => {
-                  if (
-                    confirm(
-                      "BẠN CÓ CHẮC CHẮN MUỐN XÓA SẠCH DATABASE? Hành động này không thể hoàn tác.",
-                    )
-                  ) {
-                    wipeDatabase?.();
-                  }
-                })
-              }
-            >
-              RESET DATABASE
-            </button>
-          </div>
         </div>
 
         {/* SAVE */}
@@ -446,7 +251,7 @@ export default function SettingsModal({
           className={clsx(
             "w-full rounded-2xl px-4 py-3 text-sm font-semibold",
             auth.isAdmin
-              ? "bg-slate-900 text-white"
+              ? "bg-[rgb(44_120_159)] text-white"
               : "bg-slate-100 text-slate-500",
           )}
           onClick={() =>

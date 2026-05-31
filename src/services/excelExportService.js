@@ -8,6 +8,11 @@ function workerGenderLabel(value) {
   return "";
 }
 
+function paymentStatus({ paid, totalAmount }) {
+  if (Number(totalAmount || 0) <= 0) return "Không phát sinh";
+  return paid ? "Đã thu" : "Chưa thu";
+}
+
 export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
   const roomsSheet = [];
   for (const f of floors) {
@@ -101,16 +106,22 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
   XLSX.writeFile(wb, fileName);
 }
 
-export function exportPaymentExcel({ floors, workerById, billingMonth, todayISO }) {
+export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBilling, workerPaymentRows = [], todayISO }) {
   const rows = [];
+  const paymentRowByStayId = new Map(
+    workerPaymentRows.map((row) => [row.stayId, row]),
+  );
   for (const f of floors) {
     for (const r of f.rooms) {
       const current = r.stays.filter((s) => !s.dateOut);
-      const electric = (r.electricity || []).find((e) => e?.month === billingMonth);
+      const roomCharges = utilityBilling?.byRoom?.get?.(r.id)?.byWorker || new Map();
       for (const st of current) {
         const w = workerById.get(st.workerId);
-        const electricityFee = Number(w?.electricityFee || 0);
-        const waterFee = Number(w?.waterFee || 0);
+        const paymentRow = paymentRowByStayId.get(st.id);
+        const charge = roomCharges.get(st.workerId) || {};
+        const electricityFee = Number(charge.electricityAmount || 0);
+        const waterFee = Number(charge.waterAmount || 0);
+        const totalAmount = electricityFee + waterFee;
         rows.push({
           "Tháng": billingMonth || "",
           "Tầng": f.name,
@@ -121,8 +132,12 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, todayISO 
           "Tiền nước": waterFee,
           "Tiền tạm trú": 0,
           "Tiền khác": 0,
-          "Tổng tiền": electricityFee + waterFee,
-          "Trạng thái": electric?.paid ? "Đã thu điện" : "Chưa thu",
+          "Tổng tiền": totalAmount,
+          "Trạng thái": paymentStatus({
+            paid: !!paymentRow?.paid,
+            totalAmount,
+          }),
+          "Thời điểm thu": paymentRow?.paidAt || "",
           "Ghi chú": "",
         });
       }
@@ -133,7 +148,25 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, todayISO 
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(rows),
-    "Thanh_toan",
+    "Phong_dang_o",
+  );
+
+  const checkoutRows = workerPaymentRows.filter((row) => !row.active).map((row) => ({
+    "Ngày rời": formatDate(row.dateOut, ""),
+    "Tầng": row.floorName || "",
+    "Phòng": row.roomCode || "",
+    "Mã nhân viên": row.employeeCode || "",
+    "Họ tên": row.workerName || "",
+    "Tiền điện": Number(row.electricityAmount || 0),
+    "Tiền nước": Number(row.waterAmount || 0),
+    "Tổng tiền": Number(row.totalAmount || 0),
+    "Trạng thái": paymentStatus(row),
+    "Thời điểm lưu": row.paidAt || "",
+  }));
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(checkoutRows),
+    "NLD_roi_phong",
   );
 
   const suffix = billingMonth || todayISO();

@@ -13,7 +13,10 @@ const DEFAULT_SETTINGS = {
     note: "",
   },
   electricityPrice: 0,
+  waterPrice: 0,
+  waterBillingMode: "shared",
   billingMonth: "",
+  billingCloseDay: 10,
   about: {
     companyName: "Ký túc xá",
     address: "",
@@ -32,6 +35,7 @@ const DEFAULT_SETTINGS = {
 
 function fromRecord(row) {
   if (!row) return DEFAULT_SETTINGS;
+  const utilitySettings = row.about?.utilitySettings || {};
   return {
     ...DEFAULT_SETTINGS,
     siteName: row.site_name ?? DEFAULT_SETTINGS.siteName,
@@ -39,13 +43,24 @@ function fromRecord(row) {
     canDeleteStructure: !!row.can_delete_structure,
     requirePasswordOnDelete: row.require_password_on_delete !== false,
     electricityPrice: row.electricity_price ?? 0,
+    waterPrice: row.water_price ?? utilitySettings.waterPrice ?? 0,
+    waterBillingMode: utilitySettings.waterBillingMode === "no_split" ? "no_split" : "shared",
     billingMonth: row.billing_month || "",
+    billingCloseDay: row.billing_close_day ?? utilitySettings.billingCloseDay ?? 10,
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
     adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(row.admin_contact || row.adminContact || row.about?.adminContact || {}) },
   };
 }
 
 function toRecord(data) {
+  const about = { ...(data.about || {}) };
+  about.adminContact = data.adminContact || {};
+  about.utilitySettings = {
+    ...(about.utilitySettings || {}),
+    waterPrice: Number(data.waterPrice || 0),
+    waterBillingMode: data.waterBillingMode === "no_split" ? "no_split" : "shared",
+    billingCloseDay: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
+  };
   return {
     key: "default",
     site_name: data.siteName,
@@ -53,8 +68,10 @@ function toRecord(data) {
     can_delete_structure: !!data.canDeleteStructure,
     require_password_on_delete: !!data.requirePasswordOnDelete,
     electricity_price: Number(data.electricityPrice || 0),
+    water_price: Number(data.waterPrice || 0),
     billing_month: data.billingMonth || "",
-    about: { ...(data.about || {}), adminContact: data.adminContact || {} },
+    billing_close_day: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
+    about,
   };
 }
 

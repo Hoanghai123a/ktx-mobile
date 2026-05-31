@@ -6,14 +6,27 @@ async function loadDefaultDeps() {
   return {
     workerService: mod.workerService,
     roomService: mod.roomService,
+    floorService: mod.floorService,
     stayService: mod.stayService,
   };
+}
+
+function stripVietnameseMarks(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
 }
 
 function normHeader(s) {
   return String(s || "")
     .trim()
     .toLowerCase()
+    .normalize("NFC")
+    .replace(/[đĐ]/g, (x) => (x === "Đ" ? "D" : "d"))
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s+/g, " ")
     .replace(/[._-]/g, " ");
 }
@@ -63,6 +76,22 @@ function normalizePhone(v) {
   return s.replace(/\s+/g, "");
 }
 
+function normalizeRoomCode(v) {
+  return stripVietnameseMarks(v).trim().toLowerCase();
+}
+
+function parseMoney(v) {
+  const n = Number(String(v || "").replace(/[,\s]/g, ""));
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+
+function parseGender(v) {
+  const s = normHeader(v);
+  if (["nam", "male", "m"].includes(s)) return "male";
+  if (["nu", "female", "f"].includes(s)) return "female";
+  return "";
+}
+
 function isValidEmployeeCode(code) {
   if (!code) return true; // Optional
   return /^[A-Z0-9][A-Z0-9_-]{1,31}$/.test(code);
@@ -96,9 +125,39 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
     const services = deps || (await loadDefaultDeps());
 
     const roomsData = await services.roomService.getAll(token);
-    const roomIdByCode = new Map(
-      (roomsData || []).map((r) => [String(r.code).trim(), r.id]),
+    const floorsData = services.floorService?.getAll
+      ? await services.floorService.getAll(token)
+      : [];
+    const floorNameById = new Map(
+      (floorsData || []).map((f) => [f.id, String(f.name || "").trim()]),
     );
+    const roomsByCode = new Map();
+    const roomByFloorAndCode = new Map();
+    for (const room of roomsData || []) {
+      const codeKey = normalizeRoomCode(room.code);
+      if (!codeKey) continue;
+      if (!roomsByCode.has(codeKey)) roomsByCode.set(codeKey, []);
+      roomsByCode.get(codeKey).push(room);
+
+      const floorName = room.floor_name || room.floorName || floorNameById.get(room.floor_id) || "";
+      const floorKey = normHeader(floorName);
+      if (floorKey) roomByFloorAndCode.set(`${floorKey}|${codeKey}`, room);
+    }
+
+    const resolveRoom = (roomCode, floorName) => {
+      const codeKey = normalizeRoomCode(roomCode);
+      const floorKey = normHeader(floorName);
+      if (floorKey) {
+        const room = roomByFloorAndCode.get(`${floorKey}|${codeKey}`);
+        return room
+          ? { roomId: room.id }
+          : { error: `Không tìm thấy phòng ${roomCode} tại tầng ${floorName}.` };
+      }
+      const matches = roomsByCode.get(codeKey) || [];
+      if (matches.length === 1) return { roomId: matches[0].id };
+      if (matches.length > 1) return { error: `Phòng ${roomCode} bị trùng giữa nhiều tầng. Hãy bổ sung cột Tầng.` };
+      return { error: `Không tìm thấy phòng: ${roomCode}` };
+    };
 
     const workersData = await services.workerService.getAll(token);
     const keyOfWorker = (fullName, dob, phone) =>
@@ -189,6 +248,12 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
       const phone = normalizePhone(
         pick(row, ["Số điện thoại", "So dien thoai", "Phone", "SDT", "Sdt"]),
       );
+      const gender = parseGender(pick(row, ["Giới tính", "Gioi tinh", "Gender"]));
+      const identityNumber = String(
+        pick(row, ["Số CCCD", "So CCCD", "CCCD", "CMND", "Identity number"]),
+      ).trim();
+      const electricityFee = parseMoney(pick(row, ["Tiền điện", "Tien dien", "Electricity fee"]));
+      const waterFee = parseMoney(pick(row, ["Tiền nước", "Tien nuoc", "Water fee"]));
       const hometown = String(
         pick(row, ["Quê quán", "Que quan", "Hometown", "Que"]),
       ).trim();
@@ -201,6 +266,7 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
       const roomCode = String(
         pick(row, ["Phòng", "Phong", "Room", "Room code"]),
       ).trim();
+      const floorName = String(pick(row, ["Tầng", "Tang", "Floor"])).trim();
       const rawDateIn = pick(row, [
         "Ngày vào",
         "Ngay vao",
@@ -251,6 +317,10 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
         const workerPayload = {
           employee_code: finalEmployeeCode,
           full_name: fullName,
+          gender: gender || null,
+          identity_number: identityNumber || "",
+          electricity_fee: electricityFee,
+          water_fee: waterFee,
           dob: dob || null,
           phone: phone || null,
           hometown: hometown || null,
@@ -266,6 +336,10 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
             id: workerId,
             employee_code: finalEmployeeCode,
             full_name: fullName,
+            gender,
+            identity_number: identityNumber,
+            electricity_fee: electricityFee,
+            water_fee: waterFee,
             dob,
             phone,
             hometown,
@@ -285,6 +359,10 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
       } else {
         const patch = {};
         if (!currentCode) patch.employee_code = finalEmployeeCode;
+        if (gender && !worker.gender) patch.gender = gender;
+        if (identityNumber && !worker.identity_number && !worker.identityNumber) patch.identity_number = identityNumber;
+        if (electricityFee > 0 && !Number(worker.electricity_fee || worker.electricityFee || 0)) patch.electricity_fee = electricityFee;
+        if (waterFee > 0 && !Number(worker.water_fee || worker.waterFee || 0)) patch.water_fee = waterFee;
         if (hometown && !worker.hometown) patch.hometown = hometown;
         if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
         if (dob && !worker.dob) patch.dob = dob;
@@ -311,11 +389,11 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
           continue;
         }
 
-        const roomId = roomIdByCode.get(roomCode);
+        const { roomId, error: roomError } = resolveRoom(roomCode, floorName);
         if (!roomId) {
           errors.push({
             line,
-            reason: `Không tìm thấy phòng: ${roomCode}`,
+            reason: roomError,
             fullName,
           });
           continue;

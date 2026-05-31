@@ -66,6 +66,7 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
 import { formatDate } from "./services/dateFormat";
+import { calculateRoomUtility, calculateUtilityBilling, getBillingPeriod, getUtilityCheckoutBounds } from "./services/utilityBilling";
 
 const AuthScreen = lazy(() => import("./features/auth/AuthScreen"));
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
@@ -105,6 +106,14 @@ function todayISO() {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
+}
+
+function nextBillingMonth(month) {
+  const text = String(month || "").slice(0, 7);
+  const [y, m] = text.split("-").map(Number);
+  if (!y || !m) return "";
+  const next = new Date(y, m, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function Modal({ open, title, children, onClose }) {
@@ -318,7 +327,7 @@ function BuildingsHome({
                     </div>
                     <button
                       disabled={pinned}
-                      className={`mt-2 w-full rounded-xl px-2 py-1.5 text-xs font-semibold ${pinned ? "bg-slate-100 text-slate-400" : "bg-sky-600 text-white"}`}
+                      className={`mt-2 w-full rounded-xl px-2 py-1.5 text-xs font-semibold ${pinned ? "bg-slate-100 text-slate-400" : "bg-[rgb(44_120_159)] text-white"}`}
                       onClick={() => pinBuilding(b.id)}
                     >
                       <span className="inline-flex items-center justify-center gap-1.5">
@@ -415,6 +424,7 @@ import {
   floorService,
   stayService,
   electricityService,
+  waterService,
   settingsService,
   buildingService,
   authService,
@@ -763,6 +773,7 @@ export default function App() {
         return;
       }
 
+      setSettingsModal(false);
       setImportModal({ open: true, busy: true, result: null });
       try {
         const result = await importExcelFileToDb(file, token);
@@ -770,8 +781,6 @@ export default function App() {
         await loadAllFromDb(); // Tải lại dữ liệu sau khi nhập
 
         setTab("ktx"); // Chuyển về tab KTX
-        setSettingsModal(false); // Đóng SettingsModal
-        alert("Nhập Excel thành công!");
       } catch (error) {
         console.error("❌ Lỗi khi nhập Excel:", error);
         alert("Lỗi khi nhập Excel. Vui lòng xem console để biết chi tiết.");
@@ -825,6 +834,7 @@ export default function App() {
     if (!auth.isAdmin) return setLoginModal(true);
 
     // ensure modal visible when starting
+    setSettingsModal(false);
     setImportModal((m) => ({ ...m, open: true, busy: true, result: null }));
     try {
       const result = await importExcelFileToDb(file, token);
@@ -832,10 +842,6 @@ export default function App() {
       await loadAllFromDb();
 
       setTab("ktx");
-      setSettingsModal(false);
-      setImportModal((m) => ({ ...m, open: false, busy: false, result: null }));
-
-      alert("Nhập Excel thành công!");
     } catch (e) {
       setImportModal((m) => ({ ...m, busy: false }));
       alert("Nhập Excel lỗi: " + (e?.message || String(e)));
@@ -1097,12 +1103,18 @@ export default function App() {
     }
   }
 
-  async function checkInWorker({ roomId, workerId, dateIn }) {
+  async function checkInWorker({ roomId, workerId, dateIn, electricityStartReading, waterStartReading }) {
     try {
       const d = dateIn || todayISO();
       if (!token) return setLoginModal(true);
       await stayService.create(
-        { room_id: roomId, worker_id: workerId, date_in: d },
+        {
+          room_id: roomId,
+          worker_id: workerId,
+          date_in: d,
+          electricity_start_reading: Number(electricityStartReading || 0),
+          water_start_reading: Number(waterStartReading || 0),
+        },
         token,
       );
       await loadAllFromDb();
@@ -1111,11 +1123,121 @@ export default function App() {
     }
   }
 
-  async function checkOutStay({ stayId, dateOut }) {
+  async function checkOutStay({
+    stayId,
+    dateOut,
+    electricityStartReading,
+    electricityEndReading,
+    waterStartReading,
+    waterEndReading,
+  }) {
     try {
       const d = dateOut || todayISO();
       if (!token) return setLoginModal(true);
-      await stayService.update(stayId, { date_out: d }, token);
+
+      let ctx = null;
+      for (const f of state.floors) {
+        for (const r of f.rooms) {
+          const st = (r.stays || []).find((x) => x.id === stayId);
+          if (st) {
+            ctx = { room: r, stay: st };
+            break;
+          }
+        }
+        if (ctx) break;
+      }
+
+      if (!ctx?.stay) throw new Error("Không tìm thấy lượt ở để tính thanh toán.");
+      if (Number(electricityEndReading || 0) < Number(electricityStartReading || 0)) {
+        throw new Error("Số điện khi rời không được nhỏ hơn số điện đầu.");
+      }
+      if (Number(waterEndReading || 0) < Number(waterStartReading || 0)) {
+        throw new Error("Số nước khi rời không được nhỏ hơn số nước đầu.");
+      }
+
+      const patchedStay = {
+        ...ctx.stay,
+        dateOut: d,
+        electricityStartReading: Number(electricityStartReading || 0),
+        electricityEndReading: Number(electricityEndReading || 0),
+        waterStartReading: Number(waterStartReading || 0),
+        waterEndReading: Number(waterEndReading || 0),
+      };
+      const billingMonth = state.settings.billingMonth || String(d).slice(0, 7);
+      const electricityBounds = getUtilityCheckoutBounds({
+        room: ctx.room,
+        stay: patchedStay,
+        type: "electricity",
+        billingMonth,
+        billingCloseDay: state.settings.billingCloseDay || 1,
+        dateOut: d,
+      });
+      const waterBounds = getUtilityCheckoutBounds({
+        room: ctx.room,
+        stay: patchedStay,
+        type: "water",
+        billingMonth,
+        billingCloseDay: state.settings.billingCloseDay || 1,
+        dateOut: d,
+      });
+      if (electricityBounds.startReading === "" || electricityBounds.endReading === "") {
+        throw new Error("Thiếu chỉ số điện đầu/cuối để tính tiền.");
+      }
+      if (waterBounds.startReading === "" || waterBounds.endReading === "") {
+        throw new Error("Thiếu chỉ số nước đầu/cuối để tính tiền.");
+      }
+      const calcStay = {
+        ...patchedStay,
+        dateIn: electricityBounds.effectiveStartDate,
+        dateOut: electricityBounds.effectiveEndDate,
+        electricityStartReading: Number(electricityBounds.startReading || 0),
+        electricityEndReading: Number(electricityBounds.endReading || 0),
+        waterStartReading: Number(waterBounds.startReading || 0),
+        waterEndReading: Number(waterBounds.endReading || 0),
+      };
+      const patchedRoom = {
+        ...ctx.room,
+        stays: (ctx.room.stays || []).map((st) => (st.id === stayId ? calcStay : st)),
+      };
+      const electricityCalc = calculateRoomUtility({
+        room: patchedRoom,
+        type: "electricity",
+        settings: {
+          ...state.settings,
+          billingMonth,
+          periodStart: electricityBounds.effectiveStartDate,
+          periodEnd: electricityBounds.effectiveEndDate,
+        },
+      });
+      const waterCalc = calculateRoomUtility({
+        room: patchedRoom,
+        type: "water",
+        settings: {
+          ...state.settings,
+          billingMonth,
+          periodStart: waterBounds.effectiveStartDate,
+          periodEnd: waterBounds.effectiveEndDate,
+        },
+      });
+      const electricityAmount = electricityCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
+      const waterAmount = waterCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
+
+      await stayService.update(
+        stayId,
+        {
+          date_out: d,
+          electricity_start_reading: Number(electricityStartReading || 0),
+          electricity_end_reading: Number(electricityEndReading || 0),
+          water_start_reading: Number(waterStartReading || 0),
+          water_end_reading: Number(waterEndReading || 0),
+          electricity_amount: electricityAmount,
+          water_amount: waterAmount,
+          total_amount: electricityAmount + waterAmount,
+          utility_paid_at: new Date().toISOString(),
+          utility_paid_month: state.settings.billingMonth || "",
+        },
+        token,
+      );
       await loadAllFromDb();
     } catch (e) {
       alert(e.message || String(e));
@@ -1336,6 +1458,86 @@ export default function App() {
     );
   }, [state.floors]);
 
+  const utilityBilling = useMemo(
+    () => calculateUtilityBilling({ floors: state.floors, settings: state.settings }),
+    [state.floors, state.settings],
+  );
+
+  const paymentRoomRows = useMemo(() => {
+    const month = state.settings.billingMonth || "";
+    const rows = [];
+    for (const f of state.floors) {
+      for (const r of f.rooms) {
+        const roomCharge = utilityBilling.byRoom.get(r.id);
+        const electricity = (r.electricity || []).find(
+          (row) => String(row?.month || "").slice(0, 7) === month,
+        );
+        const water = (r.water || []).find(
+          (row) => String(row?.month || "").slice(0, 7) === month,
+        );
+        rows.push({
+          roomId: r.id,
+          floorName: f.name,
+          roomCode: r.code,
+          electricity,
+          water,
+          electricityPaid: !!electricity?.paid,
+          waterPaid: !!water?.paid,
+          electricityAmount: roomCharge?.electricity?.totalAmount || 0,
+          waterAmount: roomCharge?.water?.totalAmount || 0,
+          electricityEndReading: electricity?.end_reading ?? electricity?.endReading ?? "",
+          waterEndReading: water?.end_reading ?? water?.endReading ?? "",
+        });
+      }
+    }
+    return rows;
+  }, [state.floors, state.settings.billingMonth, utilityBilling]);
+
+  const workerPaymentRows = useMemo(() => {
+    const month = state.settings.billingMonth || "";
+    const rows = [];
+    for (const f of state.floors) {
+      for (const r of f.rooms) {
+        for (const st of r.stays || []) {
+          const w = workerById.get(st.workerId);
+          const charge = utilityBilling.byRoom.get(r.id)?.byWorker?.get(st.workerId) || {};
+          const active = !st.dateOut;
+          const electricityAmount = active
+            ? Number(charge.electricityAmount || 0)
+            : Number(st.electricityAmount || 0);
+          const waterAmount = active
+            ? Number(charge.waterAmount || 0)
+            : Number(st.waterAmount || 0);
+          const total = electricityAmount + waterAmount;
+          if (total <= 0) continue;
+          const paid = st.utilityPaidMonth === month && !!st.utilityPaidAt;
+          rows.push({
+            stayId: st.id,
+            workerId: st.workerId,
+            workerName: w?.fullName || st.workerId,
+            employeeCode: w?.employeeCode || "",
+            roomId: r.id,
+            floorName: f.name,
+            roomCode: r.code,
+            dateIn: st.dateIn,
+            dateOut: st.dateOut,
+            active,
+            paid,
+            paidMonth: st.utilityPaidMonth || "",
+            electricityAmount,
+            waterAmount,
+            totalAmount: total,
+            paidAt: st.utilityPaidAt || null,
+          });
+        }
+      }
+    }
+    return rows.sort((a, b) => {
+      if (a.paid !== b.paid) return a.paid ? 1 : -1;
+      return String(b.dateOut || b.dateIn || "").localeCompare(String(a.dateOut || a.dateIn || ""));
+    });
+  }, [state.floors, state.settings.billingMonth, utilityBilling, workerById]);
+
   // electricity records flattened
   const allElectricity = useMemo(() => {
     return state.floors.flatMap((f) =>
@@ -1355,26 +1557,6 @@ export default function App() {
     );
   }, [state.floors, billingMonth]);
 
-  const pendingElectricity = useMemo(() => {
-    return allElectricity.filter((x) => {
-      const e = x.electricity;
-      return (
-        e &&
-        !e.paid &&
-        e.month === state.settings.billingMonth &&
-        e.start_reading != null &&
-        e.end_reading != null
-      );
-    });
-  }, [allElectricity, state.settings.billingMonth]);
-
-  const paidElectricity = useMemo(() => {
-    return allElectricity.filter((x) => {
-      const e = x.electricity;
-      return e && e.paid && e.month === state.settings.billingMonth;
-    });
-  }, [allElectricity, state.settings.billingMonth]);
-
   const electricityHistoryRecords = useMemo(() => {
     const month = state.settings.billingMonth;
     const rows = [];
@@ -1384,25 +1566,37 @@ export default function App() {
         if (month && e?.month !== month) continue;
         if (electricityHistoryMode === "paid" && !e?.paid) continue;
         if (electricityHistoryMode === "pending" && e?.paid) continue;
-        rows.push({ roomId: x.roomId, roomCode: x.roomCode, electricity: e });
+        rows.push({
+          roomId: x.roomId,
+          roomCode: x.roomCode,
+          electricity: e,
+          utility: utilityBilling.byRoom.get(x.roomId)?.electricity || null,
+        });
       }
     }
     return rows;
-  }, [allElectricity, electricityHistoryMode, state.settings.billingMonth]);
+  }, [allElectricity, electricityHistoryMode, state.settings.billingMonth, utilityBilling]);
 
-  const pendingElectricityCount = pendingElectricity.length;
-  const pendingElectricityAmount = pendingElectricity.reduce((sum, x) => {
-    const e = x.electricity;
-    const used = Number(e.end_reading || 0) - Number(e.start_reading || 0);
-    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
-  }, 0);
-
-  const paidElectricityCount = paidElectricity.length;
-  const paidElectricityAmount = paidElectricity.reduce((sum, x) => {
-    const e = x.electricity;
-    const used = Number(e.end_reading || 0) - Number(e.start_reading || 0);
-    return sum + Math.max(0, used) * (state.settings.electricityPrice || 0);
-  }, 0);
+  const pendingElectricityCount = workerPaymentRows.filter((row) => !row.paid).length;
+  const pendingElectricityAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? 0 : Number(row.electricityAmount || 0)),
+    0,
+  );
+  const paidElectricityCount = workerPaymentRows.filter((row) => row.paid).length;
+  const paidElectricityAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? Number(row.electricityAmount || 0) : 0),
+    0,
+  );
+  const pendingWaterCount = pendingElectricityCount;
+  const pendingWaterAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? 0 : Number(row.waterAmount || 0)),
+    0,
+  );
+  const paidWaterCount = paidElectricityCount;
+  const paidWaterAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? Number(row.waterAmount || 0) : 0),
+    0,
+  );
 
   const recruiterStats = useMemo(() => {
     const counts = new Map();
@@ -1487,9 +1681,82 @@ export default function App() {
       floors: state.floors,
       workerById,
       billingMonth: state.settings.billingMonth,
+      utilityBilling,
+      workerPaymentRows,
       todayISO,
     });
   }
+
+  async function advanceNextMonthReadingsForRoom(roomId) {
+    const month = state.settings.billingMonth || "";
+    const nextMonth = nextBillingMonth(month);
+    if (!nextMonth) return;
+    const nextPeriod = getBillingPeriod(nextMonth, state.settings.billingCloseDay || 1);
+    const roomRow = paymentRoomRows.find((row) => row.roomId === roomId);
+    if (!roomRow) return;
+    const jobs = [
+      { type: "electricity", service: electricityService, record: roomRow.electricity, end: roomRow.electricityEndReading },
+      { type: "water", service: waterService, record: roomRow.water, end: roomRow.waterEndReading },
+    ];
+    for (const job of jobs) {
+      if (job.end === "" || job.end == null) continue;
+      if (job.record) {
+        await job.service.upsert(
+          {
+            id: job.record.id,
+            room_id: roomId,
+            month: job.record.month || month,
+            start_reading: job.record.start_reading ?? job.record.startReading ?? 0,
+            end_reading: job.record.end_reading ?? job.record.endReading ?? job.end,
+            readings: job.record.readings || [],
+            paid: true,
+          },
+          token,
+        );
+      }
+      await job.service.upsert(
+        {
+          room_id: roomId,
+          month: nextMonth,
+          start_reading: Number(job.end || 0),
+          end_reading: Number(job.end || 0),
+          readings: [{ date: nextPeriod.start, reading: Number(job.end || 0) }],
+          paid: false,
+        },
+        token,
+      );
+    }
+  }
+
+  async function markWorkerUtilityPaid(row) {
+    try {
+      if (!auth.isAdmin) return setLoginModal(true);
+      if (!token) return setLoginModal(true);
+      const month = state.settings.billingMonth || "";
+      if (!row?.stayId) return;
+      await stayService.update(
+        row.stayId,
+        {
+          electricity_amount: Number(row.electricityAmount || 0),
+          water_amount: Number(row.waterAmount || 0),
+          total_amount: Number(row.totalAmount || 0),
+          utility_paid_at: new Date().toISOString(),
+          utility_paid_month: month,
+        },
+        token,
+      );
+
+      const roomRows = workerPaymentRows.filter((item) => item.roomId === row.roomId);
+      const allPaid = roomRows.length > 0 && roomRows.every((item) => item.stayId === row.stayId || item.paid);
+      if (allPaid) {
+        await advanceNextMonthReadingsForRoom(row.roomId);
+      }
+      await loadAllFromDb();
+    } catch (e) {
+      alert(e.message || String(e));
+    }
+  }
+
   function guardDelete({ title, message, onDelete }) {
     if (!auth.isAdmin) return setLoginModal(true);
 
@@ -1610,7 +1877,7 @@ export default function App() {
               </button>
             ) : (
               <button
-                className="grid h-10 w-10 place-items-center rounded-2xl bg-slate-900 text-white shadow-sm transition hover:bg-slate-800"
+                className="grid h-10 w-10 place-items-center rounded-2xl bg-[rgb(44_120_159)] text-white shadow-sm transition hover:bg-[rgb(36_99_132)]"
                 onClick={() => setLoginModal(true)}
                 title="Đăng nhập"
                 aria-label="Đăng nhập"
@@ -1661,7 +1928,7 @@ export default function App() {
                   />
                 ) : systemAdmin ? (
                   <button
-                    className="rounded-xl bg-slate-900 px-2 py-1 text-xs font-semibold text-white"
+                    className="rounded-xl bg-[rgb(44_120_159)] px-2 py-1 text-xs font-semibold text-white"
                     onClick={() => setTab("admin")}
                   >
                     Tạo
@@ -1957,6 +2224,7 @@ export default function App() {
             setWorkerModal={setWorkerModal}
             floors={state.floors}
             roomById={roomById}
+            utilityChargesByWorkerId={utilityBilling.byWorker}
           />
         ) : null}
         {tab === "stats" ? (
@@ -1973,6 +2241,12 @@ export default function App() {
             pendingElectricityAmount={pendingElectricityAmount}
             paidElectricityCount={paidElectricityCount}
             paidElectricityAmount={paidElectricityAmount}
+            pendingWaterCount={pendingWaterCount}
+            pendingWaterAmount={pendingWaterAmount}
+            paidWaterCount={paidWaterCount}
+            paidWaterAmount={paidWaterAmount}
+            workerPaymentRows={workerPaymentRows}
+            markWorkerUtilityPaid={markWorkerUtilityPaid}
             openElectricityHistory={openHistory}
           />
         ) : null}
@@ -2106,8 +2380,11 @@ export default function App() {
                 await deleteRoom(roomCtx.floor.id, roomId);
                 setRoomModal({ open: false, floorId: "", roomId: "" });
               },
-              checkOut: async ({ stayId, dateOut }) => {
-                await checkOutStay({ stayId, dateOut: dateOut || todayISO() });
+              checkOut: async (payload) => {
+                await checkOutStay({
+                  ...payload,
+                  dateOut: payload?.dateOut || todayISO(),
+                });
               },
               // new manual check-in actions
               addWorker: async (w) => {
@@ -2116,8 +2393,8 @@ export default function App() {
               updateWorker: async ({ workerId, patch }) => {
                 return await updateWorker(workerId, patch || {});
               },
-              checkIn: async ({ floorId, roomId, workerId, dateIn }) => {
-                await checkInWorker({ floorId, roomId, workerId, dateIn });
+              checkIn: async (payload) => {
+                await checkInWorker(payload || {});
               },
               onViewWorker: (workerId) => {
                 setWorkerModal({ open: true, workerId, roomCtx: null });
@@ -2135,31 +2412,29 @@ export default function App() {
                   date: todayISO(),
                 });
               },
+              utilityChargesByWorkerId:
+                utilityBilling.byRoom.get(roomCtx?.room?.id)?.byWorker || new Map(),
               electricityPrice: state.settings.electricityPrice,
+              waterPrice: state.settings.waterPrice,
+              waterBillingMode: state.settings.waterBillingMode,
               billingMonth: state.settings.billingMonth,
-              upsertElectricity: async (rec) => {
+              billingCloseDay: state.settings.billingCloseDay,
+              upsertUtility: async (rec) => {
                 try {
                   if (!token) return setLoginModal(true);
-                  await electricityService.upsert(
+                  const service = rec.type === "water" ? waterService : electricityService;
+                  await service.upsert(
                     {
                       id: rec.id,
-                      room_id: rec.roomId || roomCtx?.room?.id,
+                      room_id: rec.room_id || rec.roomId || roomCtx?.room?.id,
                       month: rec.month,
                       start_reading: rec.start_reading ?? rec.startReading ?? 0,
                       end_reading: rec.end_reading ?? rec.endReading ?? 0,
+                      readings: rec.readings || [],
                       paid: !!rec.paid,
                     },
                     token,
                   );
-                  await loadAllFromDb();
-                } catch (e) {
-                  alert(e.message || String(e));
-                }
-              },
-              markElectricityPaid: async (rec) => {
-                try {
-                  if (!token) return setLoginModal(true);
-                  await electricityService.markPaid(rec.id, token);
                   await loadAllFromDb();
                 } catch (e) {
                   alert(e.message || String(e));
@@ -2185,9 +2460,14 @@ export default function App() {
                 : []
             }
             roomById={roomById}
+            utilityCharge={
+              workerModal.workerId ? utilityBilling.byWorker.get(workerModal.workerId) : null
+            }
             auth={auth}
             requireAdmin={requireAdmin}
             actions={{
+              billingMonth: state.settings.billingMonth,
+              billingCloseDay: state.settings.billingCloseDay,
               updateWorker: async ({ workerId, patch }) => {
                 return await updateWorker(workerId, patch || {});
               },
@@ -2259,7 +2539,7 @@ export default function App() {
               className={clsx(
                 "flex-1 rounded-2xl px-4 py-2.5 text-sm font-semibold",
                 auth.isAdmin
-                  ? "bg-sky-600 text-white"
+                  ? "bg-[rgb(44_120_159)] text-white"
                   : "bg-slate-200 text-slate-500",
               )}
               disabled={!auth.isAdmin}
@@ -2393,7 +2673,6 @@ export default function App() {
             DEFAULT_SETTINGS={DEFAULT_SETTINGS}
             saveSettingsToDb={saveSettingsToDb}
             requireAdmin={requireAdmin}
-            wipeDatabase={wipeDatabase}
             onImportExcel={handleImportExcel}
           />
         </Suspense>

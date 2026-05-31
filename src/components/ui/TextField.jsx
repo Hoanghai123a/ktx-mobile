@@ -12,6 +12,7 @@ export default function TextField({
   onKeyDown,
   disabled = false,
   error,
+  ...inputProps
 }) {
   return (
     <label className="block space-y-1">
@@ -26,6 +27,7 @@ export default function TextField({
         onBlur={onBlur}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
+        {...inputProps}
         className={`w-full rounded-2xl border bg-white px-4 py-3 text-sm outline-none ${
           error
             ? "border-rose-400 focus:border-rose-500"

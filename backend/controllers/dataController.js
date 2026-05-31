@@ -7,6 +7,15 @@ function stayOut(s) {
     roomId: s.room_id,
     dateIn: pb.dateOnly(s.date_in),
     dateOut: pb.dateOnly(s.date_out),
+    electricityStartReading: s.electricity_start_reading == null ? null : Number(s.electricity_start_reading),
+    waterStartReading: s.water_start_reading == null ? null : Number(s.water_start_reading),
+    electricityEndReading: s.electricity_end_reading == null ? null : Number(s.electricity_end_reading),
+    waterEndReading: s.water_end_reading == null ? null : Number(s.water_end_reading),
+    electricityAmount: Number(s.electricity_amount || 0),
+    waterAmount: Number(s.water_amount || 0),
+    totalAmount: Number(s.total_amount || 0),
+    utilityPaidAt: s.utility_paid_at || null,
+    utilityPaidMonth: s.utility_paid_month || "",
   };
 }
 
@@ -37,12 +46,16 @@ async function deleteAll(collection) {
 const dataController = {
   loadAll: async (_req, res) => {
     try {
-      const [floorsData, roomsData, workersData, staysData, elecData] = await Promise.all([
+      const [floorsData, roomsData, workersData, staysData, elecData, waterData] = await Promise.all([
         pb.list("floors", { sort: "+sort" }),
         pb.list("rooms", { sort: "+sort" }),
         pb.list("workers", { sort: "+employee_code,+full_name" }),
         pb.list("stays", { sort: "-date_in" }),
         pb.list("electricities", { sort: "-month" }),
+        pb.list("water_records", { sort: "-month" }).catch((err) => {
+          if (err.status === 404) return [];
+          throw err;
+        }),
       ]);
 
       const staysByRoom = new Map();
@@ -54,7 +67,13 @@ const dataController = {
       const elecByRoom = new Map();
       for (const e of elecData) {
         if (!elecByRoom.has(e.room_id)) elecByRoom.set(e.room_id, []);
-        elecByRoom.get(e.room_id).push(e);
+        elecByRoom.get(e.room_id).push({ ...e, readings: Array.isArray(e.readings) ? e.readings : [] });
+      }
+
+      const waterByRoom = new Map();
+      for (const w of waterData) {
+        if (!waterByRoom.has(w.room_id)) waterByRoom.set(w.room_id, []);
+        waterByRoom.get(w.room_id).push({ ...w, readings: Array.isArray(w.readings) ? w.readings : [] });
       }
 
       const roomsByFloor = new Map();
@@ -67,6 +86,7 @@ const dataController = {
           gender: r.gender || null,
           stays: staysByRoom.get(r.id) || [],
           electricity: elecByRoom.get(r.id) || [],
+          water: waterByRoom.get(r.id) || [],
         });
       }
 
@@ -121,7 +141,6 @@ const dataController = {
     try {
       for (const collection of [
         "general_notes",
-        "payments",
         "water_records",
         "electricities",
         "stays",

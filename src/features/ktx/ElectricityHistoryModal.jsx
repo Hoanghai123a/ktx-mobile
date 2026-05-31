@@ -46,7 +46,7 @@ export default function ElectricityHistoryModal({
       const end = Number(e.end_reading ?? e.end ?? 0);
 
       const used = Math.max(0, end - start);
-      const cost = used * Number(pricePerUnit || 0);
+      const cost = Number(r.utility?.totalAmount ?? used * Number(pricePerUnit || 0));
 
       return {
         ...r,
@@ -55,6 +55,7 @@ export default function ElectricityHistoryModal({
         end,
         used,
         cost,
+        calculatedByStay: !!r.utility,
         paid: !!e.paid,
         paidAt: e.paid_at || null,
       };

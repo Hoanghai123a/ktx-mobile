@@ -14,12 +14,51 @@ function normalizeDateOrNull(value) {
   return null;
 }
 
+function numberOrNull(value) {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function normalizeStay(row) {
   return {
     ...row,
     date_in: pb.dateOnly(row.date_in),
     date_out: pb.dateOnly(row.date_out),
+    utility_paid_at: row.utility_paid_at || null,
+    utility_paid_month: row.utility_paid_month || "",
+    electricity_start_reading: numberOrNull(row.electricity_start_reading),
+    water_start_reading: numberOrNull(row.water_start_reading),
+    electricity_end_reading: numberOrNull(row.electricity_end_reading),
+    water_end_reading: numberOrNull(row.water_end_reading),
+    electricity_amount: Number(row.electricity_amount || 0),
+    water_amount: Number(row.water_amount || 0),
+    total_amount: Number(row.total_amount || 0),
   };
+}
+
+function utilityPatchFromBody(body) {
+  const patch = {};
+  for (const key of [
+    "electricity_start_reading",
+    "water_start_reading",
+    "electricity_end_reading",
+    "water_end_reading",
+    "electricity_amount",
+    "water_amount",
+    "total_amount",
+  ]) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      patch[key] = numberOrNull(body[key]) ?? 0;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "utility_paid_at")) {
+    patch.utility_paid_at = body.utility_paid_at || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "utility_paid_month")) {
+    patch.utility_paid_month = body.utility_paid_month || "";
+  }
+  return patch;
 }
 
 async function activeStayForWorker(workerId) {
@@ -58,7 +97,13 @@ const stayController = {
 
       const row = await pb.request("stays", "", {
         method: "POST",
-        body: JSON.stringify({ worker_id, room_id, date_in: pb.dateValue(dateIn), date_out: pb.dateValue(dateOut) }),
+        body: JSON.stringify({
+          worker_id,
+          room_id,
+          date_in: pb.dateValue(dateIn),
+          date_out: pb.dateValue(dateOut),
+          ...utilityPatchFromBody(req.body),
+        }),
       });
       res.status(201).json(normalizeStay(row));
     } catch (err) {
@@ -77,7 +122,12 @@ const stayController = {
 
       const row = await pb.request("stays", `/${req.params.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ date_out: pb.dateValue(dateOut) }),
+        body: JSON.stringify({
+          ...(Object.prototype.hasOwnProperty.call(req.body, "date_out")
+            ? { date_out: pb.dateValue(dateOut) }
+            : {}),
+          ...utilityPatchFromBody(req.body),
+        }),
       });
       res.json(normalizeStay(row));
     } catch (err) {

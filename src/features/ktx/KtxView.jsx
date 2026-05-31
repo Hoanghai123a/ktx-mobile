@@ -61,7 +61,7 @@ export default function KtxView({
             Thông tin KTX chỉ hiển thị theo tòa nhà bạn đã chọn trước đó.
           </div>
           <button
-            className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+            className="mt-4 w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
             onClick={() => setTab?.(auth?.systemAdmin ? "admin" : "buildings")}
           >
             Chọn tòa nhà
@@ -87,7 +87,7 @@ export default function KtxView({
 
           {auth?.isAdmin ? (
             <button
-              className="mt-4 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              className="mt-4 w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
               onClick={() =>
                 setInitModal((m) => ({ ...(m || {}), open: true }))
               }
@@ -118,7 +118,7 @@ export default function KtxView({
           className={clsx(
             "rounded-2xl px-3 py-2 text-sm font-semibold shadow-sm",
             auth?.isAdmin
-              ? "bg-slate-900 text-white"
+              ? "bg-[rgb(44_120_159)] text-white"
               : "bg-slate-100 text-slate-700",
           )}
           onClick={() => {
@@ -146,7 +146,7 @@ export default function KtxView({
           className={clsx(
             "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
             auth?.isAdmin
-              ? "bg-slate-900 text-white"
+              ? "bg-[rgb(44_120_159)] text-white"
               : "bg-slate-100 text-slate-700",
           )}
           onClick={() =>
@@ -188,7 +188,7 @@ export default function KtxView({
               action={
                 <button
                   onClick={() => requireAdmin(() => setAddRoomModal(true))}
-                  className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+                  className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
                 >
                   Thêm phòng
                 </button>
@@ -209,7 +209,7 @@ export default function KtxView({
           </div>
           {auth?.isAdmin ? (
             <button
-              className="rounded-2xl bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
+              className="rounded-2xl bg-[rgb(44_120_159)] px-3 py-2 text-xs font-semibold text-white"
               onClick={() => setAddFloorModal(true)}
             >
               <span className="inline-flex items-center gap-2">

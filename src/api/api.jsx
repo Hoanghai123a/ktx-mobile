@@ -25,8 +25,18 @@ function clearPrevious(url) {
   if (abortControllers[url]) abortControllers[url].abort();
 }
 
+function pbErrorMessage(status, data) {
+  const detail = data?.data || data?.details || data?.detail;
+  if (detail && typeof detail === "object" && Object.keys(detail).length) {
+    const first = Object.entries(detail)[0];
+    const msg = first?.[1]?.message || first?.[1]?.error || first?.[1]?.code;
+    if (msg) return `${data?.message || `PocketBase error ${status}`}: ${first[0]} - ${msg}`;
+  }
+  return data?.message || data?.error || `PocketBase error ${status}`;
+}
+
 function makeError(status, data) {
-  const err = new Error(data?.message || data?.error || `PocketBase error ${status}`);
+  const err = new Error(pbErrorMessage(status, data));
   err.response = { status, data };
   return err;
 }
@@ -72,6 +82,10 @@ function eq(field, value) {
   return `${field} = "${escapeFilter(value)}"`;
 }
 
+function anyEq(field, value) {
+  return `${field} ?= "${escapeFilter(value)}"`;
+}
+
 function dateOnly(value) {
   if (!value) return null;
   return String(value).slice(0, 10);
@@ -87,7 +101,7 @@ async function pbList(collection, params = {}, signal) {
   let page = 1;
   let totalPages = 1;
   do {
-    const data = await pbRequest(collection, "", {
+    const data = await pbRequestWithBuildingFilterFallback(collection, "", {
       signal,
       params: { page, perPage: 500, ...params },
     });
@@ -99,11 +113,31 @@ async function pbList(collection, params = {}, signal) {
 }
 
 async function pbFirst(collection, params = {}, signal) {
-  const data = await pbRequest(collection, "", {
+  const data = await pbRequestWithBuildingFilterFallback(collection, "", {
     signal,
     params: { page: 1, perPage: 1, ...params },
   });
   return data?.items?.[0] || null;
+}
+
+function alternateBuildingFilter(filter) {
+  const text = String(filter || "");
+  if (text.includes("building_id ?=")) return text.replace(/building_id \?=/g, "building_id =");
+  if (text.includes("building_id =")) return text.replace(/building_id =/g, "building_id ?=");
+  return "";
+}
+
+async function pbRequestWithBuildingFilterFallback(collection, suffix = "", options = {}) {
+  try {
+    return await pbRequest(collection, suffix, options);
+  } catch (e) {
+    const altFilter = alternateBuildingFilter(options?.params?.filter);
+    if (!altFilter || ![400, 500].includes(e?.response?.status)) throw e;
+    return await pbRequest(collection, suffix, {
+      ...options,
+      params: { ...(options.params || {}), filter: altFilter },
+    });
+  }
 }
 
 const AUTH_COLLECTION = import.meta.env.VITE_POCKETBASE_AUTH_COLLECTION || "users";
@@ -155,7 +189,7 @@ async function saveAuthSettings(data, signal) {
 function buildingFilter(extra = "") {
   const id = currentBuildingId();
   if (!id) return "__no_building__ = true";
-  return combineFilters(eq("building_id", id), extra);
+  return combineFilters(anyEq("building_id", id), extra);
 }
 
 async function pbAuthRefresh(signal) {
@@ -219,11 +253,33 @@ function stayOut(s) {
     roomId: s.room_id,
     dateIn: dateOnly(s.date_in),
     dateOut: dateOnly(s.date_out),
+    electricityStartReading: s.electricity_start_reading == null ? null : Number(s.electricity_start_reading),
+    waterStartReading: s.water_start_reading == null ? null : Number(s.water_start_reading),
+    electricityEndReading: s.electricity_end_reading == null ? null : Number(s.electricity_end_reading),
+    waterEndReading: s.water_end_reading == null ? null : Number(s.water_end_reading),
+    electricityAmount: Number(s.electricity_amount || 0),
+    waterAmount: Number(s.water_amount || 0),
+    totalAmount: Number(s.total_amount || 0),
+    utilityPaidAt: s.utility_paid_at || null,
+    utilityPaidMonth: s.utility_paid_month || "",
   };
 }
 
 function normalizeStay(s) {
-  return { ...s, date_in: dateOnly(s.date_in), date_out: dateOnly(s.date_out) };
+  return {
+    ...s,
+    date_in: dateOnly(s.date_in),
+    date_out: dateOnly(s.date_out),
+    electricity_start_reading: s.electricity_start_reading == null ? null : Number(s.electricity_start_reading),
+    water_start_reading: s.water_start_reading == null ? null : Number(s.water_start_reading),
+    electricity_end_reading: s.electricity_end_reading == null ? null : Number(s.electricity_end_reading),
+    water_end_reading: s.water_end_reading == null ? null : Number(s.water_end_reading),
+    electricity_amount: Number(s.electricity_amount || 0),
+    water_amount: Number(s.water_amount || 0),
+    total_amount: Number(s.total_amount || 0),
+    utility_paid_at: s.utility_paid_at || null,
+    utility_paid_month: s.utility_paid_month || "",
+  };
 }
 
 function buildingOut(building, accessRole = "viewer") {
@@ -265,7 +321,10 @@ const DEFAULT_SETTINGS = {
     note: "",
   },
   electricityPrice: 0,
+  waterPrice: 0,
+  waterBillingMode: "shared",
   billingMonth: "",
+  billingCloseDay: 10,
   about: {
     companyName: "Ký túc xá",
     address: "",
@@ -291,7 +350,10 @@ function settingsFromRecord(row) {
     canDeleteStructure: !!row.can_delete_structure,
     requirePasswordOnDelete: row.require_password_on_delete !== false,
     electricityPrice: row.electricity_price ?? 0,
+    waterPrice: row.water_price ?? row.about?.utilitySettings?.waterPrice ?? 0,
+    waterBillingMode: row.about?.utilitySettings?.waterBillingMode === "no_split" ? "no_split" : "shared",
     billingMonth: row.billing_month || "",
+    billingCloseDay: row.billing_close_day ?? row.about?.utilitySettings?.billingCloseDay ?? 10,
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
     adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(row.admin_contact || row.adminContact || row.about?.adminContact || {}) },
   };
@@ -306,9 +368,29 @@ function settingsToRecord(data) {
     can_delete_structure: !!data.canDeleteStructure,
     require_password_on_delete: !!data.requirePasswordOnDelete,
     electricity_price: Number(data.electricityPrice || 0),
+    water_price: Number(data.waterPrice || 0),
     billing_month: data.billingMonth || "",
-    about: { ...(data.about || {}), adminContact: data.adminContact || {} },
+    billing_close_day: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
+    about: {
+      ...(data.about || {}),
+      adminContact: data.adminContact || {},
+      utilitySettings: {
+        ...((data.about || {}).utilitySettings || {}),
+        waterPrice: Number(data.waterPrice || 0),
+        waterBillingMode: data.waterBillingMode === "no_split" ? "no_split" : "shared",
+        billingCloseDay: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
+      },
+    },
   };
+}
+
+async function safeList(collection, params = {}, signal) {
+  try {
+    return await pbList(collection, params, signal);
+  } catch (e) {
+    if (e?.response?.status === 404) return [];
+    throw e;
+  }
 }
 
 async function getSettingsRecord(signal) {
@@ -329,7 +411,7 @@ async function deleteAll(collection, signal) {
 }
 
 async function deleteRoomCascade(roomId, signal) {
-  for (const collection of ["electricities", "water_records", "stays", "payments"]) {
+  for (const collection of ["electricities", "water_records", "stays"]) {
     try {
       const rows = await pbList(collection, { filter: eq("room_id", roomId) }, signal);
       for (const row of rows) await pbRequest(collection, `/${row.id}`, { method: "DELETE", signal });
@@ -342,12 +424,13 @@ async function deleteRoomCascade(roomId, signal) {
 
 async function loadAll(signal) {
   if (!currentBuildingId()) return { floors: [], workers: [] };
-  const [floorsData, roomsData, workersData, staysData, elecData] = await Promise.all([
+  const [floorsData, roomsData, workersData, staysData, elecData, waterData] = await Promise.all([
     pbList("floors", { filter: buildingFilter(), sort: "+sort" }, signal),
     pbList("rooms", { filter: buildingFilter(), sort: "+sort" }, signal),
     pbList("workers", { filter: buildingFilter(), sort: "+employee_code,+full_name" }, signal),
     pbList("stays", { filter: buildingFilter(), sort: "-date_in" }, signal),
     pbList("electricities", { filter: buildingFilter(), sort: "-month" }, signal),
+    safeList("water_records", { filter: buildingFilter(), sort: "-month" }, signal),
   ]);
 
   const staysByRoom = new Map();
@@ -362,6 +445,12 @@ async function loadAll(signal) {
     elecByRoom.get(e.room_id).push({ ...e, paid_at: e.paid_at || null });
   });
 
+  const waterByRoom = new Map();
+  waterData.forEach((e) => {
+    if (!waterByRoom.has(e.room_id)) waterByRoom.set(e.room_id, []);
+    waterByRoom.get(e.room_id).push({ ...e, paid_at: e.paid_at || null });
+  });
+
   const roomsByFloor = new Map();
   roomsData.forEach((r) => {
     if (!roomsByFloor.has(r.floor_id)) roomsByFloor.set(r.floor_id, []);
@@ -372,6 +461,7 @@ async function loadAll(signal) {
       gender: r.gender || null,
       stays: staysByRoom.get(r.id) || [],
       electricity: elecByRoom.get(r.id) || [],
+      water: waterByRoom.get(r.id) || [],
     });
   });
 
@@ -431,6 +521,11 @@ async function handleGet(url, signal) {
   if (path.startsWith("/electricities/room/")) {
     const roomId = path.split("/")[3];
     return pbList("electricities", { filter: combineFilters(eq("room_id", roomId), buildingFilter()), sort: "-month" }, signal);
+  }
+  if (path === "/water-records/") return pbList("water_records", { filter: buildingFilter(), sort: "-month" }, signal);
+  if (path.startsWith("/water-records/room/")) {
+    const roomId = path.split("/")[3];
+    return pbList("water_records", { filter: combineFilters(eq("room_id", roomId), buildingFilter()), sort: "-month" }, signal);
   }
   if (path === "/notes/") {
     const filters = [];
@@ -542,7 +637,7 @@ async function handlePost(url, data, signal) {
     const existing = await pbFirst("floors", { filter: buildingFilter() }, signal);
     if (existing) throw makeError(400, { error: "KTX đã có tầng/phòng. Hãy reset dữ liệu trước khi khởi tạo lại." });
     for (let i = 0; i < F; i += 1) {
-      const floor = await pbRequest("floors", "", { method: "POST", body: { building_id, name: `Tang ${i + 1}`, sort: i + 1 }, signal });
+      const floor = await pbRequest("floors", "", { method: "POST", body: { building_id, name: `Tầng ${i + 1}`, sort: i + 1 }, signal });
       for (let j = 0; j < R; j += 1) {
         await pbRequest("rooms", "", { method: "POST", body: { building_id, floor_id: floor.id, code: String(S + i * R + j), sort: j + 1 }, signal });
       }
@@ -551,7 +646,7 @@ async function handlePost(url, data, signal) {
   }
   if (path === "/wipe-database/") {
     if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
-    for (const c of ["general_notes", "payments", "water_records", "electricities", "stays", "workers", "rooms", "floors"]) {
+    for (const c of ["general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors"]) {
       const rows = await pbList(c, { filter: eq("building_id", building_id), sort: "-created" }, signal);
       for (const row of rows) await pbRequest(c, `/${row.id}`, { method: "DELETE", signal });
     }
@@ -569,12 +664,20 @@ async function handlePost(url, data, signal) {
     return normalizeStay(await pbRequest("stays", "", { method: "POST", body: { ...data, building_id, date_in: dateValue(data.date_in), date_out: dateValue(data.date_out) }, signal }));
   }
   if (path === "/electricities/") {
-    const payload = { ...data, building_id, start_reading: Number(data.start_reading || 0), end_reading: Number(data.end_reading || 0), paid: !!data.paid, paid_at: data.paid ? new Date().toISOString() : null };
+    const payload = { ...data, building_id, start_reading: Number(data.start_reading || 0), end_reading: Number(data.end_reading || 0), readings: data.readings || [], paid: !!data.paid, paid_at: data.paid ? new Date().toISOString() : null };
     if (data.id) return pbRequest("electricities", `/${data.id}`, { method: "PATCH", body: payload, signal });
     const existing = await pbFirst("electricities", { filter: combineFilters(eq("room_id", data.room_id), eq("month", data.month), buildingFilter()) }, signal);
     return existing
       ? pbRequest("electricities", `/${existing.id}`, { method: "PATCH", body: payload, signal })
       : pbRequest("electricities", "", { method: "POST", body: payload, signal });
+  }
+  if (path === "/water-records/") {
+    const payload = { ...data, building_id, start_reading: Number(data.start_reading || 0), end_reading: Number(data.end_reading || 0), readings: data.readings || [], paid: !!data.paid, paid_at: data.paid ? new Date().toISOString() : null };
+    if (data.id) return pbRequest("water_records", `/${data.id}`, { method: "PATCH", body: payload, signal });
+    const existing = await pbFirst("water_records", { filter: combineFilters(eq("room_id", data.room_id), eq("month", data.month), buildingFilter()) }, signal);
+    return existing
+      ? pbRequest("water_records", `/${existing.id}`, { method: "PATCH", body: payload, signal })
+      : pbRequest("water_records", "", { method: "POST", body: payload, signal });
   }
   if (path === "/notes/") return pbRequest("general_notes", "", { method: "POST", body: { ...data, building_id }, signal });
   throw makeError(404, { error: `Unsupported POST ${path}` });
@@ -619,8 +722,14 @@ async function handlePatch(url, data, signal) {
   }
   if (/^\/floors\/[^/]+\/?$/.test(path)) return pbRequest("floors", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });
   if (/^\/rooms\/[^/]+\/?$/.test(path)) return pbRequest("rooms", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });
-  if (/^\/stays\/[^/]+\/?$/.test(path)) return normalizeStay(await pbRequest("stays", `/${path.split("/")[2]}`, { method: "PATCH", body: { date_out: dateValue(data.date_out) }, signal }));
+  if (/^\/stays\/[^/]+\/?$/.test(path)) {
+    const payload = { ...data };
+    if (Object.prototype.hasOwnProperty.call(payload, "date_in")) payload.date_in = dateValue(payload.date_in);
+    if (Object.prototype.hasOwnProperty.call(payload, "date_out")) payload.date_out = dateValue(payload.date_out);
+    return normalizeStay(await pbRequest("stays", `/${path.split("/")[2]}`, { method: "PATCH", body: payload, signal }));
+  }
   if (/^\/electricities\/[^/]+\/pay\/?$/.test(path)) return pbRequest("electricities", `/${path.split("/")[2]}`, { method: "PATCH", body: { paid: true, paid_at: new Date().toISOString() }, signal });
+  if (/^\/water-records\/[^/]+\/pay\/?$/.test(path)) return pbRequest("water_records", `/${path.split("/")[2]}`, { method: "PATCH", body: { paid: true, paid_at: new Date().toISOString() }, signal });
   if (/^\/notes\/[^/]+\/?$/.test(path)) return pbRequest("general_notes", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });
   throw makeError(404, { error: `Unsupported PATCH ${path}` });
 }
@@ -650,7 +759,7 @@ async function handleDelete(url, signal) {
     await deleteRoomCascade(path.split("/")[2], signal);
     return { message: "Deleted successfully" };
   }
-  const map = { workers: "workers", stays: "stays", electricities: "electricities", notes: "general_notes" };
+  const map = { workers: "workers", stays: "stays", electricities: "electricities", "water-records": "water_records", notes: "general_notes" };
   const [, route, id] = path.split("/");
   if (map[route] && id) {
     await pbRequest(map[route], `/${id}`, { method: "DELETE", signal });

@@ -94,7 +94,7 @@ export default function LoginModal({
         </label>
 
         <button
-          className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+          className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
           onClick={handleLogin}
         >
           <span className="inline-flex items-center justify-center gap-2">

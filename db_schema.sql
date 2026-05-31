@@ -72,8 +72,44 @@ CREATE TABLE IF NOT EXISTS stays (
     room_id uuid REFERENCES rooms(id) ON DELETE CASCADE,
     date_in date NOT NULL,
     date_out date,
+    electricity_start_reading numeric DEFAULT 0,
+    water_start_reading numeric DEFAULT 0,
+    electricity_end_reading numeric DEFAULT 0,
+    water_end_reading numeric DEFAULT 0,
+    electricity_amount numeric DEFAULT 0,
+    water_amount numeric DEFAULT 0,
+    total_amount numeric DEFAULT 0,
+    utility_paid_at timestamp with time zone,
+    utility_paid_month text,
     created_at timestamp with time zone DEFAULT now()
 );
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS electricity_start_reading numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS water_start_reading numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS electricity_end_reading numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS water_end_reading numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS electricity_amount numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS water_amount numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS total_amount numeric DEFAULT 0;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS utility_paid_at timestamp with time zone;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS utility_paid_month text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS stays_one_active_per_worker
     ON stays (worker_id)
@@ -89,6 +125,7 @@ CREATE TABLE IF NOT EXISTS electricities (
     month date NOT NULL, -- Ngày đầu tháng (VD: 2026-04-01)
     start_reading numeric DEFAULT 0,
     end_reading numeric DEFAULT 0,
+    readings jsonb DEFAULT '[]'::jsonb,
     paid boolean DEFAULT false,
     paid_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now()
@@ -101,10 +138,17 @@ CREATE TABLE IF NOT EXISTS water_records (
     month date NOT NULL,
     start_reading numeric DEFAULT 0,
     end_reading numeric DEFAULT 0,
+    readings jsonb DEFAULT '[]'::jsonb,
     paid boolean DEFAULT false,
     paid_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now()
 );
+
+ALTER TABLE electricities
+    ADD COLUMN IF NOT EXISTS readings jsonb DEFAULT '[]'::jsonb;
+
+ALTER TABLE water_records
+    ADD COLUMN IF NOT EXISTS readings jsonb DEFAULT '[]'::jsonb;
 
 -- 8. Thanh toán tổng hợp (Payments - Mở rộng)
 CREATE TABLE IF NOT EXISTS payments (

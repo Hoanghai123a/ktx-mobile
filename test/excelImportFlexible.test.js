@@ -11,7 +11,10 @@ function makeDeps() {
 
   const deps = {
     roomService: {
-      getAll: async () => [{ id: "room-101", code: "101" }],
+      getAll: async () => [{ id: "room-101", code: "101", floor_id: "floor-1" }],
+    },
+    floorService: {
+      getAll: async () => [{ id: "floor-1", name: "Tầng 1" }],
     },
     workerService: {
       getAll: async () => [],
@@ -63,7 +66,7 @@ test("import: có mã NV -> lưu đúng employee_code và tạo stay", async () 
   assert.equal(calls.stayCreate[0].date_in, "2026-04-01");
 });
 
-test("import: không có mã NV -> tự tạo mã vãng lai và vẫn tạo stay", async () => {
+test("import: không có mã NV -> để trống mã và vẫn tạo stay", async () => {
   const { deps, calls } = makeDeps();
 
   const rows = [
@@ -82,8 +85,53 @@ test("import: không có mã NV -> tự tạo mã vãng lai và vẫn tạo stay
 
   assert.equal(calls.workerCreate.length, 1);
   const code = calls.workerCreate[0].employee_code;
-  assert.ok(code);
-  assert.match(code, /^VL-\d{8}-0002-[A-Z0-9]{4}$/);
+  assert.equal(code, null);
+});
+
+test("import: nhận thêm tầng, giới tính, CCCD và phí NLĐ", async () => {
+  const { deps, calls } = makeDeps();
+
+  const rows = [
+    {
+      "Mã nhân viên": "NV004",
+      "Họ tên": "Worker Z",
+      "Giới tính": "Nam",
+      "Số CCCD": "001001001001",
+      "Tiền điện": "12,000",
+      "Tiền nước": "8000",
+      Tầng: "Tầng 1",
+      Phòng: "101",
+      "Ngày vào": "2026-04-04",
+    },
+  ];
+
+  const res = await importExcelRowsToDb(rows, "token", deps, null);
+  assert.equal((res.errors || []).length, 0);
+  assert.equal(calls.workerCreate[0].gender, "male");
+  assert.equal(calls.workerCreate[0].identity_number, "001001001001");
+  assert.equal(calls.workerCreate[0].electricity_fee, 12000);
+  assert.equal(calls.workerCreate[0].water_fee, 8000);
+  assert.equal(calls.stayCreate[0].room_id, "room-101");
+});
+
+test("import: so khớp tầng có dấu với tầng không dấu trong DB", async () => {
+  const { deps, calls } = makeDeps();
+  deps.floorService.getAll = async () => [{ id: "floor-1", name: "Tang 1" }];
+
+  const rows = [
+    {
+      "Mã nhân viên": "NV005",
+      "Họ tên": "Worker Accent",
+      Tầng: "Tầng 1",
+      Phòng: "101",
+      "Ngày vào": "2026-04-05",
+    },
+  ];
+
+  const res = await importExcelRowsToDb(rows, "token", deps, null);
+  assert.equal((res.errors || []).length, 0);
+  assert.equal(res.staysInserted, 1);
+  assert.equal(calls.stayCreate[0].room_id, "room-101");
 });
 
 test("import: file lỗi định dạng rows=null -> trả về errors", async () => {

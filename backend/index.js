@@ -63,6 +63,7 @@ app.use("/rooms", require("./routes/roomRoutes"));
 app.use("/floors", require("./routes/floorRoutes"));
 app.use("/stays", require("./routes/stayRoutes"));
 app.use("/electricities", require("./routes/electricityRoutes"));
+app.use("/water-records", require("./routes/waterRoutes"));
 app.use("/settings", require("./routes/settingsRoutes"));
 app.use("/notes", require("./routes/noteRoutes"));
 app.use("/", require("./routes/authRoutes"));

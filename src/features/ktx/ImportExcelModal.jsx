@@ -8,30 +8,34 @@ export default function ImportExcelModal({
   importExcelFile,
 }) {
   const result = importModal.result;
+  const closeModal = () => {
+    if (importModal.busy) return;
+    setImportModal((m) => ({
+      ...m,
+      open: false,
+      busy: false,
+      result: null,
+    }));
+  };
 
   return (
     <Modal
       open={importModal.open}
       title="Nhập Excel"
-      onClose={() =>
-        setImportModal((m) => ({
-          ...m,
-          open: false,
-          busy: false,
-          result: null,
-        }))
-      }
+      onClose={closeModal}
+      zIndex="z-[60]"
     >
       <div className="space-y-4">
         <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
           <div className="text-sm font-semibold">Hướng dẫn</div>
           <div className="mt-1 text-xs text-slate-600">
-            File Excel (sheet đầu tiên) có thể có/không có cột Mã nhân viên. Nếu
-            không có, hệ thống sẽ tự tạo mã vãng lai để lưu và xếp phòng bình
-            thường. Các cột gợi ý: Mã nhân viên, Họ tên, Ngày sinh, Số điện
-            thoại, Quê quán, Người tuyển, Phòng, Ngày vào, Ngày rời.
+            File Excel (sheet đầu tiên) có thể có/không có cột Mã nhân viên.
+            Các cột gợi ý: Mã nhân viên, Họ tên, Giới tính, Số CCCD, Tiền điện,
+            Tiền nước, Ngày sinh, Số điện thoại, Quê quán, Người tuyển, Tầng,
+            Phòng, Ngày vào, Ngày rời.
             <br />
-            Nếu không có Phòng/Ngày vào thì chỉ tạo NLĐ.
+            Nếu phòng bị trùng mã giữa nhiều tầng, cần nhập thêm cột Tầng. Nếu
+            không có Phòng/Ngày vào thì chỉ tạo NLĐ.
           </div>
         </div>
 
@@ -49,8 +53,12 @@ export default function ImportExcelModal({
         />
 
         {importModal.busy ? (
-          <div className="rounded-2xl bg-white p-4 text-sm ring-1 ring-slate-100">
-            Đang nhập dữ liệu…
+          <div className="flex items-center gap-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-900 ring-1 ring-sky-100">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-sky-200 border-t-sky-600" />
+            <div>
+              <div className="font-semibold">Đang tải file lên và nhập dữ liệu...</div>
+              <div className="mt-0.5 text-xs text-sky-700">Vui lòng không đóng cửa sổ này.</div>
+            </div>
           </div>
         ) : null}
 

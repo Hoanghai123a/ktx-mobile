@@ -129,7 +129,7 @@ function ContactRow({ icon: Icon, label, value, href }) {
 function tabClass(active) {
   return (
     "rounded-xl px-3 py-2.5 text-sm font-semibold transition " +
-    (active ? "bg-sky-600 text-white shadow-sm" : "text-sky-800")
+    (active ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-sky-800")
   );
 }
 
@@ -265,7 +265,7 @@ export default function AccountView({ user, settings, onLogout }) {
               <button
                 type="submit"
                 disabled={busy}
-                className="w-full rounded-2xl bg-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-sky-700 disabled:opacity-60"
+                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[rgb(36_99_132)] disabled:opacity-60"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   <CheckCircle2 className="h-4 w-4" />
