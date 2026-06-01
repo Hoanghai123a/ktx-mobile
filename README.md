@@ -1,56 +1,72 @@
 # ktx-mobile
 
-Ứng dụng quản lý KTX/NLĐ chạy trên React + Vite, dùng Node.js/Express + PostgreSQL làm backend (qua `/api` proxy).
+Ung dung quan ly KTX/NLD chay tren React + Vite, du lieu PocketBase local.
 
-## Stack chính
-
-- React 19 + Vite
-- Node.js/Express + PostgreSQL (backend)
-- Tailwind CSS
-- Recharts
-- XLSX (import/export Excel)
-
-## Yêu cầu
+## Yeu cau
 
 - Node.js 20+
 - npm 10+
+- PocketBase local tai `http://127.0.0.1:8091`
+- PM2 neu muon chay production local
 
-## Cài đặt
+## Cai dat
 
 ```bash
 npm install
 ```
 
-## Cấu hình môi trường
+## Env local
 
-Tạo file `.env` ở thư mục gốc:
+Root `.env`:
 
 ```env
-VITE_HOST=/api/
-VITE_KEY=your_application_key
+VITE_POCKETBASE_URL=/pb
+VITE_POCKETBASE_PROXY_TARGET=http://127.0.0.1:8091
 VITE_DEBUGMODE=development
+VITE_PORT=5174
 ```
 
-## Chạy dự án
+## Chay dev
 
 ```bash
 npm run dev
 ```
 
+Frontend: `http://127.0.0.1:5174/`
+
+## Chay local bang PM2
+
+PocketBase can chay truoc tai `http://127.0.0.1:8091`.
+
+```bash
+npm run pm2:start
+```
+
+Lenh huu ich:
+
+```bash
+npm run pm2:restart
+npm run pm2:logs
+npm run pm2:stop
+npm run pm2:delete
+```
+
+PM2 app: `ktx-frontend` tai `http://127.0.0.1:5174`.
+
+## PocketBase register rule
+
+Vao PocketBase Admin UI > Collections > `users` > API rules, mo Create rule de frontend co the dang ky user truc tiep. Neu app dang bat duyet user, tai khoan moi van se cho admin phe duyet theo `system_settings.key = "auth"`.
+
 ## Scripts
 
-- `npm run dev`: chạy local dev server
+- `npm run dev`: chay Vite dev server
 - `npm run build`: build production
-- `npm run preview`: preview bản build
-- `npm run lint`: kiểm tra ESLint
+- `npm run preview`: preview ban build
+- `npm run lint`: kiem tra ESLint
+- `npm test`: chay frontend tests
 
-## Cấu trúc thư mục
+## Ghi chu
 
-- `src/features`: các màn hình và modal theo domain nghiệp vụ
-- `src/services`: lớp thao tác dữ liệu qua API backend + import/export
-- `src/components/ui`: UI components dùng lại
-
-## Ghi chú
-
-- Không commit file `.env`.
-- Khi thay đổi logic import/export hoặc mutation dữ liệu, nên chạy `npm run lint` trước khi commit.
+- Khong commit `.env`.
+- Khi doi schema PocketBase, cap nhat collection truoc khi test app.
+- App co manifest PWA `display: standalone`, nen khi cai ra man hinh chinh se mo nhu app rieng neu trinh duyet/OS ho tro.

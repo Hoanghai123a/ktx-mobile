@@ -3,12 +3,10 @@ import { message } from "antd";
 const PB_URL = String(
   import.meta.env.DEV
     ? "/pb"
-    : import.meta.env.VITE_POCKETBASE_URL ||
-        import.meta.env.VITE_HOST ||
-        "https://ripple-skyrocket-progeny.ngrok-free.dev",
+    : import.meta.env.VITE_POCKETBASE_URL || "/pb",
 ).replace(/\/$/, "");
 const debugMode = import.meta.env.VITE_DEBUGMODE === "development";
-const backendHint = "Không kết nối được PocketBase qua Ngrok.";
+const pocketBaseHint = "Khong ket noi duoc PocketBase local.";
 
 const DEFAULT_DELAY = 0;
 
@@ -58,7 +56,6 @@ async function pbRequest(collection, suffix = "", options = {}) {
       signal: options.signal,
       headers: {
         "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true",
         ...authHeaders(),
         ...(options.headers || {}),
       },
@@ -215,7 +212,6 @@ async function pbAuthRefresh(signal) {
     signal,
     headers: {
       "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true",
       ...authHeaders(),
     },
   });
@@ -597,7 +593,6 @@ async function pbAuthWithPassword(username, password, signal) {
     signal,
     headers: {
       "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true",
     },
     body: JSON.stringify({ identity: username, password }),
   });
@@ -847,7 +842,7 @@ export const debounceDelete = (url, _token, delay = DEFAULT_DELAY) => wrap(url, 
 
 function error(e) {
   const data = e?.response?.data;
-  message.error(data?.detail || data?.details || data?.error || data?.message || e?.message || backendHint);
+  message.error(data?.detail || data?.details || data?.error || data?.message || e?.message || pocketBaseHint);
 }
 
 function getCookie(name) {

@@ -1,7 +1,7 @@
 import { DEFAULT_SETTINGS } from "../constants/defaultSettings.js";
 
 const DATA_SOURCE_KEY = String(
-  import.meta.env?.VITE_POCKETBASE_URL || import.meta.env?.VITE_HOST || "local",
+  import.meta.env?.VITE_POCKETBASE_URL || "local",
 ).replace(/[^a-z0-9]+/gi, "_");
 const STORAGE_KEY = `ktx_state_v2_${DATA_SOURCE_KEY}`;
 
