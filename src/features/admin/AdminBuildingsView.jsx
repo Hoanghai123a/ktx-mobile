@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Building2, Eye, KeyRound, Pencil, Plus, Save, Settings, ShieldCheck, Trash2, Users, X } from "lucide-react";
 import Pill from "../../components/ui/Pill";
 import TextField from "../../components/ui/TextField";
@@ -56,6 +56,10 @@ function userLabel(user) {
   return user?.username || user?.name || user?.id || "-";
 }
 
+function logoFromSettings(settings) {
+  return settings?.logoUrl || settings?.about?.brandLogoUrl || "/logo.png";
+}
+
 export default function AdminBuildingsView({
   buildings = [],
   users = [],
@@ -78,8 +82,20 @@ export default function AdminBuildingsView({
   const [memberDraft, setMemberDraft] = useState({ user_id: "", role: "manager" });
   const [memberQuery, setMemberQuery] = useState("");
   const [memberPickerOpen, setMemberPickerOpen] = useState(false);
+  const [brandDraft, setBrandDraft] = useState(() => ({
+    siteName: settings.siteName || "KTX",
+    logoUrl: logoFromSettings(settings),
+  }));
   const [contactDraft, setContactDraft] = useState(settings.adminContact || {});
   const [buildingBusyId, setBuildingBusyId] = useState("");
+  const logoInputRef = useRef(null);
+
+  useEffect(() => {
+    setBrandDraft({
+      siteName: settings.siteName || "KTX",
+      logoUrl: logoFromSettings(settings),
+    });
+  }, [settings]);
 
   useEffect(() => {
     setContactDraft(settings.adminContact || {});
@@ -189,6 +205,40 @@ export default function AdminBuildingsView({
     setShowUserForm(true);
   }
 
+  function importLogoFile(file) {
+    if (!file) return;
+    if (!String(file.type || "").startsWith("image/")) {
+      alert("Vui lòng chọn file ảnh logo.");
+      return;
+    }
+    if (file.size > 256 * 1024) {
+      alert("Logo tối đa 256KB để favicon tải nhanh.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setBrandDraft((s) => ({ ...s, logoUrl: String(reader.result || "") }));
+    };
+    reader.onerror = () => alert("Không đọc được file logo.");
+    reader.readAsDataURL(file);
+  }
+
+  async function saveBrandSettings() {
+    const siteName = brandDraft.siteName.trim() || "KTX";
+    const logoUrl = brandDraft.logoUrl.trim() || "/logo.png";
+    const nextSettings = {
+      ...settings,
+      siteName,
+      logoUrl,
+      about: {
+        ...(settings.about || {}),
+        brandLogoUrl: logoUrl,
+      },
+    };
+    await actions.updateBrandSettings?.(nextSettings);
+    alert("Đã lưu thương hiệu.");
+  }
+
   async function saveAdminContact() {
     const nextSettings = {
       ...settings,
@@ -244,6 +294,46 @@ export default function AdminBuildingsView({
       {page === "settings" ? (
         <div className="space-y-4">
           <InstallAppSettingsCard installApp={installApp} />
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Thương hiệu</div>
+                <div className="mt-1 text-xs text-slate-600">Áp dụng cho tiêu đề trang, favicon và icon ngoài màn hình chính.</div>
+              </div>
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-200">
+                {brandDraft.logoUrl ? (
+                  <img src={brandDraft.logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                ) : (
+                  <Building2 className="h-6 w-6 text-slate-500" />
+                )}
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              <TextField label="Tên thương hiệu" value={brandDraft.siteName} onChange={(v) => setBrandDraft((d) => ({ ...d, siteName: v }))} placeholder="KTX HRPro" />
+              <TextField label="Logo URL / Data URL" value={brandDraft.logoUrl} onChange={(v) => setBrandDraft((d) => ({ ...d, logoUrl: v }))} placeholder="/logo.png hoặc https://..." />
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                className="hidden"
+                onChange={(e) => {
+                  importLogoFile(e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm" onClick={() => logoInputRef.current?.click()}>
+                  Tải logo
+                </button>
+                <button className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm" onClick={() => setBrandDraft((d) => ({ ...d, logoUrl: "/logo.png" }))}>
+                  Logo mặc định
+                </button>
+              </div>
+              <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveBrandSettings}>
+                <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Lưu thương hiệu</span>
+              </button>
+            </div>
+          </section>
           <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
             <div className="flex items-center justify-between gap-3">
               <div>

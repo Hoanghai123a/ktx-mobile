@@ -10,19 +10,12 @@ const PB_URL = String(
 const debugMode = import.meta.env.VITE_DEBUGMODE === "development";
 const backendHint = "Không kết nối được PocketBase qua Ngrok.";
 
-const abortControllers = {};
-const debounceTimers = {};
-const DEFAULT_DELAY = 100;
+const DEFAULT_DELAY = 0;
 
 function authHeaders() {
   const token = localStorage.getItem("token");
   if (token?.startsWith("pocketbase-") || token?.startsWith("mock-")) return {};
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-function clearPrevious(url) {
-  if (debounceTimers[url]) clearTimeout(debounceTimers[url]);
-  if (abortControllers[url]) abortControllers[url].abort();
 }
 
 function pbErrorMessage(status, data) {
@@ -204,6 +197,18 @@ function buildingFilter(extra = "") {
   return combineFilters(anyEq("building_id", id), extra);
 }
 
+function settingsKey(global = false) {
+  return global || !currentBuildingId() ? "global" : "default";
+}
+
+function settingsFilter(global = false) {
+  const id = global ? "" : currentBuildingId();
+  return combineFilters(
+    eq("key", settingsKey(global)),
+    id ? anyEq("building_id", id) : "",
+  );
+}
+
 async function pbAuthRefresh(signal) {
   const res = await fetch(`${PB_URL}/api/collections/${AUTH_COLLECTION}/auth-refresh`, {
     method: "POST",
@@ -322,6 +327,7 @@ async function loadBuildings(signal) {
 
 const DEFAULT_SETTINGS = {
   siteName: "KTX",
+  logoUrl: "/logo.png",
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
@@ -358,6 +364,7 @@ function settingsFromRecord(row) {
   return {
     ...DEFAULT_SETTINGS,
     siteName: row.site_name ?? DEFAULT_SETTINGS.siteName,
+    logoUrl: row.logo_url || row.about?.brandLogoUrl || DEFAULT_SETTINGS.logoUrl,
     roomGridCols: row.room_grid_cols ?? DEFAULT_SETTINGS.roomGridCols,
     canDeleteStructure: !!row.can_delete_structure,
     requirePasswordOnDelete: row.require_password_on_delete !== false,
@@ -371,10 +378,26 @@ function settingsFromRecord(row) {
   };
 }
 
-function settingsToRecord(data) {
+function applyGlobalBrand(settings, globalRow) {
+  if (!globalRow) return settings;
+  const globalSettings = settingsFromRecord(globalRow);
   return {
-    key: "default",
-    building_id: currentBuildingId(),
+    ...settings,
+    siteName: globalSettings.siteName,
+    logoUrl: globalSettings.logoUrl,
+    about: {
+      ...(settings.about || {}),
+      brandLogoUrl: globalSettings.logoUrl,
+    },
+  };
+}
+
+function settingsToRecord(data) {
+  const global = data.__globalBrand === true;
+  const buildingId = global ? "" : currentBuildingId();
+  return {
+    key: settingsKey(global),
+    ...(buildingId ? { building_id: buildingId } : {}),
     site_name: data.siteName,
     room_grid_cols: Number(data.roomGridCols || 3),
     can_delete_structure: !!data.canDeleteStructure,
@@ -385,6 +408,7 @@ function settingsToRecord(data) {
     billing_close_day: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
     about: {
       ...(data.about || {}),
+      brandLogoUrl: data.logoUrl || DEFAULT_SETTINGS.logoUrl,
       adminContact: data.adminContact || {},
       utilitySettings: {
         ...((data.about || {}).utilitySettings || {}),
@@ -405,21 +429,35 @@ async function safeList(collection, params = {}, signal) {
   }
 }
 
-async function getSettingsRecord(signal) {
+async function getSettingsRecord(signal, global = false) {
   return pbFirst(
     "app_settings",
-    { filter: combineFilters(eq("key", "default"), buildingFilter()) },
+    { filter: settingsFilter(global) },
     signal,
   );
 }
 
-async function deleteAll(collection, signal) {
+async function deleteRowsByFilter(collection, filter, signal) {
   try {
-    const rows = await pbList(collection, { sort: "-created" }, signal);
+    const rows = await pbList(collection, { filter, sort: "-created" }, signal);
     for (const row of rows) await pbRequest(collection, `/${row.id}`, { method: "DELETE", signal });
   } catch (e) {
     if (e?.response?.status !== 404) throw e;
   }
+}
+
+async function deleteBuildingCascade(buildingId, signal) {
+  const filter = anyEq("building_id", buildingId);
+  for (const collection of ["general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors", "app_settings"]) {
+    await deleteRowsByFilter(collection, filter, signal);
+  }
+  await deleteRowsByFilter("building_members", filter, signal);
+  await pbRequest("buildings", `/${buildingId}`, { method: "DELETE", signal });
+}
+
+async function deleteUserCascade(userId, signal) {
+  await deleteRowsByFilter("building_members", eq("user_id", userId), signal);
+  await pbRequest(AUTH_COLLECTION, `/${userId}`, { method: "DELETE", signal });
 }
 
 async function deleteRoomCascade(roomId, signal) {
@@ -506,12 +544,16 @@ async function handleGet(url, signal) {
   }
   if (path === "/load-all/") return loadAll(signal);
   if (path === "/settings/") {
-    const row = await getSettingsRecord(signal);
+    const [row, globalRow] = await Promise.all([
+      getSettingsRecord(signal),
+      getSettingsRecord(signal, true),
+    ]);
     if (!row) {
+      if (globalRow) return applyGlobalBrand(settingsFromRecord(globalRow), globalRow);
       const created = await pbRequest("app_settings", "", { method: "POST", body: settingsToRecord(DEFAULT_SETTINGS), signal });
-      return settingsFromRecord(created);
+      return applyGlobalBrand(settingsFromRecord(created), globalRow);
     }
-    return settingsFromRecord(row);
+    return applyGlobalBrand(settingsFromRecord(row), globalRow);
   }
   if (path === "/workers/") return (await pbList("workers", { filter: buildingFilter(), sort: "+employee_code,+full_name" }, signal)).map(normalizeWorker);
   if (path.startsWith("/workers/by-code/")) {
@@ -659,8 +701,9 @@ async function handlePost(url, data, signal) {
   }
   if (path === "/wipe-database/") {
     if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
+    const filter = anyEq("building_id", building_id);
     for (const c of ["general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors"]) {
-      const rows = await pbList(c, { filter: eq("building_id", building_id), sort: "-created" }, signal);
+      const rows = await pbList(c, { filter, sort: "-created" }, signal);
       for (const row of rows) await pbRequest(c, `/${row.id}`, { method: "DELETE", signal });
     }
     return { message: "Database wiped successfully" };
@@ -717,11 +760,13 @@ async function handlePatch(url, data, signal) {
   }
   if (path === "/settings/") {
     const payload = settingsToRecord({ ...DEFAULT_SETTINGS, ...data, about: { ...DEFAULT_SETTINGS.about, ...(data.about || {}) }, adminContact: { ...DEFAULT_SETTINGS.adminContact, ...(data.adminContact || {}) } });
-    const current = await getSettingsRecord(signal);
+    const current = await getSettingsRecord(signal, data.__globalBrand === true);
     const row = current
       ? await pbRequest("app_settings", `/${current.id}`, { method: "PATCH", body: payload, signal })
       : await pbRequest("app_settings", "", { method: "POST", body: payload, signal });
-    return settingsFromRecord(row);
+    if (data.__globalBrand === true) return applyGlobalBrand(settingsFromRecord(row), row);
+    const globalRow = await getSettingsRecord(signal, true);
+    return applyGlobalBrand(settingsFromRecord(row), globalRow);
   }
   if (/^\/workers\/[^/]+\/?$/.test(path)) {
     const payload = { ...data };
@@ -750,11 +795,11 @@ async function handlePatch(url, data, signal) {
 async function handleDelete(url, signal) {
   const path = new URL(url, "http://local").pathname;
   if (/^\/users\/[^/]+\/?$/.test(path)) {
-    await pbRequest(AUTH_COLLECTION, `/${path.split("/")[2]}`, { method: "DELETE", signal });
+    await deleteUserCascade(path.split("/")[2], signal);
     return { message: "Deleted successfully" };
   }
   if (/^\/buildings\/[^/]+\/?$/.test(path)) {
-    await pbRequest("buildings", `/${path.split("/")[2]}`, { method: "DELETE", signal });
+    await deleteBuildingCascade(path.split("/")[2], signal);
     return { message: "Deleted successfully" };
   }
   if (/^\/building-members\/[^/]+\/?$/.test(path)) {
@@ -781,26 +826,18 @@ async function handleDelete(url, signal) {
   throw makeError(404, { error: `Unsupported DELETE ${path}` });
 }
 
-function wrap(url, fn, delay = DEFAULT_DELAY) {
-  clearPrevious(url);
-  return new Promise((resolve, reject) => {
-    debounceTimers[url] = setTimeout(async () => {
-      const controller = new AbortController();
-      abortControllers[url] = controller;
-      try {
-        const started = Date.now();
-        const data = await fn(controller.signal);
-        if (debugMode) console.log(`[PocketBase] ${url} ${Date.now() - started}ms`, PB_URL);
-        resolve(data);
-      } catch (e) {
-        error(e);
-        reject(e);
-      } finally {
-        delete debounceTimers[url];
-        delete abortControllers[url];
-      }
-    }, delay);
-  });
+async function wrap(url, fn, delay = DEFAULT_DELAY) {
+  if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+  const controller = new AbortController();
+  try {
+    const started = Date.now();
+    const data = await fn(controller.signal);
+    if (debugMode) console.log(`[PocketBase] ${url} ${Date.now() - started}ms`, PB_URL);
+    return data;
+  } catch (e) {
+    error(e);
+    throw e;
+  }
 }
 
 export const debounceGet = (url, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => handleGet(url, signal), delay);

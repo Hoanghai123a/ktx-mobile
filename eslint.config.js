@@ -25,7 +25,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/**/*.{js,jsx}', 'vite.config.js', 'eslint.config.js'],
+    files: ['src/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       reactHooks.configs.flat.recommended,
@@ -46,6 +46,18 @@ export default defineConfig([
         { varsIgnorePattern: "^[A-Z_]", argsIgnorePattern: "^[A-Z_]" },
       ],
       "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    files: ['vite.config.js', 'eslint.config.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+      },
     },
   },
   {

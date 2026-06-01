@@ -5,13 +5,18 @@ require("dotenv").config();
 
 async function initializeDatabase() {
   const schemaPath = path.join(__dirname, "..", "db_schema.sql");
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl =
+    process.env.DATABASE_URL ||
+    "postgres://postgres:postgres@localhost:5432/postgres";
 
-  // Phân tích URL để lấy thông tin kết nối cơ bản (kết nối tới database 'postgres' trước)
-  const baseUrl = dbUrl.substring(0, dbUrl.lastIndexOf("/") + 1) + "postgres";
-  const targetDb = dbUrl.substring(dbUrl.lastIndexOf("/") + 1);
+  const parsedUrl = new URL(dbUrl);
+  const targetDb = decodeURIComponent(parsedUrl.pathname.replace(/^\//, "")) || "postgres";
+  const baseUrl = new URL(parsedUrl);
+  baseUrl.pathname = "/postgres";
 
-  const client = new Client({ connectionString: baseUrl });
+  const quoteIdent = (value) => `"${String(value).replace(/"/g, '""')}"`;
+
+  const client = new Client({ connectionString: baseUrl.toString() });
 
   try {
     console.log("--- KHỞI TẠO DATABASE KTX-MOBILE ---");
@@ -19,11 +24,12 @@ async function initializeDatabase() {
 
     // 1. Kiểm tra và tạo database nếu chưa có
     const res = await client.query(
-      `SELECT 1 FROM pg_database WHERE datname = '${targetDb}'`,
+      "SELECT 1 FROM pg_database WHERE datname = $1",
+      [targetDb],
     );
     if (res.rowCount === 0) {
       console.log(`Đang tạo database "${targetDb}"...`);
-      await client.query(`CREATE DATABASE ${targetDb}`);
+      await client.query(`CREATE DATABASE ${quoteIdent(targetDb)}`);
       console.log(`✅ Đã tạo database "${targetDb}".`);
     } else {
       console.log(`Database "${targetDb}" đã tồn tại.`);

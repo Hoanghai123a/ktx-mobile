@@ -2,6 +2,7 @@ const pb = require("../config/pocketbase");
 
 const DEFAULT_SETTINGS = {
   siteName: "KTX",
+  logoUrl: "/logo.png",
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
@@ -39,6 +40,7 @@ function fromRecord(row) {
   return {
     ...DEFAULT_SETTINGS,
     siteName: row.site_name ?? DEFAULT_SETTINGS.siteName,
+    logoUrl: row.logo_url || row.about?.brandLogoUrl || DEFAULT_SETTINGS.logoUrl,
     roomGridCols: row.room_grid_cols ?? DEFAULT_SETTINGS.roomGridCols,
     canDeleteStructure: !!row.can_delete_structure,
     requirePasswordOnDelete: row.require_password_on_delete !== false,
@@ -54,6 +56,7 @@ function fromRecord(row) {
 
 function toRecord(data) {
   const about = { ...(data.about || {}) };
+  about.brandLogoUrl = data.logoUrl || DEFAULT_SETTINGS.logoUrl;
   about.adminContact = data.adminContact || {};
   about.utilitySettings = {
     ...(about.utilitySettings || {}),

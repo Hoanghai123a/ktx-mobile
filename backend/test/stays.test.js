@@ -1,10 +1,15 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
+require("dotenv").config();
 
 const APP_KEY = process.env.APPLICATION_KEY || "test-key";
 const BASE_PORT = Number(process.env.TEST_PORT || 5050);
 const BASE_URL = `http://127.0.0.1:${BASE_PORT}`;
+const RUN_INTEGRATION = process.env.RUN_BACKEND_INTEGRATION === "1" && !!process.env.DATABASE_URL;
+const INTEGRATION_SKIP = RUN_INTEGRATION
+  ? false
+  : "Set RUN_BACKEND_INTEGRATION=1 with DATABASE_URL and seeded PocketBase auth to run this integration test.";
 
 function runInitDb() {
   return new Promise((resolve, reject) => {
@@ -99,7 +104,7 @@ async function fetchJson(path, { method = "GET", token, body } = {}) {
 let server = null;
 let token = null;
 
-test.before(async () => {
+async function setupIntegration() {
   await runInitDb();
   server = await startServer();
 
@@ -124,13 +129,15 @@ test.before(async () => {
     body: { floors: 1, roomsPerFloor: 2, startNo: 101 },
   });
   assert.equal(initRes.status, 200);
-});
+}
 
 test.after(() => {
   if (server) server.kill();
 });
 
-test("stays validation and load-all shape", async () => {
+test("stays validation and load-all shape", { skip: INTEGRATION_SKIP }, async () => {
+  await setupIntegration();
+
   const load0 = await fetchJson("/load-all/", { token });
   assert.equal(load0.status, 200);
   assert.equal(load0.json.floors.length, 1);

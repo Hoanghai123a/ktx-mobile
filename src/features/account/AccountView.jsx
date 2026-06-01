@@ -4,7 +4,6 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  LogOut,
   Mail,
   MessageCircle,
   Phone,
@@ -133,7 +132,7 @@ function tabClass(active) {
   );
 }
 
-export default function AccountView({ user, settings, onLogout }) {
+export default function AccountView({ user, settings }) {
   const [page, setPage] = useState("account");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");

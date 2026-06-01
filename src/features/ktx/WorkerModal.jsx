@@ -37,7 +37,6 @@ export default function WorkerModal({
   worker,
   stays,
   roomById,
-  utilityCharge,
   auth,
   requireAdmin,
   actions,

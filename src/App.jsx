@@ -1,4 +1,4 @@
-import React, {
+import {
   Suspense,
   lazy,
   useCallback,
@@ -9,8 +9,6 @@ import React, {
 } from "react";
 import {
   Search,
-  FileUp,
-  FileDown,
   Shield,
   Home,
   BarChart3,
@@ -20,37 +18,12 @@ import {
   LogOut,
   Settings,
   Building2,
-  DoorClosed,
   DoorOpen,
-  Plus,
-  Trash2,
-  Filter,
-  ChevronDown,
-  Calendar,
-  UserPlus,
-  UserMinus,
-  Pencil,
-  MapPin,
-  Phone,
-  Mail,
-  Globe,
   Clock,
   ShieldCheck,
-  CreditCard,
-  Mars,
   Pin,
   PinOff,
-  Venus,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  Tooltip,
-  CartesianGrid,
-  LabelList,
-} from "recharts";
 // UI (App.jsx thường chỉ còn 2 cái này)
 import Confirm from "./components/ui/Confirm";
 import TabButton from "./components/ui/TabButton";
@@ -135,59 +108,6 @@ function Modal({ open, title, children, onClose }) {
         <div className="h-2" />
       </div>
     </div>
-  );
-}
-
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = "text",
-  inputRef,
-  onFocus,
-  onBlur,
-  onKeyDown,
-  disabled = false,
-}) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        ref={inputRef}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
-      />
-    </label>
-  );
-}
-
-function SelectField({ label, value, onChange, options }) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-medium text-slate-600">{label}</div>
-      <div className="relative">
-        <select
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm outline-none focus:border-slate-400"
-        >
-          {options.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-      </div>
-    </label>
   );
 }
 
@@ -452,7 +372,8 @@ import {
   authService,
 } from "./services/api-services";
 import { message } from "antd";
-import { InstallAppBanner, InstallGuideModal, useInstallApp } from "./features/pwa/InstallApp";
+import { InstallAppBanner, InstallGuideModal } from "./features/pwa/InstallApp";
+import { useInstallApp } from "./features/pwa/useInstallApp";
 
 // ... existing imports ...
 
@@ -591,6 +512,44 @@ export default function App() {
     const t = setTimeout(() => savePersistedState(state), 150);
     return () => clearTimeout(t);
   }, [state]);
+
+  useEffect(() => {
+    const brandName =
+      String(state.settings?.siteName || DEFAULT_SETTINGS.siteName || "KTX").trim() ||
+      "KTX";
+    const logoUrl =
+      String(
+        state.settings?.logoUrl ||
+          state.settings?.about?.brandLogoUrl ||
+          DEFAULT_SETTINGS.logoUrl ||
+          "/logo.png",
+      ).trim() || "/logo.png";
+
+    document.title = brandName;
+    document
+      .querySelector('meta[name="apple-mobile-web-app-title"]')
+      ?.setAttribute("content", brandName);
+    document
+      .querySelector('meta[name="application-name"]')
+      ?.setAttribute("content", brandName);
+
+    const updateLink = (selector, rel) => {
+      let el = document.querySelector(selector);
+      if (!el) {
+        el = document.createElement("link");
+        el.setAttribute("rel", rel);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("href", logoUrl);
+    };
+
+    updateLink('link[rel="icon"]', "icon");
+    updateLink('link[rel="apple-touch-icon"]', "apple-touch-icon");
+  }, [
+    state.settings?.about?.brandLogoUrl,
+    state.settings?.logoUrl,
+    state.settings?.siteName,
+  ]);
   // ---------------------------
   // Settings persistence (Supabase)
   // Table: app_settings (id=1, data=jsonb)
@@ -702,7 +661,6 @@ export default function App() {
         setFloorId("");
         return;
       }
-      console.log("[DATABASE] PocketBase:", selectedBuildingId);
       const data = await dataLoader.loadAll(token);
       if (data) {
         setState((s) => ({ ...s, ...data }));
@@ -1047,7 +1005,7 @@ export default function App() {
       await loadAllFromDb();
       message.success("Thêm NLĐ thành công.");
       return res;
-    } catch (e) {
+    } catch {
       // message error shown by api interceptor
       return null;
     }
@@ -1828,17 +1786,6 @@ export default function App() {
     }
   }
 
-  async function wipeDatabase() {
-    try {
-      if (!token) return setLoginModal(true);
-      await dataLoader.wipeDatabase(token);
-      await loadAllFromDb();
-      alert("Đã xóa sạch dữ liệu.");
-    } catch (e) {
-      alert(e.message || String(e));
-    }
-  }
-
   // ---------------------------
   // Views
   // ---------------------------
@@ -2017,89 +1964,6 @@ export default function App() {
     </div>
   );
 
-  function RoomCard({ r, floorId }) {
-    const current = r.stays.filter((s) => !s.dateOut);
-    const count = current.length;
-    const isMatched = q.trim() ? globalMatches.roomIds.has(r.id) : true;
-
-    const tone =
-      count === 0
-        ? "bg-white"
-        : count === 1
-          ? "bg-emerald-50"
-          : count === 2
-            ? "bg-sky-50"
-            : "bg-amber-50";
-    const ring =
-      count === 0
-        ? "ring-slate-100"
-        : count === 1
-          ? "ring-emerald-100"
-          : count === 2
-            ? "ring-sky-100"
-            : "ring-amber-100";
-
-    return (
-      <button
-        onClick={() => setRoomModal({ open: true, floorId, roomId: r.id })}
-        className={clsx(
-          "relative rounded-3xl p-3 text-left shadow-sm ring-1 transition active:scale-[0.99]",
-          tone,
-          ring,
-          isMatched ? "" : "opacity-35",
-        )}
-      >
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-xs font-medium text-slate-500">Phòng</div>
-            <div className="mt-0.5 text-base font-semibold text-slate-900">
-              {r.code}
-            </div>
-          </div>
-          <div className="grid h-9 w-9 place-items-center rounded-2xl bg-white/70 ring-1 ring-slate-200">
-            {r.gender === "male" || r.gender === "Nam" ? (
-              <Mars className="h-5 w-5 text-sky-600" />
-            ) : r.gender === "female" || r.gender === "Nữ" ? (
-              <Venus className="h-5 w-5 text-pink-600" />
-            ) : count === 0 ? (
-              <DoorClosed className="h-5 w-5 text-slate-500" />
-            ) : (
-              <DoorOpen className="h-5 w-5 text-slate-700" />
-            )}
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between">
-          <Pill
-            icon={Users}
-            text={`${count} NLĐ`}
-            tone={
-              count === 0
-                ? "slate"
-                : count === 1
-                  ? "green"
-                  : count === 2
-                    ? "sky"
-                    : "amber"
-            }
-          />
-          <div className="text-xs font-medium text-slate-500">
-            {count === 0 ? "Trống" : "Đang ở"}
-          </div>
-        </div>
-
-        {q.trim() && isMatched ? (
-          <div className="mt-2 line-clamp-2 text-xs text-slate-600">
-            {current
-              .map((s) => workerById.get(s.workerId)?.fullName)
-              .filter(Boolean)
-              .join(", ")}
-          </div>
-        ) : null}
-      </button>
-    );
-  }
-
   // ---------------------------
   // Room modal
   // ---------------------------
@@ -2205,6 +2069,25 @@ export default function App() {
                 setState((prev) => ({ ...prev, settings: nextSettings }));
                 await saveSettingsToDb(nextSettings);
               },
+              updateBrandSettings: async (nextSettings) => {
+                const brandSettings = {
+                  ...nextSettings,
+                  __globalBrand: true,
+                };
+                setState((prev) => ({
+                  ...prev,
+                  settings: {
+                    ...prev.settings,
+                    siteName: nextSettings.siteName,
+                    logoUrl: nextSettings.logoUrl,
+                    about: {
+                      ...(prev.settings?.about || {}),
+                      brandLogoUrl: nextSettings.logoUrl,
+                    },
+                  },
+                }));
+                await saveSettingsToDb(brandSettings);
+              },
               addMember: addBuildingMember,
               updateMember: updateBuildingMember,
               deleteMember: deleteBuildingMember,
@@ -2283,7 +2166,6 @@ export default function App() {
           <AccountView
             user={user}
             settings={state.settings}
-            onLogout={authLogout}
           />
         ) : null}
         {tab === "buildings" ? (
@@ -2496,9 +2378,6 @@ export default function App() {
                 : []
             }
             roomById={roomById}
-            utilityCharge={
-              workerModal.workerId ? utilityBilling.byWorker.get(workerModal.workerId) : null
-            }
             auth={auth}
             requireAdmin={requireAdmin}
             actions={{
@@ -2802,7 +2681,7 @@ export default function App() {
               try {
                 await authService.login(identity, deletePass);
                 await deletePassModal.onDelete?.();
-              } catch (e) {
+              } catch {
                 alert("Mật khẩu đăng nhập không đúng.");
                 return;
               } finally {

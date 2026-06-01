@@ -1,5 +1,6 @@
 export const DEFAULT_SETTINGS = {
   siteName: "KTX",
+  logoUrl: "/logo.png",
   roomGridCols: 3,
   canDeleteStructure: false,
   requirePasswordOnDelete: true,
