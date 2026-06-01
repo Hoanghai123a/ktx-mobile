@@ -53,7 +53,7 @@ function BuildingStatusLegend() {
 }
 
 function userLabel(user) {
-  return user?.username || user?.name || user?.email || user?.id || "-";
+  return user?.username || user?.name || user?.id || "-";
 }
 
 export default function AdminBuildingsView({
@@ -76,7 +76,10 @@ export default function AdminBuildingsView({
   const [editingUserId, setEditingUserId] = useState("");
   const [userDraft, setUserDraft] = useState(emptyUserDraft);
   const [memberDraft, setMemberDraft] = useState({ user_id: "", role: "manager" });
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const [contactDraft, setContactDraft] = useState(settings.adminContact || {});
+  const [buildingBusyId, setBuildingBusyId] = useState("");
 
   useEffect(() => {
     setContactDraft(settings.adminContact || {});
@@ -93,6 +96,18 @@ export default function AdminBuildingsView({
     ],
     [users],
   );
+  const memberUsers = useMemo(
+    () => users.filter((u) => u?.role !== "admin" && u?.isAdmin !== true),
+    [users],
+  );
+  const filteredMemberUsers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    if (!q) return memberUsers;
+    return memberUsers.filter((u) => {
+      const text = `${u.username || ""} ${u.name || ""} ${u.email || ""}`.toLowerCase();
+      return text.includes(q);
+    });
+  }, [memberQuery, memberUsers]);
 
   function resetDraft() {
     setEditId("");
@@ -123,6 +138,8 @@ export default function AdminBuildingsView({
   function openPermissions(building) {
     setSelectedBuildingId(building.id);
     setMemberDraft({ user_id: "", role: "manager" });
+    setMemberQuery("");
+    setMemberPickerOpen(false);
     setShowPermissions(true);
   }
 
@@ -133,11 +150,25 @@ export default function AdminBuildingsView({
     resetDraft();
   }
 
+  async function togglePublicView(building) {
+    if (!building?.id || buildingBusyId) return;
+    setBuildingBusyId(building.id);
+    try {
+      await actions.updateBuilding(building.id, {
+        public_view: !building.public_view,
+      });
+    } finally {
+      setBuildingBusyId("");
+    }
+  }
+
   async function addMember() {
     const building_id = selectedBuildingId || current?.id;
     if (!building_id || !memberDraft.user_id) return alert("Chọn tòa nhà và người dùng.");
     await actions.addMember({ building_id, user_id: memberDraft.user_id, role: memberDraft.role, active: true });
     setMemberDraft({ user_id: "", role: "manager" });
+    setMemberQuery("");
+    setMemberPickerOpen(false);
   }
 
   function resetUserDraft() {
@@ -260,7 +291,7 @@ export default function AdminBuildingsView({
             <div key={u.id} className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-white px-3 py-2 shadow-sm">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold text-slate-900">{userLabel(u)}</div>
-                <div className="truncate text-xs text-slate-500">{u.name || u.email || u.id}</div>
+                <div className="truncate text-xs text-slate-500">{u.name || u.username || u.id}</div>
                 <div className="mt-1 text-[11px] font-medium text-slate-400">
                   {u.role === "admin" ? "Quản trị hệ thống" : u.approved === false ? "Chờ phê duyệt" : "Tài khoản user"}
                 </div>
@@ -326,7 +357,7 @@ export default function AdminBuildingsView({
                 <span className="truncate text-[11px] font-medium text-slate-400">{b.public_view ? "Cho xem" : "Riêng tư"}</span>
                 <div className="flex shrink-0 gap-1">
                   <button className="rounded-lg bg-sky-50 p-1.5 text-sky-700" onClick={() => editBuilding(b)}><Pencil className="h-3.5 w-3.5" /></button>
-                  <button className="rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-semibold text-slate-700" onClick={() => actions.updateBuilding(b.id, { public_view: !b.public_view })}>{b.public_view ? "Ẩn" : "Mở"}</button>
+                  <button className="rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-semibold text-slate-700 disabled:opacity-60" disabled={buildingBusyId === b.id} onClick={() => togglePublicView(b)}>{buildingBusyId === b.id ? "..." : b.public_view ? "Ẩn" : "Mở"}</button>
                   <button className="rounded-lg bg-rose-50 p-1.5 text-rose-600" onClick={() => actions.deleteBuilding(b.id)}><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
@@ -360,7 +391,44 @@ export default function AdminBuildingsView({
             <div className="max-h-[78vh] overflow-auto px-4 pb-5">
               <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
                 <div className="grid grid-cols-1 gap-2">
-                  <SelectField label="User" value={memberDraft.user_id} onChange={(v) => setMemberDraft((s) => ({ ...s, user_id: v }))} options={userOptions} />
+                  <div className="relative">
+                    <TextField
+                      label="User"
+                      value={memberQuery}
+                      onChange={(v) => {
+                        setMemberQuery(v);
+                        setMemberPickerOpen(!!String(v || "").trim());
+                        if (!String(v || "").trim()) setMemberDraft((s) => ({ ...s, user_id: "" }));
+                      }}
+                      onFocus={() => setMemberPickerOpen(!!memberQuery.trim())}
+                      placeholder="Nhập username hoặc tên để lọc"
+                    />
+                    {memberPickerOpen ? (
+                      <div className="absolute left-0 right-0 top-full z-[70] mt-1 max-h-48 overflow-auto rounded-2xl border border-sky-100 bg-white p-1 shadow-xl ring-1 ring-sky-100">
+                        {filteredMemberUsers.length ? filteredMemberUsers.map((u) => {
+                          const selected = memberDraft.user_id === u.id;
+                          return (
+                            <button
+                              key={u.id}
+                              type="button"
+                              className={`w-full rounded-xl px-3 py-2 text-left text-sm ${selected ? "bg-[rgb(44_120_159)] text-white" : "text-slate-700 hover:bg-sky-50"}`}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setMemberDraft((s) => ({ ...s, user_id: u.id }));
+                                setMemberQuery(userLabel(u));
+                                setMemberPickerOpen(false);
+                              }}
+                            >
+                              <div className="font-semibold">{userLabel(u)}</div>
+                              {u.name && u.name !== u.username ? <div className={`text-xs ${selected ? "text-sky-50" : "text-slate-500"}`}>{u.name}</div> : null}
+                            </button>
+                          );
+                        }) : (
+                          <div className="px-3 py-4 text-center text-xs text-slate-500">Không có user phù hợp.</div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                   <SelectField label="Quyền" value={memberDraft.role} onChange={(v) => setMemberDraft((s) => ({ ...s, role: v }))} options={[{ value: "manager", label: "Được xử lý" }, { value: "viewer", label: "Chỉ xem" }]} />
                   <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={addMember}>
                     <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Gán quyền</span>

@@ -41,6 +41,7 @@ function makeError(status, data) {
   return err;
 }
 
+
 function qs(params = {}) {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -56,17 +57,28 @@ function pbRecordUrl(collection, suffix = "", params = {}) {
 }
 
 async function pbRequest(collection, suffix = "", options = {}) {
-  const res = await fetch(pbRecordUrl(collection, suffix, options.params), {
-    method: options.method || "GET",
-    signal: options.signal,
-    headers: {
-      "Content-Type": "application/json",
-      "ngrok-skip-browser-warning": "true",
-      ...authHeaders(),
-      ...(options.headers || {}),
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined,
-  });
+  const url = pbRecordUrl(collection, suffix, options.params);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: options.method || "GET",
+      signal: options.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true",
+        ...authHeaders(),
+        ...(options.headers || {}),
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined,
+    });
+  } catch (err) {
+    if (options.method && options.method !== "GET" && !options._retriedNetwork) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return pbRequest(collection, suffix, { ...options, _retriedNetwork: true });
+    }
+    const detail = `${options.method || "GET"} ${url}`;
+    throw makeError(0, { error: `${err?.message || "Failed to fetch"}: ${detail}` });
+  }
 
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
@@ -484,7 +496,7 @@ async function handleGet(url, signal) {
     return { ...(payload.record || {}), access_token: payload.token };
   }
   if (path === "/auth-settings/") return getAuthSettings(signal);
-  if (path === "/users/") return pbList(AUTH_COLLECTION, { sort: "+username,+email" }, signal);
+  if (path === "/users/") return pbList(AUTH_COLLECTION, { sort: "+username,+name" }, signal);
   if (path === "/buildings/") return loadBuildings(signal);
   if (path === "/building-members/") {
     const filters = [];
@@ -566,6 +578,7 @@ async function pbRegisterUser(data, signal) {
   const password = String(data?.password || "");
   const name = String(data?.name || "").trim();
   if (!username || !password) throw makeError(400, { error: "Nhập username và mật khẩu." });
+  if (password.length < 8) throw makeError(400, { error: "Mật khẩu đăng ký phải có ít nhất 8 ký tự." });
   const authSettings = await getAuthSettings(signal);
   const approved = authSettings.require_approval === false;
   await pbRequest(AUTH_COLLECTION, "", {

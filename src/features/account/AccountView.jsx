@@ -151,7 +151,7 @@ export default function AccountView({ user, settings, onLogout }) {
     contact.zalo,
     contact.note,
   ].some((x) => String(x || "").trim());
-  const displayName = user?.name || user?.username || user?.email || T.account;
+  const displayName = user?.name || user?.username || T.account;
   const roleText = useMemo(() => {
     if (user?.role === "admin" || user?.isAdmin === true) return T.systemAdmin;
     if (user?.approved === false) return T.pendingApproval;

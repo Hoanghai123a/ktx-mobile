@@ -49,6 +49,7 @@ export default function AuthScreen() {
     e?.preventDefault?.();
     const nextUsername = username.trim();
     if (!nextUsername || !password) return alert("Nhập username và mật khẩu.");
+    if (isRegister && password.length < 8) return alert("Mật khẩu đăng ký phải có ít nhất 8 ký tự.");
     if (isRegister && password !== confirm) return alert("Mật khẩu xác nhận không khớp.");
     setBusy(true);
     try {

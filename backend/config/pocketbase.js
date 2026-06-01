@@ -4,8 +4,28 @@ const PB_URL = (
   process.env.POCKETBASE_URL || "https://ripple-skyrocket-progeny.ngrok-free.dev"
 ).replace(/\/$/, "");
 
+function pocketBaseToken() {
+  return (process.env.POCKETBASE_TOKEN || "").trim();
+}
+
+function tokenStatus() {
+  const token = pocketBaseToken();
+  if (!token) return { configured: false, expired: false, exp: null };
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] || "", "base64url").toString("utf8"));
+    const exp = Number(payload.exp || 0);
+    return {
+      configured: true,
+      expired: !!exp && exp * 1000 <= Date.now(),
+      exp: exp ? new Date(exp * 1000).toISOString() : null,
+    };
+  } catch {
+    return { configured: true, expired: false, exp: null };
+  }
+}
+
 function authHeaders() {
-  const token = (process.env.POCKETBASE_TOKEN || "").trim();
+  const token = pocketBaseToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -77,6 +97,7 @@ async function first(collection, params = {}) {
 
 module.exports = {
   PB_URL,
+  tokenStatus,
   request,
   list,
   first,

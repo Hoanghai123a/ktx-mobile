@@ -40,6 +40,7 @@ async function getAuthSettings() {
   return { require_approval: row?.require_approval !== false };
 }
 
+
 const authController = {
   login: async (req, res) => {
     try {
@@ -57,8 +58,8 @@ const authController = {
       const username = String(req.body?.username || "").trim();
       const password = String(req.body?.password || "");
       const name = String(req.body?.name || "").trim();
-      const email = String(req.body?.email || (username.includes("@") ? username : `${username}@ktx.local`)).trim().toLowerCase();
       if (!username || !password) return res.status(400).json({ error: "Nhập username và mật khẩu." });
+      if (password.length < 8) return res.status(400).json({ error: "Mật khẩu đăng ký phải có ít nhất 8 ký tự." });
 
       const authSettings = await getAuthSettings();
       const approved = authSettings.require_approval === false;
@@ -67,7 +68,6 @@ const authController = {
         method: "POST",
         body: JSON.stringify({
           username,
-          email,
           password,
           passwordConfirm: password,
           name,
@@ -85,10 +85,26 @@ const authController = {
 
       res.json(await authWithPassword(username, password));
     } catch (err) {
+      const rawMessage = err.data?.message || err.message;
+      if (rawMessage === "Failed to create record.") {
+        const token = pb.tokenStatus?.() || { configured: false, expired: false, exp: null };
+        if (token.expired) {
+          return res.status(500).json({
+            error: `POCKETBASE_TOKEN đã hết hạn (${token.exp}). Hãy tạo token mới cho backend hoặc mở Create rule cho collection users.`,
+          });
+        }
+        if (!token.configured) {
+          return res.status(500).json({
+            error: "Backend chưa cấu hình POCKETBASE_TOKEN. Hãy thêm token backend hoặc mở Create rule cho collection users.",
+          });
+        }
+        return res.status(500).json({
+          error: "PocketBase đang từ chối tạo user. Kiểm tra quyền token backend hoặc Create rule của collection users.",
+        });
+      }
       res.status(err.status || 500).json(err.data || { error: err.message });
     }
   },
 };
 
 module.exports = authController;
-

@@ -4,8 +4,22 @@ const baseUrl = "/login/";
 const backendBaseUrl = String(import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
 const appKey = String(import.meta.env.VITE_KEY || "").replace(/["']/g, "").trim();
 
+function authErrorMessage(status, data) {
+  const detail = data?.data || data?.details || data?.detail;
+  if (detail && typeof detail === "object" && Object.keys(detail).length) {
+    const [field, info] = Object.entries(detail)[0];
+    const msg = info?.message || info?.error || info?.code;
+    if (msg) return `${data?.message || `Backend error ${status}`}: ${field} - ${msg}`;
+  }
+  const base = data?.message || data?.error || `Backend error ${status}`;
+  if (base === "Failed to create record.") {
+    return "Không thể tạo tài khoản. Backend/PocketBase chưa cho phép tạo user đăng ký. Cần cấu hình quyền tạo user hoặc POCKETBASE_TOKEN cho backend.";
+  }
+  return base;
+}
+
 function makeError(status, data) {
-  const err = new Error(data?.message || data?.error || `Backend error ${status}`);
+  const err = new Error(authErrorMessage(status, data));
   err.response = { status, data };
   return err;
 }
