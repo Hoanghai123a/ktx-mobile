@@ -56,6 +56,7 @@ export default function RoomModal({
   const [confirmDel, setConfirmDel] = useState(false);
   const [utilityModal, setUtilityModal] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
   const [genderOpen, setGenderOpen] = useState(false);
   const [genderBusy, setGenderBusy] = useState(false);
   const [genderPending, setGenderPending] = useState(null);
@@ -119,6 +120,7 @@ export default function RoomModal({
     setNote("");
     setDateIn(todayISO());
     setErrors({});
+    setAddBusy(false);
   };
 
   const current = useMemo(() => {
@@ -494,18 +496,19 @@ export default function RoomModal({
                   return (
                     <div
                       key={s.id}
-                      className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2"
+                      className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5"
                     >
                       <button
-                        className="min-w-0 text-left"
+                        className="w-full text-left"
                         onClick={() => actions?.onViewWorker?.(w?.id)}
                       >
-                        <div className="truncate text-sm font-semibold text-slate-900">
-                          {w?.employeeCode
-                            ? `${w.employeeCode} - ${w?.fullName || ""}`
-                            : w?.fullName || w?.name || s.workerId}
+                        <div className="text-sm font-semibold leading-5 text-slate-900">
+                          {w?.employeeCode ? (
+                            <span className="mr-1 font-bold">{w.employeeCode}</span>
+                          ) : null}
+                          <span>{w?.fullName || w?.name || s.workerId}</span>
                         </div>
-                        <div className="text-xs text-slate-600">
+                        <div className="mt-1 text-xs text-slate-600">
                           Vào: {formatDate(s.dateIn)}
                         </div>
                         <div className="text-xs text-slate-500">
@@ -513,7 +516,7 @@ export default function RoomModal({
                           {Number(charge.electricityAmount || 0).toLocaleString(
                             "vi-VN",
                           )}
-                          đ · Nước:{" "}
+                          đ - Nước:{" "}
                           {Number(charge.waterAmount || 0).toLocaleString(
                             "vi-VN",
                           )}
@@ -521,7 +524,7 @@ export default function RoomModal({
                         </div>
                       </button>
 
-                      <div className="flex gap-2">
+                      <div className="mt-2 grid grid-cols-2 gap-2">
                         {actions?.transfer ? (
                           <button
                             className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
@@ -541,6 +544,7 @@ export default function RoomModal({
                             auth?.isAdmin
                               ? "bg-slate-100 text-slate-700"
                               : "bg-slate-50 text-slate-400",
+                            actions?.transfer ? "" : "col-span-2",
                           )}
                           onClick={() =>
                             requireAdmin(async () => {
@@ -811,9 +815,12 @@ export default function RoomModal({
                 auth?.isAdmin
                   ? "bg-[rgb(44_120_159)] text-white"
                   : "bg-slate-100 text-slate-600",
+                addBusy ? "opacity-70" : "",
               )}
+              disabled={addBusy || !auth?.isAdmin}
               onClick={() =>
                 requireAdmin(async () => {
+                  if (addBusy) return;
                   const nextErrors = {};
                   const code = String(employeeCode || "")
                     .trim()
@@ -840,6 +847,8 @@ export default function RoomModal({
                     );
                     return;
                   }
+
+                  setAddBusy(true);
 
                   try {
                     let workerId = selectedWorkerId;
@@ -909,14 +918,20 @@ export default function RoomModal({
                     onClose?.();
                   } catch (e) {
                     alert(e?.message || String(e));
+                  } finally {
+                    setAddBusy(false);
                   }
                 })
               }
             >
-              Thêm vào phòng
+              <span className="inline-flex items-center justify-center gap-2">
+                {addBusy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                {addBusy ? "Đang thêm..." : "Thêm vào phòng"}
+              </span>
             </button>
             <button
-              className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+              className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-60"
+              disabled={addBusy}
               onClick={resetAddForm}
             >
               Làm mới
@@ -1159,13 +1174,10 @@ export default function RoomModal({
             <TextField
               label="Số điện đầu"
               value={checkOutCtx.electricityStartReading}
-              onChange={(v) =>
-                setCheckOutCtx((prev) => ({
-                  ...prev,
-                  electricityStartReading: v,
-                }))
-              }
+              onChange={() => {}}
               type="number"
+              disabled
+              title="Chỉ số đầu được lấy từ lúc vào phòng, không thể sửa tại bước rời đi."
             />
             <TextField
               label="Số điện khi rời"
@@ -1181,10 +1193,10 @@ export default function RoomModal({
             <TextField
               label="Số nước đầu"
               value={checkOutCtx.waterStartReading}
-              onChange={(v) =>
-                setCheckOutCtx((prev) => ({ ...prev, waterStartReading: v }))
-              }
+              onChange={() => {}}
               type="number"
+              disabled
+              title="Chỉ số đầu được lấy từ lúc vào phòng, không thể sửa tại bước rời đi."
             />
             <TextField
               label="Số nước khi rời"
@@ -1237,7 +1249,7 @@ export default function RoomModal({
                     checkOutCtx.waterEndReading === ""
                   ) {
                     alert(
-                      "Vui lòng nhập đủ chỉ số điện/nước đầu và khi rời.",
+                      "Vui lòng nhập đủ chỉ số điện/nước khi rời.",
                     );
                     return;
                   }

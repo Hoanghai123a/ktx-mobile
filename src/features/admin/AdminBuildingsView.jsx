@@ -4,6 +4,7 @@ import Pill from "../../components/ui/Pill";
 import TextField from "../../components/ui/TextField";
 import SelectField from "../../components/ui/SelectField";
 import { formatDate } from "../../services/dateFormat";
+import { InstallAppSettingsCard } from "../pwa/InstallApp";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -31,6 +32,26 @@ const emptyUserDraft = () => ({
   password: "",
 });
 
+function BuildingStatusLegend() {
+  return (
+    <div className="fixed inset-x-0 bottom-4 z-30 mx-auto w-full max-w-md px-4">
+      <div className="rounded-2xl bg-white/95 px-3 py-3 text-xs text-slate-600 shadow-lg ring-1 ring-sky-100 backdrop-blur">
+      <div className="mb-2 font-semibold text-slate-700">Chú thích trạng thái</div>
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
+          <span>Tòa nhà còn hạn sử dụng.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
+          <span>Tòa nhà đã hết hạn.</span>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
 function userLabel(user) {
   return user?.username || user?.name || user?.email || user?.id || "-";
 }
@@ -40,6 +61,7 @@ export default function AdminBuildingsView({
   users = [],
   authSettings = { require_approval: true },
   settings = {},
+  installApp,
   selectedBuildingId,
   setSelectedBuildingId,
   members = [],
@@ -164,7 +186,7 @@ export default function AdminBuildingsView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-md space-y-4 px-4 pb-8">
+    <div className="mx-auto w-full max-w-md space-y-4 px-4 pb-32">
       <div className="grid grid-cols-3 gap-2 rounded-3xl bg-sky-100 p-1 shadow-sm ring-1 ring-sky-200">
         <button
           className={`rounded-2xl px-2 py-3 text-xs font-semibold transition ${page === "buildings" ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-sky-800"}`}
@@ -189,25 +211,28 @@ export default function AdminBuildingsView({
 
 
       {page === "settings" ? (
-        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold">Liên hệ admin</div>
-              <div className="mt-1 text-xs text-slate-600">Thông tin này hiển thị tại Tài khoản - Liên hệ admin.</div>
+        <div className="space-y-4">
+          <InstallAppSettingsCard installApp={installApp} />
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Liên hệ admin</div>
+                <div className="mt-1 text-xs text-slate-600">Thông tin này hiển thị tại Tài khoản - Liên hệ admin.</div>
+              </div>
+              <Pill icon={Settings} text="Admin" tone="sky" />
             </div>
-            <Pill icon={Settings} text="Admin" tone="sky" />
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            <TextField label="Tên admin phụ trách" value={contactDraft.name || ""} onChange={(v) => setContactDraft((d) => ({ ...d, name: v }))} />
-            <TextField label="Số điện thoại" value={contactDraft.phone || ""} onChange={(v) => setContactDraft((d) => ({ ...d, phone: v }))} />
-            <TextField label="Email" value={contactDraft.email || ""} onChange={(v) => setContactDraft((d) => ({ ...d, email: v }))} />
-            <TextField label="Zalo" value={contactDraft.zalo || ""} onChange={(v) => setContactDraft((d) => ({ ...d, zalo: v }))} placeholder="Số Zalo hoặc link Zalo" />
-            <TextField label="Ghi chú hỗ trợ" value={contactDraft.note || ""} onChange={(v) => setContactDraft((d) => ({ ...d, note: v }))} />
-            <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveAdminContact}>
-              <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Lưu liên hệ admin</span>
-            </button>
-          </div>
-        </section>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              <TextField label="Tên admin phụ trách" value={contactDraft.name || ""} onChange={(v) => setContactDraft((d) => ({ ...d, name: v }))} />
+              <TextField label="Số điện thoại" value={contactDraft.phone || ""} onChange={(v) => setContactDraft((d) => ({ ...d, phone: v }))} />
+              <TextField label="Email" value={contactDraft.email || ""} onChange={(v) => setContactDraft((d) => ({ ...d, email: v }))} />
+              <TextField label="Zalo" value={contactDraft.zalo || ""} onChange={(v) => setContactDraft((d) => ({ ...d, zalo: v }))} placeholder="Số Zalo hoặc link Zalo" />
+              <TextField label="Ghi chú hỗ trợ" value={contactDraft.note || ""} onChange={(v) => setContactDraft((d) => ({ ...d, note: v }))} />
+              <button className="rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm" onClick={saveAdminContact}>
+                <span className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap"><Save className="h-4 w-4" />Lưu liên hệ admin</span>
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {page === "users" ? (
@@ -315,6 +340,7 @@ export default function AdminBuildingsView({
         ) : null}
       </section>
 
+      <BuildingStatusLegend />
       </>
       ) : null}
 

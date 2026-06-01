@@ -6,6 +6,7 @@ import clsx from "../../components/ui/clsx";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
+import { InstallAppSettingsCard } from "../pwa/InstallApp";
 
 export default function SettingsModal({
   open,
@@ -22,6 +23,7 @@ export default function SettingsModal({
   saveSettingsToDb,
   requireAdmin,
   onImportExcel,
+  installApp,
 }) {
   const settings = state.settings;
 
@@ -56,9 +58,14 @@ export default function SettingsModal({
   const parseMoney = (value) =>
     Math.max(0, Number(String(value || "").replace(/,/g, "")) || 0);
 
+  const formatMoney = (value) =>
+    Number(value || 0).toLocaleString("en-US");
+
   return (
     <Modal open={open} title="Cài đặt" onClose={onClose}>
       <div className="space-y-4">
+        <InstallAppSettingsCard installApp={installApp} />
+
         {/* MAIN SETTINGS */}
         <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
           <div className="text-sm font-semibold">Thiết lập hiển thị</div>
@@ -77,11 +84,9 @@ export default function SettingsModal({
             />
             <TextField
               label="Tiền điện / số"
-              type="number"
-              min="0"
-              step="1"
+              type="text"
               inputMode="numeric"
-              value={String(mergedDraft.electricityPrice || 0)}
+              value={formatMoney(mergedDraft.electricityPrice)}
               onChange={(v) =>
                 setDraft((s) => ({
                   ...s,
@@ -91,11 +96,9 @@ export default function SettingsModal({
             />
             <TextField
               label="Tiền nước / số"
-              type="number"
-              min="0"
-              step="1"
+              type="text"
               inputMode="numeric"
-              value={String(mergedDraft.waterPrice || 0)}
+              value={formatMoney(mergedDraft.waterPrice)}
               onChange={(v) =>
                 setDraft((s) => ({
                   ...s,

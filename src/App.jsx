@@ -223,6 +223,26 @@ function readPinnedBuildingIds(user) {
   }
 }
 
+function BuildingStatusLegend() {
+  return (
+    <div className="fixed inset-x-0 bottom-24 z-30 mx-auto w-full max-w-md px-4">
+      <div className="rounded-2xl bg-white/95 px-3 py-3 text-xs text-slate-600 shadow-lg ring-1 ring-slate-100 backdrop-blur">
+      <div className="mb-2 font-semibold text-slate-700">Chú thích trạng thái</div>
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
+          <span>Tòa nhà còn hạn sử dụng.</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
+          <span>Tòa nhà đã hết hạn.</span>
+        </div>
+      </div>
+      </div>
+    </div>
+  );
+}
+
 function BuildingsHome({
   buildings,
   selectedBuildingId,
@@ -282,7 +302,7 @@ function BuildingsHome({
   }, [buildings, query]);
 
   return (
-    <div className="mx-auto w-full max-w-md px-4 pb-24 space-y-4">
+    <div className="mx-auto w-full max-w-md px-4 pb-44 space-y-4">
       <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex items-center gap-2">
           <Search className="h-4 w-4 text-slate-400" />
@@ -409,6 +429,8 @@ function BuildingsHome({
           hint="Tìm tòa nhà ở ô phía trên, sau đó bấm Ghim để lưu vào danh sách chính."
         />
       )}
+
+      <BuildingStatusLegend />
     </div>
   );
 }
@@ -430,6 +452,7 @@ import {
   authService,
 } from "./services/api-services";
 import { message } from "antd";
+import { InstallAppBanner, InstallGuideModal, useInstallApp } from "./features/pwa/InstallApp";
 
 // ... existing imports ...
 
@@ -466,6 +489,7 @@ function mergeUsers(primary = [], fallback = []) {
 // ---------------------------
 export default function App() {
   const { user, token, logout: authLogout, loading } = useAuth();
+  const installApp = useInstallApp();
   const [state, setState] = useState(() => loadPersistedState());
   const [buildings, setBuildings] = useState([]);
   const [buildingUsers, setBuildingUsers] = useState([]);
@@ -560,6 +584,8 @@ export default function App() {
     confirmText: "Xóa",
     onConfirm: null,
   });
+
+  const [expiredBuildingNoticeOpen, setExpiredBuildingNoticeOpen] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => savePersistedState(state), 150);
@@ -861,7 +887,7 @@ export default function App() {
       return;
     }
     if (currentBuildingExpired && !systemAdmin) {
-      alert("Tòa nhà đã hết hạn.");
+      setExpiredBuildingNoticeOpen(true);
       return;
     }
     if (!auth.canWrite) {
@@ -2163,6 +2189,7 @@ export default function App() {
             users={buildingUsers}
             authSettings={authSettings}
             settings={state.settings}
+            installApp={installApp}
             selectedBuildingId={selectedBuildingId}
             setSelectedBuildingId={setSelectedBuildingId}
             members={buildingMembers}
@@ -2184,6 +2211,8 @@ export default function App() {
             }}
           />
         </Suspense>
+        <InstallAppBanner installApp={installApp} />
+        <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} />
       </div>
     );
   }
@@ -2271,6 +2300,8 @@ export default function App() {
             buildings={buildings}
             users={buildingUsers}
             authSettings={authSettings}
+            settings={state.settings}
+            installApp={installApp}
             selectedBuildingId={selectedBuildingId}
             setSelectedBuildingId={setSelectedBuildingId}
             members={buildingMembers}
@@ -2282,6 +2313,10 @@ export default function App() {
               updateUser: updateAdminUser,
               deleteUser: deleteAdminUser,
               updateAuthSettings: updateAuthApprovalSetting,
+              updateSettings: async (nextSettings) => {
+                setState((prev) => ({ ...prev, settings: nextSettings }));
+                await saveSettingsToDb(nextSettings);
+              },
               addMember: addBuildingMember,
               updateMember: updateBuildingMember,
               deleteMember: deleteBuildingMember,
@@ -2326,6 +2361,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      <InstallAppBanner installApp={installApp} />
       {/* Modals */}
       {/* RoomModal - component tách file */}
       {roomModal.open ? (
@@ -2659,6 +2695,8 @@ export default function App() {
           />
         </Suspense>
       ) : null}
+      <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} />
+
       {settingsModal ? (
         <Suspense fallback={null}>
           <SettingsModal
@@ -2674,6 +2712,7 @@ export default function App() {
             saveSettingsToDb={saveSettingsToDb}
             requireAdmin={requireAdmin}
             onImportExcel={handleImportExcel}
+            installApp={installApp}
           />
         </Suspense>
       ) : null}
@@ -2690,6 +2729,35 @@ export default function App() {
           />
         </Suspense>
       ) : null}
+
+      <Modal
+        open={expiredBuildingNoticeOpen}
+        title="Tòa nhà đã hết hạn"
+        onClose={() => setExpiredBuildingNoticeOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="rounded-3xl bg-rose-50 p-4 text-rose-700 ring-1 ring-rose-100">
+            <div className="flex items-start gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-700">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-rose-800">Không thể thực hiện thao tác</div>
+                <div className="mt-1 text-sm leading-5 text-rose-700">
+                  Tòa nhà hiện tại đã hết hạn. Vui lòng liên hệ admin để gia hạn hoặc chọn tòa nhà khác còn hiệu lực.
+                </div>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm"
+            onClick={() => setExpiredBuildingNoticeOpen(false)}
+          >
+            Đã hiểu
+          </button>
+        </div>
+      </Modal>
 
       <Confirm
         open={confirm.open}
