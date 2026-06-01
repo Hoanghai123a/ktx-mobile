@@ -32,7 +32,13 @@ function PasswordField({ label, value, onChange, placeholder, visible, onToggle 
   );
 }
 
-export default function AuthScreen() {
+function brandFromSettings(settings) {
+  const siteName = String(settings?.siteName || "KTX").trim() || "KTX";
+  const logoUrl = String(settings?.logoUrl || settings?.about?.brandLogoUrl || "/logo.png").trim() || "/logo.png";
+  return { siteName, logoUrl };
+}
+
+export default function AuthScreen({ settings }) {
   const { login } = useAuth();
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
@@ -44,10 +50,11 @@ export default function AuthScreen() {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const isRegister = mode === "register";
+  const brand = brandFromSettings(settings);
 
   async function submit(e) {
     e?.preventDefault?.();
-    const nextUsername = username.trim();
+    const nextUsername = username.trim().toLowerCase();
     if (!nextUsername || !password) return alert("Nhập username và mật khẩu.");
     if (isRegister && password.length < 8) return alert("Mật khẩu đăng ký phải có ít nhất 8 ký tự.");
     if (isRegister && password !== confirm) return alert("Mật khẩu xác nhận không khớp.");
@@ -78,7 +85,7 @@ export default function AuthScreen() {
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <div className="text-xs font-medium text-sky-600">KTX</div>
+              <div className="text-xs font-medium text-sky-600">{brand.siteName}</div>
               <div className="text-lg font-semibold text-slate-900">Quản lý tòa nhà</div>
             </div>
           </div>
@@ -86,7 +93,15 @@ export default function AuthScreen() {
         </div>
 
         <div className="flex flex-1 items-center py-6">
-          <div className="w-full rounded-3xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+          <div className="w-full">
+            <div className="mb-5 flex justify-center">
+              <img
+                src={brand.logoUrl}
+                alt={brand.siteName}
+                className="h-28 w-28 rounded-3xl object-contain shadow-sm ring-1 ring-sky-100 sm:h-32 sm:w-32"
+              />
+            </div>
+            <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
             <div className="mb-4 grid grid-cols-2 rounded-2xl bg-sky-50 p-1 ring-1 ring-sky-100">
               <button
                 type="button"
@@ -125,6 +140,7 @@ export default function AuthScreen() {
                 </span>
               </button>
             </form>
+            </div>
           </div>
         </div>
       </div>

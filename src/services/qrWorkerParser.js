@@ -1,5 +1,12 @@
 import jsQR from "jsqr";
 
+const QR_OPTIONS = { inversionAttempts: "attemptBoth" };
+const CENTER_SCAN_RATIOS = [0.3, 0.38, 0.46, 0.56, 0.68, 0.82, 0.96];
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function clean(value) {
   return String(value || "").trim();
 }
@@ -63,26 +70,143 @@ export function parseWorkerQr(text) {
   return { raw };
 }
 
+function centerArea(width, height, ratio) {
+  const side = Math.round(Math.min(width, height) * ratio);
+  return {
+    sx: Math.round((width - side) / 2),
+    sy: Math.round((height - side) / 2),
+    sw: side,
+    sh: side,
+  };
+}
+
+function normalizeArea(area, width, height) {
+  const sx = clamp(Math.round(area.sx || 0), 0, width - 1);
+  const sy = clamp(Math.round(area.sy || 0), 0, height - 1);
+  const sw = clamp(Math.round(area.sw || width), 1, width - sx);
+  const sh = clamp(Math.round(area.sh || height), 1, height - sy);
+  return { sx, sy, sw, sh };
+}
+
+function areaKey(area) {
+  return `${area.sx}:${area.sy}:${area.sw}:${area.sh}`;
+}
+
+function buildScanAreas(width, height, preferCenter) {
+  const full = { sx: 0, sy: 0, sw: width, sh: height };
+  const center = CENTER_SCAN_RATIOS.map((ratio) => centerArea(width, height, ratio));
+  const ordered = preferCenter ? [...center, full] : [full, ...center];
+  const seen = new Set();
+
+  return ordered
+    .map((area) => normalizeArea(area, width, height))
+    .filter((area) => {
+      const key = areaKey(area);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function boostedQrData(imageData) {
+  const out = new Uint8ClampedArray(imageData.data);
+  for (let i = 0; i < out.length; i += 4) {
+    const gray = out[i] * 0.299 + out[i + 1] * 0.587 + out[i + 2] * 0.114;
+    const boosted = gray < 128
+      ? Math.max(0, 128 - (128 - gray) * 1.45)
+      : Math.min(255, 128 + (gray - 128) * 1.55);
+    out[i] = boosted;
+    out[i + 1] = boosted;
+    out[i + 2] = boosted;
+    out[i + 3] = 255;
+  }
+  return out;
+}
+
+function decodeImageData(imageData) {
+  const normal = jsQR(imageData.data, imageData.width, imageData.height, QR_OPTIONS);
+  if (normal?.data) return normal.data;
+
+  const boosted = jsQR(
+    boostedQrData(imageData),
+    imageData.width,
+    imageData.height,
+    QR_OPTIONS,
+  );
+  return boosted?.data || "";
+}
+
 export async function decodeQrFromImageFile(file) {
   const bitmap = await createImageBitmap(file);
   const canvas = document.createElement("canvas");
-  const maxSize = 1600;
+  const maxSize = 2200;
   const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
   canvas.height = Math.max(1, Math.round(bitmap.height * scale));
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close?.();
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const result = jsQR(imageData.data, imageData.width, imageData.height);
-  return result?.data || "";
+  return decodeQrFromCanvas(canvas, { preferCenter: false });
 }
 
-export function decodeQrFromCanvas(canvas) {
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const result = jsQR(imageData.data, imageData.width, imageData.height);
-  return result?.data || "";
+export function decodeQrFromCanvas(canvas, options = {}) {
+  const width = canvas.width || 0;
+  const height = canvas.height || 0;
+  if (!width || !height) return "";
+
+  const scanAreas = buildScanAreas(width, height, options.preferCenter !== false);
+  const scratch = document.createElement("canvas");
+  const scratchCtx = scratch.getContext("2d", { willReadFrequently: true });
+  const cropMaxSize = options.cropMaxSize || 1180;
+  const fullFrameMaxSize = options.fullFrameMaxSize || 1450;
+  const maxUpscale = options.maxUpscale || 2.6;
+
+  for (const area of scanAreas) {
+    const isFullFrame = area.sx === 0 && area.sy === 0 && area.sw === width && area.sh === height;
+    const targetMaxSize = isFullFrame ? fullFrameMaxSize : cropMaxSize;
+    const baseScale = targetMaxSize / Math.max(area.sw, area.sh);
+    const scale = isFullFrame ? Math.min(1, baseScale) : clamp(baseScale, 1, maxUpscale);
+    const targetWidth = Math.max(1, Math.round(area.sw * scale));
+    const targetHeight = Math.max(1, Math.round(area.sh * scale));
+
+    scratch.width = targetWidth;
+    scratch.height = targetHeight;
+    scratchCtx.imageSmoothingEnabled = true;
+    scratchCtx.drawImage(
+      canvas,
+      area.sx,
+      area.sy,
+      area.sw,
+      area.sh,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    );
+
+    const text = decodeImageData(scratchCtx.getImageData(0, 0, targetWidth, targetHeight));
+    if (text) return text;
+
+    if (!isFullFrame && scale > 1.05) {
+      scratchCtx.clearRect(0, 0, targetWidth, targetHeight);
+      scratchCtx.imageSmoothingEnabled = false;
+      scratchCtx.drawImage(
+        canvas,
+        area.sx,
+        area.sy,
+        area.sw,
+        area.sh,
+        0,
+        0,
+        targetWidth,
+        targetHeight,
+      );
+      const sharpText = decodeImageData(scratchCtx.getImageData(0, 0, targetWidth, targetHeight));
+      if (sharpText) return sharpText;
+    }
+  }
+
+  return "";
 }
 
 export function workerGenderLabel(value) {

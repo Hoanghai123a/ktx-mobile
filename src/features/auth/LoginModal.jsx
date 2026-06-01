@@ -22,7 +22,7 @@ export default function LoginModal({
   const PasswordIcon = showPassword ? EyeOff : Eye;
 
   const handleLogin = async () => {
-    const username = (loginUsername || "").trim();
+    const username = (loginUsername || "").trim().toLowerCase();
     const password = loginPassword || "";
     if (!username || !password) {
       alert("Vui lòng nhập username và mật khẩu.");
@@ -35,7 +35,9 @@ export default function LoginModal({
       onClose();
     } catch (apiErr) {
       console.error("API Login failed:", apiErr);
-      alert("Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản hoặc Backend.");
+      alert(
+        "Đăng nhập thất bại. Vui lòng kiểm tra lại tài khoản hoặc Backend.",
+      );
     }
   };
 
@@ -55,7 +57,8 @@ export default function LoginModal({
         <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
           <div className="text-sm font-semibold">Quyền Admin</div>
           <div className="mt-1 text-xs text-slate-600">
-            Đăng nhập để thêm / xóa / chỉnh sửa. Nếu không, bạn chỉ xem được dữ liệu.
+            Đăng nhập để thêm / xóa / chỉnh sửa. Nếu không, bạn chỉ xem được dữ
+            liệu.
           </div>
         </div>
 
@@ -73,6 +76,7 @@ export default function LoginModal({
           <div className="text-xs font-medium text-slate-600">Mật khẩu</div>
           <div className="relative">
             <input
+              autocomplete="current-password"
               type={showPassword ? "text" : "password"}
               value={loginPassword}
               onChange={(e) => setLoginPassword(e.target.value)}

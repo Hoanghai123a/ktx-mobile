@@ -3,8 +3,7 @@ module.exports = {
     {
       name: "ktx-frontend",
       cwd: ".",
-      script: "node_modules/vite/bin/vite.js",
-      args: "preview --host 0.0.0.0 --port 5174",
+      script: "pm2_worker.js",
       interpreter: "node",
       instances: 1,
       autorestart: true,
@@ -12,9 +11,9 @@ module.exports = {
       max_memory_restart: "300M",
       env: {
         NODE_ENV: "production",
-        VITE_PORT: "5174",
-        VITE_POCKETBASE_URL: "/pb",
-        VITE_POCKETBASE_PROXY_TARGET: "http://127.0.0.1:8091",
+        HOST: "0.0.0.0",
+        PORT: "3002",
+        POCKETBASE_URL: "http://127.0.0.1:8091",
       },
     },
   ],

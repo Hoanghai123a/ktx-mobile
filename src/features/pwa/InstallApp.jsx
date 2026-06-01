@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, Share2, Smartphone, X } from "lucide-react";
+import { CheckCircle2, Download, Share2, X } from "lucide-react";
 import Modal from "../../components/ui/Modal";
 
 const BRAND = "rgb(44 120 159)";
@@ -12,10 +12,34 @@ const IOS_STEPS = [
   { image: "/install-ios/B5.jpg", title: "Bước 5", text: "Chọn Thêm" },
 ];
 
-export function InstallGuideModal({ open, onClose }) {
+function brandFromSettings(settings) {
+  return {
+    siteName: String(settings?.siteName || "KTX").trim() || "KTX",
+    logoUrl: String(settings?.logoUrl || settings?.about?.brandLogoUrl || "/logo.png").trim() || "/logo.png",
+  };
+}
+
+function BrandLogo({ settings, className = "h-10 w-10 rounded-2xl" }) {
+  const brand = brandFromSettings(settings);
   return (
-    <Modal open={open} title="Cài app ra màn hình chính" onClose={onClose} zIndex="z-[90]">
+    <div className={`${className} shrink-0 overflow-hidden bg-white ring-1 ring-slate-200`}>
+      <img src={brand.logoUrl} alt={brand.siteName} className="h-full w-full object-cover" />
+    </div>
+  );
+}
+
+export function InstallGuideModal({ open, onClose, settings }) {
+  const brand = brandFromSettings(settings);
+  return (
+    <Modal open={open} title={`Cài ${brand.siteName} ra màn hình chính`} onClose={onClose} zIndex="z-[90]">
       <div className="space-y-3">
+        <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-2">
+          <BrandLogo settings={settings} />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-slate-900">{brand.siteName}</div>
+            <div className="text-xs text-slate-600">Biểu tượng sẽ hiển thị trên màn hình chính.</div>
+          </div>
+        </div>
         <div className="rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
           Làm theo 5 bước trên iPhone/iPad để thêm app vào màn hình chính.
         </div>
@@ -42,17 +66,16 @@ export function InstallGuideModal({ open, onClose }) {
   );
 }
 
-export function InstallAppBanner({ installApp }) {
+export function InstallAppBanner({ installApp, settings }) {
+  const brand = brandFromSettings(settings);
   if (!installApp?.shouldShowBanner) return null;
   return (
     <div className="fixed inset-x-0 bottom-24 z-[45] mx-auto w-full max-w-md px-4">
       <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-xl">
         <div className="flex items-start gap-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-white" style={{ backgroundColor: BRAND }}>
-            <Smartphone className="h-5 w-5" />
-          </div>
+          <BrandLogo settings={settings} />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-slate-900">Cài app ra màn hình chính</div>
+            <div className="text-sm font-semibold text-slate-900">Cài {brand.siteName} ra màn hình chính</div>
             <div className="mt-0.5 text-xs leading-5 text-slate-600">Truy cập nhanh hơn như một ứng dụng trên điện thoại.</div>
             <button type="button" onClick={installApp.requestInstall} className="mt-2 rounded-2xl px-4 py-2 text-xs font-semibold text-white" style={{ backgroundColor: BRAND }}>
               <span className="inline-flex items-center gap-1.5">
@@ -70,17 +93,16 @@ export function InstallAppBanner({ installApp }) {
   );
 }
 
-export function InstallAppSettingsCard({ installApp }) {
+export function InstallAppSettingsCard({ installApp, settings }) {
+  const brand = brandFromSettings(settings);
   if (!installApp) return null;
   return (
     <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-white" style={{ backgroundColor: BRAND }}>
-            <Smartphone className="h-5 w-5" />
-          </div>
+          <BrandLogo settings={settings} className="h-11 w-11 rounded-2xl" />
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900">Cài app ra màn hình chính</div>
+            <div className="text-sm font-semibold text-slate-900">Cài {brand.siteName} ra màn hình chính</div>
             <div className="mt-1 text-xs leading-5 text-slate-600">
               {installApp.installed ? "Ứng dụng đã được cài trên màn hình chính." : installApp.isIos ? "Xem hướng dẫn 5 bước cho iPhone/iPad." : "Cài nhanh bằng hộp cài đặt của trình duyệt."}
             </div>

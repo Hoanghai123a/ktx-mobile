@@ -80,6 +80,10 @@ function escapeFilter(value) {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function eq(field, value) {
   return `${field} = "${escapeFilter(value)}"`;
 }
@@ -96,6 +100,16 @@ function dateOnly(value) {
 function dateValue(value) {
   const d = dateOnly(value);
   return d ? `${d} 00:00:00.000Z` : null;
+}
+
+function tokenPayload(token) {
+  try {
+    const [, payload] = String(token || "").split(".");
+    if (!payload) return null;
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
 }
 
 async function pbList(collection, params = {}, signal) {
@@ -143,6 +157,7 @@ async function pbRequestWithBuildingFilterFallback(collection, suffix = "", opti
 }
 
 const AUTH_COLLECTION = import.meta.env.VITE_POCKETBASE_AUTH_COLLECTION || "users";
+const USER_PREFERENCES_COLLECTION = "user_preferences";
 const BUILDING_KEY = "ktx_current_building_id";
 const AUTH_SETTINGS_KEY = "ktx_auth_require_approval";
 
@@ -152,6 +167,12 @@ function currentBuildingId() {
 
 function combineFilters(...filters) {
   return filters.filter(Boolean).join(" && ");
+}
+
+function normalizeIdList(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.map((id) => String(id || "").trim()).filter(Boolean))]
+    : [];
 }
 
 function localRequireApproval() {
@@ -188,6 +209,52 @@ async function saveAuthSettings(data, signal) {
   }
 }
 
+async function loadUserPreferences(signal) {
+  const me = await currentUser(signal);
+  if (!me?.id) throw makeError(401, { error: "Unauthorized" });
+  try {
+    const row = await pbFirst(USER_PREFERENCES_COLLECTION, { filter: eq("user_id", me.id) }, signal);
+    return {
+      synced: true,
+      exists: !!row,
+      pinnedBuildingIds: normalizeIdList(row?.pinned_building_ids || row?.pinnedBuildingIds),
+      lastBuildingId: row?.last_building_id || row?.lastBuildingId || "",
+    };
+  } catch (e) {
+    if (e?.response?.status === 404) {
+      return { synced: false, exists: false, pinnedBuildingIds: [], lastBuildingId: "" };
+    }
+    throw e;
+  }
+}
+
+async function saveUserPreferences(data, signal) {
+  const me = await currentUser(signal);
+  if (!me?.id) throw makeError(401, { error: "Unauthorized" });
+  const payload = {
+    user_id: me.id,
+    pinned_building_ids: normalizeIdList(data?.pinnedBuildingIds || data?.pinned_building_ids),
+    last_building_id: String(data?.lastBuildingId || data?.last_building_id || "").trim(),
+  };
+  try {
+    const current = await pbFirst(USER_PREFERENCES_COLLECTION, { filter: eq("user_id", me.id) }, signal);
+    const row = current
+      ? await pbRequest(USER_PREFERENCES_COLLECTION, `/${current.id}`, { method: "PATCH", body: payload, signal })
+      : await pbRequest(USER_PREFERENCES_COLLECTION, "", { method: "POST", body: payload, signal });
+    return {
+      synced: true,
+      exists: true,
+      pinnedBuildingIds: normalizeIdList(row?.pinned_building_ids || payload.pinned_building_ids),
+      lastBuildingId: row?.last_building_id || payload.last_building_id || "",
+    };
+  } catch (e) {
+    if (e?.response?.status === 404) {
+      return { synced: false, exists: false, pinnedBuildingIds: payload.pinned_building_ids, lastBuildingId: payload.last_building_id };
+    }
+    throw e;
+  }
+}
+
 function buildingFilter(extra = "") {
   const id = currentBuildingId();
   if (!id) return "__no_building__ = true";
@@ -206,26 +273,25 @@ function settingsFilter(global = false) {
   );
 }
 
-async function pbAuthRefresh(signal) {
-  const res = await fetch(`${PB_URL}/api/collections/${AUTH_COLLECTION}/auth-refresh`, {
-    method: "POST",
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-  });
-  const text = await res.text();
-  const payload = text ? JSON.parse(text) : null;
-  if (!res.ok) throw makeError(res.status, payload);
-  return payload;
-}
-
 async function currentUser(signal) {
   const token = localStorage.getItem("token");
   if (!token || token.startsWith("mock-") || token.startsWith("pocketbase-")) return null;
-  const payload = await pbAuthRefresh(signal);
-  return payload?.record || null;
+  const payload = tokenPayload(token);
+  if (!payload?.id || (payload.exp && payload.exp * 1000 <= Date.now())) {
+    removeToken();
+    removeCookie("token");
+    return null;
+  }
+  try {
+    return await pbRequest(AUTH_COLLECTION, `/${payload.id}`, { signal });
+  } catch (error) {
+    if ([400, 401, 403].includes(error?.response?.status)) {
+      removeToken();
+      removeCookie("token");
+      return null;
+    }
+    throw error;
+  }
 }
 
 function isSystemAdmin(user) {
@@ -526,10 +592,12 @@ async function handleGet(url, signal) {
   const u = new URL(url, "http://local");
   const path = u.pathname;
   if (path === "/me/") {
-    const payload = await pbAuthRefresh(signal);
-    return { ...(payload.record || {}), access_token: payload.token };
+    const user = await currentUser(signal);
+    if (!user) throw makeError(401, { error: "Unauthorized" });
+    return { ...user, access_token: localStorage.getItem("token") };
   }
   if (path === "/auth-settings/") return getAuthSettings(signal);
+  if (path === "/pinned-buildings/") return loadUserPreferences(signal);
   if (path === "/users/") return pbList(AUTH_COLLECTION, { sort: "+username,+name" }, signal);
   if (path === "/buildings/") return loadBuildings(signal);
   if (path === "/building-members/") {
@@ -588,18 +656,21 @@ async function handleGet(url, signal) {
 
 async function pbAuthWithPassword(username, password, signal) {
   const authCollection = import.meta.env.VITE_POCKETBASE_AUTH_COLLECTION || "users";
+  const identity = normalizeUsername(username);
   const res = await fetch(`${PB_URL}/api/collections/${authCollection}/auth-with-password`, {
     method: "POST",
     signal,
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ identity: username, password }),
+    body: JSON.stringify({ identity, password }),
   });
   const text = await res.text();
   const payload = text ? JSON.parse(text) : null;
   if (!res.ok) throw makeError(res.status, payload);
   const record = payload.record || {};
+  saveToken(payload.token);
+  setCookie("token", payload.token, 604800);
   if (record.role !== "admin" && record.approved === false) {
     throw makeError(403, { error: "Tài khoản đang chờ admin phê duyệt." });
   }
@@ -611,7 +682,7 @@ async function pbAuthWithPassword(username, password, signal) {
 }
 
 async function pbRegisterUser(data, signal) {
-  const username = String(data?.username || "").trim();
+  const username = normalizeUsername(data?.username);
   const password = String(data?.password || "");
   const name = String(data?.name || "").trim();
   if (!username || !password) throw makeError(400, { error: "Nhập username và mật khẩu." });
@@ -638,7 +709,7 @@ async function pbRegisterUser(data, signal) {
 
 function userPayload(data = {}, includePassword = false) {
   const payload = {};
-  if (Object.prototype.hasOwnProperty.call(data, "username")) payload.username = String(data.username || "").trim();
+  if (Object.prototype.hasOwnProperty.call(data, "username")) payload.username = normalizeUsername(data.username);
   if (Object.prototype.hasOwnProperty.call(data, "name")) payload.name = String(data.name || "").trim();
   if (Object.prototype.hasOwnProperty.call(data, "role")) payload.role = data.role === "admin" ? "admin" : "user";
   if (Object.prototype.hasOwnProperty.call(data, "approved")) payload.approved = data.approved !== false;
@@ -658,6 +729,7 @@ async function handlePost(url, data, signal) {
   if (path === "/login/") return pbAuthWithPassword(data?.username, data?.password, signal);
   if (path === "/register/") return pbRegisterUser(data, signal);
   if (path === "/auth-settings/") return saveAuthSettings(data, signal);
+  if (path === "/pinned-buildings/") return saveUserPreferences(data, signal);
   if (path === "/users/") {
     const payload = userPayload(data, true);
     if (!payload.username || !payload.password) throw makeError(400, { error: "Nhập username và mật khẩu." });

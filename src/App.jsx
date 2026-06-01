@@ -132,12 +132,18 @@ function lastBuildingKey(user) {
   return `ktx_last_building_${user?.id || user?.username || "guest"}`;
 }
 
+function normalizePinnedIds(rows) {
+  return Array.isArray(rows)
+    ? [...new Set(rows.map((id) => String(id || "").trim()).filter(Boolean))]
+    : [];
+}
+
 function readPinnedBuildingIds(user) {
   try {
     const rows = JSON.parse(
       localStorage.getItem(pinnedBuildingKey(user)) || "[]",
     );
-    return Array.isArray(rows) ? rows : [];
+    return normalizePinnedIds(rows);
   } catch {
     return [];
   }
@@ -169,13 +175,16 @@ function BuildingsHome({
   setSelectedBuildingId,
   setTab,
   user,
+  token,
 }) {
   const storageKey = pinnedBuildingKey(user);
+  const lastKey = lastBuildingKey(user);
   const [query, setQuery] = useState("");
+  const remoteLoadedRef = useRef("");
   const [pinnedIds, setPinnedIds] = useState(() => {
     try {
       const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      return Array.isArray(rows) ? rows : [];
+      return normalizePinnedIds(rows);
     } catch {
       return [];
     }
@@ -184,28 +193,101 @@ function BuildingsHome({
   useEffect(() => {
     try {
       const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      setPinnedIds(Array.isArray(rows) ? rows : []);
+      setPinnedIds(normalizePinnedIds(rows));
     } catch {
       setPinnedIds([]);
     }
+    remoteLoadedRef.current = "";
   }, [storageKey]);
 
-  function savePins(next) {
+  const buildingIdsKey = useMemo(
+    () => buildings.map((b) => b.id).filter(Boolean).sort().join("|"),
+    [buildings],
+  );
+  const accessibleIds = useMemo(
+    () => new Set(buildings.map((b) => b.id).filter(Boolean)),
+    [buildingIdsKey, buildings],
+  );
+
+  useEffect(() => {
+    if (!token || !buildingIdsKey) return;
+    const syncKey = `${storageKey}:${buildingIdsKey}`;
+    if (remoteLoadedRef.current === syncKey) return;
+    remoteLoadedRef.current = syncKey;
+    let alive = true;
+    (async () => {
+      try {
+        const remote = await buildingService.getPinnedBuildings(token);
+        if (!alive || !remote?.synced) return;
+        const localIds = readPinnedBuildingIds(user).filter((id) => accessibleIds.has(id));
+        const remoteIds = normalizePinnedIds(remote.pinnedBuildingIds).filter((id) => accessibleIds.has(id));
+        const next = remote.exists ? remoteIds : localIds;
+        const remoteLast = String(remote.lastBuildingId || "").trim();
+        const localLast = localStorage.getItem(lastKey) || "";
+        const nextLast = accessibleIds.has(remote.exists ? remoteLast : localLast)
+          ? (remote.exists ? remoteLast : localLast)
+          : "";
+
+        setPinnedIds(next);
+        localStorage.setItem(storageKey, JSON.stringify(next));
+        if (nextLast) localStorage.setItem(lastKey, nextLast);
+        else localStorage.removeItem(lastKey);
+
+        const remoteHadStaleIds = remote.exists && remoteIds.length !== normalizePinnedIds(remote.pinnedBuildingIds).length;
+        const remoteHadStaleLast = remote.exists && !!remoteLast && !nextLast;
+        if (!remote.exists || remoteHadStaleIds || remoteHadStaleLast) {
+          await buildingService.savePinnedBuildings({ pinnedBuildingIds: next, lastBuildingId: nextLast }, token);
+        }
+      } catch (e) {
+        console.warn("Sync pinned buildings failed:", e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [accessibleIds, buildingIdsKey, lastKey, storageKey, token, user]);
+
+  useEffect(() => {
+    const next = pinnedIds.filter((id) => accessibleIds.has(id));
+    if (next.length === pinnedIds.length) return;
     setPinnedIds(next);
     localStorage.setItem(storageKey, JSON.stringify(next));
+  }, [accessibleIds, pinnedIds, storageKey]);
+
+  function savePins(next, nextLastId = localStorage.getItem(lastKey) || selectedBuildingId || "") {
+    const clean = [...new Set((next || []).filter((id) => accessibleIds.has(id)))];
+    const cleanLastId = accessibleIds.has(nextLastId) ? nextLastId : "";
+    setPinnedIds(clean);
+    localStorage.setItem(storageKey, JSON.stringify(clean));
+    if (cleanLastId) localStorage.setItem(lastKey, cleanLastId);
+    else localStorage.removeItem(lastKey);
+    if (token) {
+      buildingService
+        .savePinnedBuildings({ pinnedBuildingIds: clean, lastBuildingId: cleanLastId }, token)
+        .catch((e) => console.warn("Save pinned buildings failed:", e));
+    }
   }
 
   function pinBuilding(id) {
-    if (!id || pinnedIds.includes(id)) return;
+    if (!id || !accessibleIds.has(id) || pinnedIds.includes(id)) return;
     savePins([...pinnedIds, id]);
   }
 
   function unpinBuilding(id) {
-    savePins(pinnedIds.filter((x) => x !== id));
+    const next = pinnedIds.filter((x) => x !== id);
+    if (selectedBuildingId === id) {
+      const nextSelected = next[0] || "";
+      savePins(next, nextSelected);
+      setSelectedBuildingId(nextSelected);
+      if (!next.length) setTab("buildings");
+      return;
+    }
+    savePins(next);
   }
 
   function openBuilding(id) {
     setSelectedBuildingId(id);
+    savePins(pinnedIds, id);
     setTab("ktx");
   }
 
@@ -545,6 +627,24 @@ export default function App() {
 
     updateLink('link[rel="icon"]', "icon");
     updateLink('link[rel="apple-touch-icon"]', "apple-touch-icon");
+
+    const manifest = {
+      name: brandName,
+      short_name: brandName,
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#f0f9ff",
+      theme_color: "rgb(44 120 159)",
+      icons: [
+        { src: logoUrl, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: logoUrl, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+    };
+    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+    updateLink('link[rel="manifest"]', "manifest");
+    document.querySelector('link[rel="manifest"]')?.setAttribute("href", blobUrl);
+    return () => URL.revokeObjectURL(blobUrl);
   }, [
     state.settings?.about?.brandLogoUrl,
     state.settings?.logoUrl,
@@ -686,6 +786,36 @@ export default function App() {
     token,
     selectedBuildingId,
   });
+
+  useEffect(() => {
+    if (token) return;
+    let alive = true;
+    (async () => {
+      try {
+        const data = await settingsService.get(null);
+        if (!alive || !data) return;
+        setState((s) => ({
+          ...s,
+          settings: {
+            ...s.settings,
+            siteName: data.siteName || s.settings?.siteName || DEFAULT_SETTINGS.siteName,
+            logoUrl: data.logoUrl || data.about?.brandLogoUrl || s.settings?.logoUrl || DEFAULT_SETTINGS.logoUrl,
+            about: {
+              ...(s.settings?.about || {}),
+              ...(data.about || {}),
+              brandLogoUrl: data.logoUrl || data.about?.brandLogoUrl || s.settings?.about?.brandLogoUrl || DEFAULT_SETTINGS.logoUrl,
+            },
+          },
+        }));
+      } catch (e) {
+        console.error("Load public brand settings error:", e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [token]);
+
   const saveSettingsToDb = useCallback(
     async (nextSettings) => {
       if (!token) throw new Error("Unauthorized");
@@ -2015,7 +2145,7 @@ export default function App() {
   if (!user) {
     return (
       <Suspense fallback={<LazyFallback />}>
-        <AuthScreen />
+        <AuthScreen settings={state.settings} />
       </Suspense>
     );
   }
@@ -2094,8 +2224,8 @@ export default function App() {
             }}
           />
         </Suspense>
-        <InstallAppBanner installApp={installApp} />
-        <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} />
+        <InstallAppBanner installApp={installApp} settings={state.settings} />
+        <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} settings={state.settings} />
       </div>
     );
   }
@@ -2175,6 +2305,7 @@ export default function App() {
             setSelectedBuildingId={setSelectedBuildingId}
             setTab={setTab}
             user={user}
+            token={token}
           />
         ) : null}
         {tab === "admin" && systemAdmin ? (
@@ -2243,7 +2374,7 @@ export default function App() {
           </div>
         </div>
       </div>
-      <InstallAppBanner installApp={installApp} />
+      <InstallAppBanner installApp={installApp} settings={state.settings} />
       {/* Modals */}
       {/* RoomModal - component tách file */}
       {roomModal.open ? (
@@ -2574,7 +2705,7 @@ export default function App() {
           />
         </Suspense>
       ) : null}
-      <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} />
+      <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} settings={state.settings} />
 
       {settingsModal ? (
         <Suspense fallback={null}>

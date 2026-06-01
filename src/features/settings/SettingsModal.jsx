@@ -64,7 +64,7 @@ export default function SettingsModal({
   return (
     <Modal open={open} title="Cài đặt" onClose={onClose}>
       <div className="space-y-4">
-        <InstallAppSettingsCard installApp={installApp} />
+        <InstallAppSettingsCard installApp={installApp} settings={mergedDraft} />
 
         {/* MAIN SETTINGS */}
         <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">

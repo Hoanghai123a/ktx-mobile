@@ -255,7 +255,7 @@ export default function AdminBuildingsView({
   }
 
   async function saveUser() {
-    const payload = { ...userDraft, username: userDraft.username.trim(), name: userDraft.name.trim() };
+    const payload = { ...userDraft, username: userDraft.username.trim().toLowerCase(), name: userDraft.name.trim() };
     if (!payload.username) return alert("Nhập username.");
     if (!editingUserId && !payload.password) return alert("Nhập mật khẩu.");
     if (editingSystemAdmin) payload.role = "admin";
@@ -293,7 +293,7 @@ export default function AdminBuildingsView({
 
       {page === "settings" ? (
         <div className="space-y-4">
-          <InstallAppSettingsCard installApp={installApp} />
+          <InstallAppSettingsCard installApp={installApp} settings={settings} />
           <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
             <div className="flex items-center justify-between gap-3">
               <div>

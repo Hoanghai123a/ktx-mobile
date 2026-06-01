@@ -31,7 +31,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['vite.config.js', 'eslint.config.js'],
+    files: ['vite.config.js', 'eslint.config.js', 'pm2_worker.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       ecmaVersion: 2020,

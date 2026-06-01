@@ -2,6 +2,10 @@ import api from "../../api";
 
 const baseUrl = "/login/";
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function authErrorMessage(status, data) {
   const detail = data?.data || data?.details || data?.detail;
   if (detail && typeof detail === "object" && Object.keys(detail).length) {
@@ -25,7 +29,7 @@ function makeError(status, data) {
 export const authService = {
   login: async (username, password) => {
     try {
-      const res = await api.post(baseUrl, { username, password });
+      const res = await api.post(baseUrl, { username: normalizeUsername(username), password });
       if (res?.access_token) {
         api.saveToken(res.access_token);
         api.setCookie("token", res.access_token, res.expires_in || 3600);
@@ -38,7 +42,7 @@ export const authService = {
   },
   register: async ({ username, password, name }) => {
     try {
-      const res = await api.post("/register/", { username, password, name });
+      const res = await api.post("/register/", { username: normalizeUsername(username), password, name });
       if (res?.access_token) {
         api.saveToken(res.access_token);
         api.setCookie("token", res.access_token, res.expires_in || 604800);
