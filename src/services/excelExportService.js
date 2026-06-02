@@ -131,6 +131,8 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBi
           "Phòng": r.code,
           "Mã nhân viên": w?.employeeCode || "",
           "Họ tên": w?.fullName || "(không rõ)",
+          "Ngày vào": formatDate(st.dateIn, ""),
+          "Số ngày ở miễn phí": Number(w?.freeRoomDays || 0),
           "Tiền phòng": roomFee,
           "Tiền điện": electricityFee,
           "Tiền nước": waterFee,
@@ -155,19 +157,24 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBi
     "Phong_dang_o",
   );
 
-  const checkoutRows = workerPaymentRows.filter((row) => !row.active).map((row) => ({
-    "Ngày rời": formatDate(row.dateOut, ""),
-    "Tầng": row.floorName || "",
-    "Phòng": row.roomCode || "",
-    "Mã nhân viên": row.employeeCode || "",
-    "Họ tên": row.workerName || "",
-    "Tiền phòng": Number(row.roomAmount || 0),
-    "Tiền điện": Number(row.electricityAmount || 0),
-    "Tiền nước": Number(row.waterAmount || 0),
-    "Tổng tiền": Number(row.totalAmount || 0),
-    "Trạng thái": paymentStatus(row),
-    "Thời điểm lưu": row.paidAt || "",
-  }));
+  const checkoutRows = workerPaymentRows.filter((row) => !row.active).map((row) => {
+    const worker = workerById.get(row.workerId);
+    return {
+      "Ngày vào": formatDate(row.dateIn, ""),
+      "Ngày rời": formatDate(row.dateOut, ""),
+      "Tầng": row.floorName || "",
+      "Phòng": row.roomCode || "",
+      "Mã nhân viên": row.employeeCode || "",
+      "Họ tên": row.workerName || "",
+      "Số ngày ở miễn phí": Number(worker?.freeRoomDays || 0),
+      "Tiền phòng": Number(row.roomAmount || 0),
+      "Tiền điện": Number(row.electricityAmount || 0),
+      "Tiền nước": Number(row.waterAmount || 0),
+      "Tổng tiền": Number(row.totalAmount || 0),
+      "Trạng thái": paymentStatus(row),
+      "Thời điểm lưu": row.paidAt || "",
+    };
+  });
   XLSX.utils.book_append_sheet(
     wb,
     XLSX.utils.json_to_sheet(checkoutRows),
