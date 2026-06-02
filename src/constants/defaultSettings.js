@@ -7,6 +7,8 @@ export const DEFAULT_SETTINGS = {
   electricityPrice: 0,
   waterPrice: 0,
   waterBillingMode: "shared",
+  roomMonthlyPrice: 0,
+  roomBillingMode: "postpaid",
   billingMonth: "",
   billingCloseDay: 10,
   adminContact: {

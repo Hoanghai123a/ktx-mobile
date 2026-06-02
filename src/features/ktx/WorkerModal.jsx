@@ -51,6 +51,7 @@ export default function WorkerModal({
   const [phone, setPhone] = useState(worker?.phone || "");
   const [electricityFee, setElectricityFee] = useState(worker?.electricityFee || 0);
   const [waterFee, setWaterFee] = useState(worker?.waterFee || 0);
+  const [freeRoomDays, setFreeRoomDays] = useState(worker?.freeRoomDays || 0);
   const [note, setNote] = useState(worker?.note || "");
   const [confirmDel, setConfirmDel] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -66,6 +67,7 @@ export default function WorkerModal({
     setPhone(worker?.phone || "");
     setElectricityFee(Number(worker?.electricityFee || 0));
     setWaterFee(Number(worker?.waterFee || 0));
+    setFreeRoomDays(Math.max(0, Math.floor(Number(worker?.freeRoomDays || 0))));
     setNote(worker?.note || "");
   }, [
     worker?.id,
@@ -79,6 +81,7 @@ export default function WorkerModal({
     worker?.phone,
     worker?.electricityFee,
     worker?.waterFee,
+    worker?.freeRoomDays,
     worker?.note,
   ]);
 
@@ -231,6 +234,14 @@ export default function WorkerModal({
                     </a>
                   </div>
                 </label>
+                <TextField
+                  label="Số ngày ở Free"
+                  value={freeRoomDays}
+                  onChange={(v) => setFreeRoomDays(Math.max(0, Math.floor(Number(v || 0))))}
+                  type="number"
+                  placeholder="0"
+                  disabled={!auth?.isAdmin}
+                />
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="text-xs font-medium text-slate-600">Số điện đầu vào</div>
@@ -285,6 +296,7 @@ export default function WorkerModal({
                           identityNumber: identityNumber || "",
                           electricityFee: Number(electricityFee || 0),
                           waterFee: Number(waterFee || 0),
+                          freeRoomDays: Math.max(0, Math.floor(Number(freeRoomDays || 0))),
                           dob: dob || null,
                           hometown: hometown || "",
                           recruiter: recruiter || "",

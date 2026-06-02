@@ -41,6 +41,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
     "Số CCCD": w.identityNumber || "",
     "Tiền điện": Number(w.electricityFee || 0),
     "Tiền nước": Number(w.waterFee || 0),
+    "Số ngày ở Free": Number(w.freeRoomDays || 0),
     "Ngày sinh": formatDate(w.dob, ""),
     "Quê quán": w.hometown,
     "Số điện thoại": w.phone || "",
@@ -62,6 +63,7 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
           "Số CCCD": w?.identityNumber || "",
           "Tiền điện": Number(w?.electricityFee || 0),
           "Tiền nước": Number(w?.waterFee || 0),
+          "Số ngày ở Free": Number(w?.freeRoomDays || 0),
           "Ngày sinh": formatDate(w?.dob, ""),
           "Quê quán": w?.hometown || "",
           "Số điện thoại": w?.phone || "",
@@ -121,13 +123,15 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBi
         const charge = roomCharges.get(st.workerId) || {};
         const electricityFee = Number(charge.electricityAmount || 0);
         const waterFee = Number(charge.waterAmount || 0);
-        const totalAmount = electricityFee + waterFee;
+        const roomFee = Number(paymentRow?.roomAmount ?? charge.roomAmount ?? 0);
+        const totalAmount = roomFee + electricityFee + waterFee;
         rows.push({
           "Tháng": billingMonth || "",
           "Tầng": f.name,
           "Phòng": r.code,
           "Mã nhân viên": w?.employeeCode || "",
           "Họ tên": w?.fullName || "(không rõ)",
+          "Tiền phòng": roomFee,
           "Tiền điện": electricityFee,
           "Tiền nước": waterFee,
           "Tiền tạm trú": 0,
@@ -157,6 +161,7 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBi
     "Phòng": row.roomCode || "",
     "Mã nhân viên": row.employeeCode || "",
     "Họ tên": row.workerName || "",
+    "Tiền phòng": Number(row.roomAmount || 0),
     "Tiền điện": Number(row.electricityAmount || 0),
     "Tiền nước": Number(row.waterAmount || 0),
     "Tổng tiền": Number(row.totalAmount || 0),

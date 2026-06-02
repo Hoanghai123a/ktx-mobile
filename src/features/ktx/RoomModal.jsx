@@ -23,6 +23,7 @@ import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
 import { formatDate } from "../../services/dateFormat";
 import {
+  calculateRoomRentForStay,
   calculateRoomUtility,
   getUtilityCheckoutBounds,
 } from "../../services/utilityBilling";
@@ -74,6 +75,7 @@ export default function RoomModal({
   const [recruiter, setRecruiter] = useState("");
   const [electricityFee, setElectricityFee] = useState(0);
   const [waterFee, setWaterFee] = useState(0);
+  const [freeRoomDays, setFreeRoomDays] = useState(0);
   const [electricityStartReading, setElectricityStartReading] = useState("");
   const [waterStartReading, setWaterStartReading] = useState("");
   const [note, setNote] = useState("");
@@ -107,6 +109,7 @@ export default function RoomModal({
     setRecruiter("");
     setElectricityFee(0);
     setWaterFee(0);
+    setFreeRoomDays(0);
     setElectricityStartReading("");
     setWaterStartReading("");
     setNote("");
@@ -177,7 +180,7 @@ export default function RoomModal({
       checkOutCtx.electricityEndReading !== "" &&
       checkOutCtx.waterStartReading !== "" &&
       checkOutCtx.waterEndReading !== "";
-    if (!hasInputs) return { electricityAmount: 0, waterAmount: 0, totalAmount: 0 };
+    if (!hasInputs) return { electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0 };
 
     const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
     const electricityBounds = getUtilityCheckoutBounds({
@@ -236,8 +239,23 @@ export default function RoomModal({
     });
     const electricityAmount = electricity.amountByWorkerId.get(workerId) || 0;
     const waterAmount = water.amountByWorkerId.get(workerId) || 0;
-    return { electricityAmount, waterAmount, totalAmount: electricityAmount + waterAmount };
-  }, [actions, checkOutCtx, room]);
+    const roomAmount = calculateRoomRentForStay({
+      stay: { ...stay, dateOut: checkOutCtx.dateOut },
+      worker: workerById?.get?.(workerId),
+      settings: {
+        billingMonth,
+        billingCloseDay: actions?.billingCloseDay,
+        roomMonthlyPrice: actions?.roomMonthlyPrice,
+        roomBillingMode: actions?.roomBillingMode,
+      },
+    }).amount;
+    return {
+      electricityAmount,
+      waterAmount,
+      roomAmount,
+      totalAmount: electricityAmount + waterAmount + roomAmount,
+    };
+  }, [actions, checkOutCtx, room, workerById]);
 
   const applyQrPayload = (payload) => {
     if (!payload) return false;
@@ -421,6 +439,10 @@ export default function RoomModal({
                   const w = workerById?.get(s.workerId);
                   const charge =
                     actions?.utilityChargesByWorkerId?.get?.(s.workerId) || {};
+                  const roomAmount = Number(charge.roomAmount || 0);
+                  const electricityAmount = Number(charge.electricityAmount || 0);
+                  const waterAmount = Number(charge.waterAmount || 0);
+                  const totalAmount = roomAmount + electricityAmount + waterAmount;
                   return (
                     <div
                       key={s.id}
@@ -440,15 +462,10 @@ export default function RoomModal({
                           Vào: {formatDate(s.dateIn)}
                         </div>
                         <div className="text-xs text-slate-500">
-                          Điện:{" "}
-                          {Number(charge.electricityAmount || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ - Nước:{" "}
-                          {Number(charge.waterAmount || 0).toLocaleString(
-                            "vi-VN",
-                          )}
-                          đ
+                          Phòng: {roomAmount.toLocaleString("vi-VN")}đ - Điện: {electricityAmount.toLocaleString("vi-VN")}đ - Nước: {waterAmount.toLocaleString("vi-VN")}đ
+                        </div>
+                        <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                          Tổng cần thu: {totalAmount.toLocaleString("vi-VN")}đ
                         </div>
                       </button>
 
@@ -633,6 +650,14 @@ export default function RoomModal({
                 error={errors.fullName}
                 disabled={!auth?.isAdmin}
               />
+              <TextField
+                label="Số ngày ở Free"
+                value={freeRoomDays}
+                onChange={(v) => setFreeRoomDays(Math.max(0, Math.floor(Number(v || 0))))}
+                type="number"
+                placeholder="0"
+                disabled={!auth?.isAdmin}
+              />
               <div className="grid grid-cols-2 gap-2">
                 <label className="block space-y-1">
                   <div className="text-xs font-medium text-slate-600">
@@ -792,6 +817,7 @@ export default function RoomModal({
                             recruiter: recruiter || "",
                             electricityFee: Number(electricityFee || 0),
                             waterFee: Number(waterFee || 0),
+                            freeRoomDays: Math.max(0, Math.floor(Number(freeRoomDays || 0))),
                             phone: phone || "",
                             note: note || "",
                           },
@@ -809,6 +835,7 @@ export default function RoomModal({
                         recruiter: recruiter.trim(),
                         electricityFee: Number(electricityFee || 0),
                         waterFee: Number(waterFee || 0),
+                        freeRoomDays: Math.max(0, Math.floor(Number(freeRoomDays || 0))),
                         dob,
                         note: note.trim(),
                       });
@@ -982,6 +1009,7 @@ export default function RoomModal({
                       Number(w.electricityFee || w.electricity_fee || 0),
                     );
                     setWaterFee(Number(w.waterFee || w.water_fee || 0));
+                    setFreeRoomDays(Math.max(0, Math.floor(Number(w.freeRoomDays || w.free_room_days || 0))));
                     setElectricityStartReading("");
                     setWaterStartReading("");
                     setNote(w.note || "");
@@ -1100,7 +1128,7 @@ export default function RoomModal({
               {Number(checkOutAmount.totalAmount || 0).toLocaleString("vi-VN")}đ
             </div>
             <div className="mt-1 text-xs text-slate-600">
-              Điện: {Number(checkOutAmount.electricityAmount || 0).toLocaleString("vi-VN")}đ · Nước: {Number(checkOutAmount.waterAmount || 0).toLocaleString("vi-VN")}đ
+              Phòng: {Number(checkOutAmount.roomAmount || 0).toLocaleString("vi-VN")}đ · Điện: {Number(checkOutAmount.electricityAmount || 0).toLocaleString("vi-VN")}đ · Nước: {Number(checkOutAmount.waterAmount || 0).toLocaleString("vi-VN")}đ
             </div>
           </div>
           <div className="flex gap-2">

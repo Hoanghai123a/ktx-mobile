@@ -17,6 +17,31 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
+function parseDateParts(value) {
+  const text = normalizeDate(value);
+  if (!text) return null;
+  const [year, month, day] = text.split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return { year, month, day };
+}
+
+function addMonthsToMonth(monthValue, offset = 0) {
+  const month = normalizeBillingMonth(monthValue);
+  const [yearText, monthText] = month.split("-");
+  const zeroBased = Number(monthText) - 1 + Number(offset || 0);
+  const date = new Date(Number(yearText), zeroBased, 1);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+}
+
+function diffDays(startDate, endDate) {
+  const start = parseDateParts(startDate);
+  const end = parseDateParts(endDate);
+  if (!start || !end) return 0;
+  const startTime = Date.UTC(start.year, start.month - 1, start.day);
+  const endTime = Date.UTC(end.year, end.month - 1, end.day);
+  return Math.max(0, Math.round((endTime - startTime) / 86400000));
+}
+
 function clampDay(year, month, day) {
   return Math.min(Math.max(Number(day || 1), 1), daysInMonth(year, month));
 }
@@ -46,6 +71,99 @@ export function getBillingPeriod(billingMonth, closeDay = 1) {
     start: `${startYear}-${pad2(startMonth)}-${pad2(startDay)}`,
     end: `${endYear}-${pad2(endMonth)}-${pad2(endDay)}`,
     closeDay: Number(closeDay || 1),
+  };
+}
+
+function roomMonthlyAmount(settings = {}) {
+  return Math.max(
+    0,
+    Number(
+      settings.roomMonthlyPrice ??
+        settings.roomPrice ??
+        settings.roomFeeMonthly ??
+        0,
+    ) || 0,
+  );
+}
+
+function freeRoomDays(worker, stay) {
+  return Math.max(
+    0,
+    Math.floor(
+      Number(
+        worker?.freeRoomDays ??
+          worker?.free_room_days ??
+          stay?.freeRoomDays ??
+          stay?.free_room_days ??
+          0,
+      ) || 0,
+    ),
+  );
+}
+
+export function getRoomRentPeriod(settings = {}) {
+  const billingMonth = normalizeBillingMonth(settings.billingMonth);
+  const billingMode = settings.roomBillingMode === "prepaid" ? "prepaid" : "postpaid";
+  const periodMonth = billingMode === "prepaid"
+    ? addMonthsToMonth(billingMonth, 1)
+    : billingMonth;
+
+  return {
+    ...getBillingPeriod(periodMonth, settings.billingCloseDay || 1),
+    billingMonth,
+    billingMode,
+  };
+}
+
+export function calculateRoomRentForStay({ stay, worker, settings = {} }) {
+  const monthlyAmount = roomMonthlyAmount(settings);
+  const period = getRoomRentPeriod(settings);
+  const dateIn = normalizeDate(stay?.dateIn ?? stay?.date_in);
+  const dateOut = normalizeDate(stay?.dateOut ?? stay?.date_out);
+  const endParts = parseDateParts(period.end);
+  const rateMonthDays = endParts ? daysInMonth(endParts.year, endParts.month) : 30;
+  const dailyAmount = rateMonthDays > 0 ? monthlyAmount / rateMonthDays : 0;
+  const freeDays = freeRoomDays(worker, stay);
+
+  if (!monthlyAmount || !dateIn) {
+    return {
+      period,
+      startDate: "",
+      endDate: "",
+      days: 0,
+      freeDays,
+      chargedDays: 0,
+      monthlyAmount,
+      dailyAmount,
+      rawAmount: 0,
+      amount: 0,
+      rateMonthDays,
+    };
+  }
+
+  const periodStart = normalizeDate(period.start);
+  const periodEnd = normalizeDate(period.end);
+  let startDate = dateIn > periodStart ? dateIn : periodStart;
+
+  const stayEnd = dateOut || periodEnd;
+  const endDate = stayEnd < periodEnd ? stayEnd : periodEnd;
+  const days = startDate < endDate ? diffDays(startDate, endDate) : 0;
+  const chargedDays = Math.max(0, days - freeDays);
+  const rawAmount = Math.min(monthlyAmount, Math.max(0, chargedDays * dailyAmount));
+  const amount = Math.min(monthlyAmount, roundUpToThousand(rawAmount));
+
+  return {
+    period,
+    startDate,
+    endDate,
+    days,
+    freeDays,
+    chargedDays,
+    monthlyAmount,
+    dailyAmount,
+    rawAmount,
+    amount,
+    rateMonthDays,
   };
 }
 
@@ -284,21 +402,29 @@ function addWorkerCharge(target, workerId, patch) {
   const current = target.get(workerId) || {
     electricityAmount: 0,
     waterAmount: 0,
+    roomAmount: 0,
     totalAmount: 0,
     electricityUnits: 0,
     waterUnits: 0,
+    roomDays: 0,
   };
   const next = { ...current, ...patch };
-  next.totalAmount = Number(next.electricityAmount || 0) + Number(next.waterAmount || 0);
+  next.totalAmount =
+    Number(next.electricityAmount || 0) +
+    Number(next.waterAmount || 0) +
+    Number(next.roomAmount || 0);
   target.set(workerId, next);
 }
 
-export function calculateUtilityBilling({ floors = [], settings = {} }) {
+export function calculateUtilityBilling({ floors = [], workers = [], settings = {} }) {
   const byRoom = new Map();
   const byWorker = new Map();
+  const byStay = new Map();
+  const workerById = new Map((workers || []).map((worker) => [worker.id, worker]));
   const totals = {
     electricity: { amount: 0, pendingAmount: 0, paidAmount: 0, pendingCount: 0, paidCount: 0 },
     water: { amount: 0, pendingAmount: 0, paidAmount: 0, pendingCount: 0, paidCount: 0 },
+    room: { amount: 0 },
   };
 
   for (const floor of floors || []) {
@@ -306,6 +432,14 @@ export function calculateUtilityBilling({ floors = [], settings = {} }) {
       const electricity = calculateRoomUtility({ room, type: "electricity", settings });
       const water = calculateRoomUtility({ room, type: "water", settings });
       const roomWorkers = new Map();
+      const roomRent = {
+        period: getRoomRentPeriod(settings),
+        monthlyAmount: roomMonthlyAmount(settings),
+        amountByStayId: new Map(),
+        amountByWorkerId: new Map(),
+        daysByStayId: new Map(),
+        totalAmount: 0,
+      };
 
       for (const [workerId, amount] of electricity.amountByWorkerId.entries()) {
         const units = electricity.unitsByWorkerId.get(workerId) || 0;
@@ -318,7 +452,37 @@ export function calculateUtilityBilling({ floors = [], settings = {} }) {
         addWorkerCharge(byWorker, workerId, { waterAmount: (byWorker.get(workerId)?.waterAmount || 0) + amount, waterUnits: (byWorker.get(workerId)?.waterUnits || 0) + units });
       }
 
-      byRoom.set(room.id, { electricity, water, byWorker: roomWorkers });
+      for (const stay of room?.stays || []) {
+        const rent = calculateRoomRentForStay({
+          stay,
+          worker: workerById.get(stay?.workerId),
+          settings,
+        });
+        if (stay?.id) byStay.set(stay.id, rent);
+        const workerId = stay?.workerId;
+        if (!workerId || rent.amount <= 0) continue;
+        roomRent.totalAmount += rent.amount;
+        if (stay?.id) {
+          roomRent.amountByStayId.set(stay.id, rent.amount);
+          roomRent.daysByStayId.set(stay.id, rent.days);
+        }
+        roomRent.amountByWorkerId.set(
+          workerId,
+          (roomRent.amountByWorkerId.get(workerId) || 0) + rent.amount,
+        );
+        addWorkerCharge(roomWorkers, workerId, {
+          roomAmount: (roomWorkers.get(workerId)?.roomAmount || 0) + rent.amount,
+          roomDays: (roomWorkers.get(workerId)?.roomDays || 0) + rent.chargedDays,
+        });
+        addWorkerCharge(byWorker, workerId, {
+          roomAmount: (byWorker.get(workerId)?.roomAmount || 0) + rent.amount,
+          roomDays: (byWorker.get(workerId)?.roomDays || 0) + rent.chargedDays,
+        });
+      }
+
+      totals.room.amount += roomRent.totalAmount;
+
+      byRoom.set(room.id, { electricity, water, room: roomRent, byWorker: roomWorkers });
 
       for (const utility of [electricity, water]) {
         const bucket = totals[utility.type];
@@ -336,7 +500,7 @@ export function calculateUtilityBilling({ floors = [], settings = {} }) {
     }
   }
 
-  return { byRoom, byWorker, totals };
+  return { byRoom, byWorker, byStay, totals };
 }
 
 export function formatPeriodLabel(period) {

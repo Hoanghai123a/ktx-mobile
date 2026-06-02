@@ -31,7 +31,7 @@ export default function ImportExcelModal({
           <div className="mt-1 text-xs text-slate-600">
             File Excel (sheet đầu tiên) có thể có/không có cột Mã nhân viên.
             Các cột gợi ý: Mã nhân viên, Họ tên, Giới tính, Số CCCD, Tiền điện,
-            Tiền nước, Ngày sinh, Số điện thoại, Quê quán, Người tuyển, Tầng,
+            Tiền nước, Số ngày ở Free, Ngày sinh, Số điện thoại, Quê quán, Người tuyển, Tầng,
             Phòng, Ngày vào, Ngày rời.
             <br />
             Nếu phòng bị trùng mã giữa nhiều tầng, cần nhập thêm cột Tầng. Nếu

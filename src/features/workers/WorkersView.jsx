@@ -87,6 +87,10 @@ export default function WorkersView({
             })
             .map((w) => {
               const charge = utilityChargesByWorkerId?.get?.(w.id) || {};
+              const roomAmount = Number(charge.roomAmount || 0);
+              const electricityAmount = Number(charge.electricityAmount || 0);
+              const waterAmount = Number(charge.waterAmount || 0);
+              const totalAmount = roomAmount + electricityAmount + waterAmount;
               return (
               <button
                 key={w.id}
@@ -109,7 +113,10 @@ export default function WorkersView({
                     {w.identityNumber ? ` · CCCD ${w.identityNumber}` : ""}
                   </div>
                   <div className="mt-0.5 text-xs text-slate-500">
-                    Điện: {Number(charge.electricityAmount || 0).toLocaleString("vi-VN")}đ · Nước: {Number(charge.waterAmount || 0).toLocaleString("vi-VN")}đ
+                    Phòng: {roomAmount.toLocaleString("vi-VN")}đ · Điện: {electricityAmount.toLocaleString("vi-VN")}đ · Nước: {waterAmount.toLocaleString("vi-VN")}đ
+                  </div>
+                  <div className="mt-0.5 text-xs font-semibold text-slate-700">
+                    Tổng cần thu: {totalAmount.toLocaleString("vi-VN")}đ
                   </div>
                   <div className="flex gap-2 justify-space-between w-full">
                     <div className="w-2/3 overflow-ellipsis">

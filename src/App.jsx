@@ -39,7 +39,7 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
 import { formatDate } from "./services/dateFormat";
-import { calculateRoomUtility, calculateUtilityBilling, getBillingPeriod, getUtilityCheckoutBounds } from "./services/utilityBilling";
+import { calculateRoomRentForStay, calculateRoomUtility, calculateUtilityBilling, getBillingPeriod, getUtilityCheckoutBounds } from "./services/utilityBilling";
 
 const AuthScreen = lazy(() => import("./features/auth/AuthScreen"));
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
@@ -206,7 +206,7 @@ function BuildingsHome({
   );
   const accessibleIds = useMemo(
     () => new Set(buildings.map((b) => b.id).filter(Boolean)),
-    [buildingIdsKey, buildings],
+    [buildings],
   );
 
   useEffect(() => {
@@ -1124,6 +1124,7 @@ export default function App() {
           identity_number: worker.identityNumber,
           electricity_fee: worker.electricityFee,
           water_fee: worker.waterFee,
+          free_room_days: worker.freeRoomDays,
           hometown: worker.hometown,
           phone: worker.phone,
           dob: worker.dob,
@@ -1158,6 +1159,7 @@ export default function App() {
         identityNumber: row.identity_number || row.identityNumber || "",
         electricityFee: Number(row.electricity_fee || row.electricityFee || 0),
         waterFee: Number(row.water_fee || row.waterFee || 0),
+        freeRoomDays: Math.max(0, Math.floor(Number(row.free_room_days || row.freeRoomDays || 0))),
         hometown: row.hometown || "",
         recruiter: row.recruiter || "",
         dob: row.dob || "",
@@ -1180,6 +1182,7 @@ export default function App() {
         identityNumber: "identity_number",
         electricityFee: "electricity_fee",
         waterFee: "water_fee",
+        freeRoomDays: "free_room_days",
         hometown: "hometown",
         phone: "phone",
         dob: "dob",
@@ -1189,9 +1192,13 @@ export default function App() {
 
       Object.keys(fieldMap).forEach((k) => {
         if (Object.prototype.hasOwnProperty.call(patch, k)) {
-          mappedPatch[fieldMap[k]] = ["electricityFee", "waterFee"].includes(k)
-            ? Number(patch[k] || 0)
-            : patch[k] || null;
+          if (k === "freeRoomDays") {
+            mappedPatch[fieldMap[k]] = Math.max(0, Math.floor(Number(patch[k] || 0)));
+          } else {
+            mappedPatch[fieldMap[k]] = ["electricityFee", "waterFee"].includes(k)
+              ? Number(patch[k] || 0)
+              : patch[k] || null;
+          }
         }
       });
 
@@ -1335,6 +1342,11 @@ export default function App() {
       });
       const electricityAmount = electricityCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
       const waterAmount = waterCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
+      const roomAmount = calculateRoomRentForStay({
+        stay: { ...ctx.stay, dateOut: d },
+        worker: workerById.get(ctx.stay.workerId),
+        settings: { ...state.settings, billingMonth },
+      }).amount;
 
       await stayService.update(
         stayId,
@@ -1346,9 +1358,9 @@ export default function App() {
           water_end_reading: Number(waterEndReading || 0),
           electricity_amount: electricityAmount,
           water_amount: waterAmount,
-          total_amount: electricityAmount + waterAmount,
+          total_amount: electricityAmount + waterAmount + roomAmount,
           utility_paid_at: new Date().toISOString(),
-          utility_paid_month: state.settings.billingMonth || "",
+          utility_paid_month: billingMonth,
         },
         token,
       );
@@ -1573,8 +1585,8 @@ export default function App() {
   }, [state.floors]);
 
   const utilityBilling = useMemo(
-    () => calculateUtilityBilling({ floors: state.floors, settings: state.settings }),
-    [state.floors, state.settings],
+    () => calculateUtilityBilling({ floors: state.floors, workers: state.workers, settings: state.settings }),
+    [state.floors, state.settings, state.workers],
   );
 
   const paymentRoomRows = useMemo(() => {
@@ -1615,6 +1627,7 @@ export default function App() {
         for (const st of r.stays || []) {
           const w = workerById.get(st.workerId);
           const charge = utilityBilling.byRoom.get(r.id)?.byWorker?.get(st.workerId) || {};
+          const rent = utilityBilling.byStay?.get?.(st.id) || {};
           const active = !st.dateOut;
           const electricityAmount = active
             ? Number(charge.electricityAmount || 0)
@@ -1622,7 +1635,16 @@ export default function App() {
           const waterAmount = active
             ? Number(charge.waterAmount || 0)
             : Number(st.waterAmount || 0);
-          const total = electricityAmount + waterAmount;
+          const storedTotal = Number(st.totalAmount || 0);
+          const storedRoomAmount = Math.max(
+            0,
+            storedTotal - Number(st.electricityAmount || 0) - Number(st.waterAmount || 0),
+          );
+          const roomAmount = active
+            ? Number(rent.amount || 0)
+            : Math.max(storedRoomAmount, Number(rent.amount || 0));
+          const calculatedTotal = electricityAmount + waterAmount + roomAmount;
+          const total = active ? calculatedTotal : Math.max(storedTotal, calculatedTotal);
           if (total <= 0) continue;
           const paid = st.utilityPaidMonth === month && !!st.utilityPaidAt;
           rows.push({
@@ -1640,6 +1662,8 @@ export default function App() {
             paidMonth: st.utilityPaidMonth || "",
             electricityAmount,
             waterAmount,
+            roomAmount,
+            roomDays: Number(rent.days || 0),
             totalAmount: total,
             paidAt: st.utilityPaidAt || null,
           });
@@ -1709,6 +1733,14 @@ export default function App() {
   const paidWaterCount = paidElectricityCount;
   const paidWaterAmount = workerPaymentRows.reduce(
     (sum, row) => sum + (row.paid ? Number(row.waterAmount || 0) : 0),
+    0,
+  );
+  const pendingRoomAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? 0 : Number(row.roomAmount || 0)),
+    0,
+  );
+  const paidRoomAmount = workerPaymentRows.reduce(
+    (sum, row) => sum + (row.paid ? Number(row.roomAmount || 0) : 0),
     0,
   );
 
@@ -2287,6 +2319,8 @@ export default function App() {
             pendingWaterAmount={pendingWaterAmount}
             paidWaterCount={paidWaterCount}
             paidWaterAmount={paidWaterAmount}
+            pendingRoomAmount={pendingRoomAmount}
+            paidRoomAmount={paidRoomAmount}
             workerPaymentRows={workerPaymentRows}
             markWorkerUtilityPaid={markWorkerUtilityPaid}
             openElectricityHistory={openHistory}
@@ -2466,6 +2500,8 @@ export default function App() {
               electricityPrice: state.settings.electricityPrice,
               waterPrice: state.settings.waterPrice,
               waterBillingMode: state.settings.waterBillingMode,
+              roomMonthlyPrice: state.settings.roomMonthlyPrice,
+              roomBillingMode: state.settings.roomBillingMode,
               billingMonth: state.settings.billingMonth,
               billingCloseDay: state.settings.billingCloseDay,
               upsertUtility: async (rec) => {

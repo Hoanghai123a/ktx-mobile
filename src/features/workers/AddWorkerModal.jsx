@@ -22,6 +22,7 @@ export default function AddWorkerModal({
   const [recruiter, setRecruiter] = useState("");
   const [electricityFee, setElectricityFee] = useState(0);
   const [waterFee, setWaterFee] = useState(0);
+  const [freeRoomDays, setFreeRoomDays] = useState(0);
   const [note, setNote] = useState("");
   const [showOld, setShowOld] = useState(false);
   const [oldCode, setOldCode] = useState("");
@@ -39,6 +40,7 @@ export default function AddWorkerModal({
       setRecruiter("");
       setElectricityFee(0);
       setWaterFee(0);
+      setFreeRoomDays(0);
       setNote("");
       setShowOld(false);
       setOldCode("");
@@ -137,6 +139,7 @@ export default function AddWorkerModal({
                       setRecruiter(found.recruiter || "");
                       setElectricityFee(Number(found.electricityFee || found.electricity_fee || 0));
                       setWaterFee(Number(found.waterFee || found.water_fee || 0));
+                      setFreeRoomDays(Math.max(0, Math.floor(Number(found.freeRoomDays || found.free_room_days || 0))));
                       setNote(found.note || "");
                       setShowOld(false);
                       setOldCode("");
@@ -220,6 +223,13 @@ export default function AddWorkerModal({
           />
         </div>
         <TextField
+          label="Số ngày ở Free"
+          value={freeRoomDays}
+          onChange={(v) => setFreeRoomDays(Math.max(0, Math.floor(Number(v || 0))))}
+          type="number"
+          placeholder="0"
+        />
+        <TextField
           label="Ghi chú"
           value={note}
           onChange={setNote}
@@ -251,6 +261,7 @@ export default function AddWorkerModal({
                 identityNumber: identityNumber.trim(),
                 electricityFee: Number(electricityFee || 0),
                 waterFee: Number(waterFee || 0),
+                freeRoomDays: Math.max(0, Math.floor(Number(freeRoomDays || 0))),
                 dob: dob || "",
                 phone: phone.trim(),
                 hometown: hometown.trim(),

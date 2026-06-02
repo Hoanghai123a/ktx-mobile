@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS workers (
     identity_number text,
     electricity_fee numeric DEFAULT 0,
     water_fee numeric DEFAULT 0,
+    free_room_days integer DEFAULT 0,
     hometown text,
     phone text,
     dob date,
@@ -60,6 +61,9 @@ ALTER TABLE workers
 
 ALTER TABLE workers
     ADD COLUMN IF NOT EXISTS water_fee numeric DEFAULT 0;
+
+ALTER TABLE workers
+    ADD COLUMN IF NOT EXISTS free_room_days integer DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS workers_employee_code_unique
     ON workers (employee_code)

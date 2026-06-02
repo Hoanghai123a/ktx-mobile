@@ -106,6 +106,47 @@ export default function SettingsModal({
                 }))
               }
             />
+            <TextField
+              label="Tiền phòng / tháng"
+              type="text"
+              inputMode="numeric"
+              value={formatMoney(mergedDraft.roomMonthlyPrice)}
+              onChange={(v) =>
+                setDraft((s) => ({
+                  ...s,
+                  roomMonthlyPrice: parseMoney(v),
+                }))
+              }
+            />
+            <div className="space-y-1">
+              <div className="text-xs font-medium text-slate-600">Cách thu tiền phòng</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  className={clsx(
+                    "rounded-2xl px-3 py-2 text-sm font-semibold ring-1",
+                    mergedDraft.roomBillingMode !== "prepaid"
+                      ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
+                      : "bg-white text-slate-700 ring-slate-200",
+                  )}
+                  onClick={() => setDraft((s) => ({ ...s, roomBillingMode: "postpaid" }))}
+                >
+                  Thu sau
+                </button>
+                <button
+                  type="button"
+                  className={clsx(
+                    "rounded-2xl px-3 py-2 text-sm font-semibold ring-1",
+                    mergedDraft.roomBillingMode === "prepaid"
+                      ? "bg-[rgb(44_120_159)] text-white ring-[rgb(44_120_159)]"
+                      : "bg-white text-slate-700 ring-slate-200",
+                  )}
+                  onClick={() => setDraft((s) => ({ ...s, roomBillingMode: "prepaid" }))}
+                >
+                  Thu trước
+                </button>
+              </div>
+            </div>
             <div className="space-y-1">
               <div className="text-xs font-medium text-slate-600">Cách tính tiền nước</div>
               <div className="grid grid-cols-2 gap-2">

@@ -305,7 +305,7 @@ function isExpired(building) {
 
 function normalizeWorker(row) {
   if (!row) return row;
-  return { ...row, employee_code: row.employee_code || null, dob: dateOnly(row.dob), gender: row.gender || null, identity_number: row.identity_number || "", electricity_fee: Number(row.electricity_fee || 0), water_fee: Number(row.water_fee || 0) };
+  return { ...row, employee_code: row.employee_code || null, dob: dateOnly(row.dob), gender: row.gender || null, identity_number: row.identity_number || "", electricity_fee: Number(row.electricity_fee || 0), water_fee: Number(row.water_fee || 0), free_room_days: Math.max(0, Math.floor(Number(row.free_room_days || 0))) };
 }
 
 function workerOut(w) {
@@ -317,6 +317,7 @@ function workerOut(w) {
     identityNumber: w.identity_number || "",
     electricityFee: Number(w.electricity_fee || 0),
     waterFee: Number(w.water_fee || 0),
+    freeRoomDays: Math.max(0, Math.floor(Number(w.free_room_days || 0))),
     hometown: w.hometown || "",
     recruiter: w.recruiter || "",
     dob: dateOnly(w.dob) || "",
@@ -338,6 +339,7 @@ function stayOut(s) {
     waterEndReading: s.water_end_reading == null ? null : Number(s.water_end_reading),
     electricityAmount: Number(s.electricity_amount || 0),
     waterAmount: Number(s.water_amount || 0),
+    roomAmount: Math.max(0, Number(s.total_amount || 0) - Number(s.electricity_amount || 0) - Number(s.water_amount || 0)),
     totalAmount: Number(s.total_amount || 0),
     utilityPaidAt: s.utility_paid_at || null,
     utilityPaidMonth: s.utility_paid_month || "",
@@ -355,6 +357,7 @@ function normalizeStay(s) {
     water_end_reading: s.water_end_reading == null ? null : Number(s.water_end_reading),
     electricity_amount: Number(s.electricity_amount || 0),
     water_amount: Number(s.water_amount || 0),
+    room_amount: Math.max(0, Number(s.total_amount || 0) - Number(s.electricity_amount || 0) - Number(s.water_amount || 0)),
     total_amount: Number(s.total_amount || 0),
     utility_paid_at: s.utility_paid_at || null,
     utility_paid_month: s.utility_paid_month || "",
@@ -403,6 +406,8 @@ const DEFAULT_SETTINGS = {
   electricityPrice: 0,
   waterPrice: 0,
   waterBillingMode: "shared",
+  roomMonthlyPrice: 0,
+  roomBillingMode: "postpaid",
   billingMonth: "",
   billingCloseDay: 10,
   about: {
@@ -433,6 +438,8 @@ function settingsFromRecord(row) {
     electricityPrice: row.electricity_price ?? 0,
     waterPrice: row.water_price ?? row.about?.utilitySettings?.waterPrice ?? 0,
     waterBillingMode: row.about?.utilitySettings?.waterBillingMode === "no_split" ? "no_split" : "shared",
+    roomMonthlyPrice: row.room_monthly_price ?? row.about?.utilitySettings?.roomMonthlyPrice ?? 0,
+    roomBillingMode: row.about?.utilitySettings?.roomBillingMode === "prepaid" ? "prepaid" : "postpaid",
     billingMonth: row.billing_month || "",
     billingCloseDay: row.billing_close_day ?? row.about?.utilitySettings?.billingCloseDay ?? 10,
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
@@ -476,6 +483,8 @@ function settingsToRecord(data) {
         ...((data.about || {}).utilitySettings || {}),
         waterPrice: Number(data.waterPrice || 0),
         waterBillingMode: data.waterBillingMode === "no_split" ? "no_split" : "shared",
+        roomMonthlyPrice: Number(data.roomMonthlyPrice || 0),
+        roomBillingMode: data.roomBillingMode === "prepaid" ? "prepaid" : "postpaid",
         billingCloseDay: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
       },
     },
@@ -776,7 +785,7 @@ async function handlePost(url, data, signal) {
     return { message: "Database wiped successfully" };
   }
   if (path === "/workers/") {
-    const payload = { ...data, building_id, employee_code: data.employee_code ? String(data.employee_code).trim().toUpperCase() : null, dob: dateValue(data.dob), gender: data.gender || null, identity_number: data.identity_number || "", electricity_fee: Number(data.electricity_fee || 0), water_fee: Number(data.water_fee || 0) };
+    const payload = { ...data, building_id, employee_code: data.employee_code ? String(data.employee_code).trim().toUpperCase() : null, dob: dateValue(data.dob), gender: data.gender || null, identity_number: data.identity_number || "", electricity_fee: Number(data.electricity_fee || 0), water_fee: Number(data.water_fee || 0), free_room_days: Math.max(0, Math.floor(Number(data.free_room_days || 0))) };
     return normalizeWorker(await pbRequest("workers", "", { method: "POST", body: payload, signal }));
   }
   if (path === "/floors/") return pbRequest("floors", "", { method: "POST", body: { ...data, building_id, sort: Number(data.sort || 0) }, signal });
@@ -843,6 +852,7 @@ async function handlePatch(url, data, signal) {
     if (Object.prototype.hasOwnProperty.call(payload, "identity_number")) payload.identity_number = payload.identity_number || "";
     if (Object.prototype.hasOwnProperty.call(payload, "electricity_fee")) payload.electricity_fee = Number(payload.electricity_fee || 0);
     if (Object.prototype.hasOwnProperty.call(payload, "water_fee")) payload.water_fee = Number(payload.water_fee || 0);
+    if (Object.prototype.hasOwnProperty.call(payload, "free_room_days")) payload.free_room_days = Math.max(0, Math.floor(Number(payload.free_room_days || 0)));
     return normalizeWorker(await pbRequest("workers", `/${path.split("/")[2]}`, { method: "PATCH", body: payload, signal }));
   }
   if (/^\/floors\/[^/]+\/?$/.test(path)) return pbRequest("floors", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });

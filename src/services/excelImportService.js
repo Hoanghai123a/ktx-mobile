@@ -267,6 +267,12 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
       ).trim();
       const electricityFee = parseMoney(pick(row, ["Tiền điện", "Tien dien", "Electricity fee"]));
       const waterFee = parseMoney(pick(row, ["Tiền nước", "Tien nuoc", "Water fee"]));
+      const freeRoomDays = Math.max(
+        0,
+        Math.floor(
+          Number(pick(row, ["Số ngày ở Free", "So ngay o Free", "Free room days", "Free days"]) || 0) || 0,
+        ),
+      );
       const hometown = String(
         pick(row, ["Quê quán", "Que quan", "Hometown", "Que"]),
       ).trim();
@@ -334,6 +340,7 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
           identity_number: identityNumber || "",
           electricity_fee: electricityFee,
           water_fee: waterFee,
+          free_room_days: freeRoomDays,
           dob: dob || null,
           phone: phone || null,
           hometown: hometown || null,
@@ -353,6 +360,7 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
             identity_number: identityNumber,
             electricity_fee: electricityFee,
             water_fee: waterFee,
+            free_room_days: freeRoomDays,
             dob,
             phone,
             hometown,
@@ -376,6 +384,7 @@ export async function importExcelRowsToDb(rows, token, deps, logger = console) {
         if (identityNumber && !worker.identity_number && !worker.identityNumber) patch.identity_number = identityNumber;
         if (electricityFee > 0 && !Number(worker.electricity_fee || worker.electricityFee || 0)) patch.electricity_fee = electricityFee;
         if (waterFee > 0 && !Number(worker.water_fee || worker.waterFee || 0)) patch.water_fee = waterFee;
+        if (freeRoomDays > 0 && !Number(worker.free_room_days || worker.freeRoomDays || 0)) patch.free_room_days = freeRoomDays;
         if (hometown && !worker.hometown) patch.hometown = hometown;
         if (recruiter && !worker.recruiter) patch.recruiter = recruiter;
         if (dob && !worker.dob) patch.dob = dob;
