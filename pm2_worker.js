@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("./dist", import.meta.url)));
 const host = process.env.HOST || "0.0.0.0";
-const port = Number(process.env.PORT || 3002);
+const port = Number(process.env.PORT || 3001);
 const pocketBaseUrl = new URL(
   process.env.POCKETBASE_URL || "http://127.0.0.1:8091",
 );

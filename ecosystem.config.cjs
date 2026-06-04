@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "ktx-frontend",
+      name: "QLKTX",
       cwd: ".",
       script: "pm2_worker.js",
       interpreter: "node",
@@ -12,7 +12,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         HOST: "0.0.0.0",
-        PORT: "3002",
+        PORT: "3001",
         POCKETBASE_URL: "http://127.0.0.1:8091",
       },
     },
