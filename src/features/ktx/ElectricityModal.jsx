@@ -45,19 +45,25 @@ function previousRecord(records, month) {
 function makeRecord({ record, room, period, startReading, endReading, paid }) {
   const start = numberValue(startReading);
   const end = numberValue(endReading);
+  const fallbackEnd = end === "" ? start : end;
   return {
     ...(record || {}),
     id: record?.id,
     room_id: room?.id,
     month: period.month,
     start_reading: start === "" ? 0 : start,
-    end_reading: end === "" ? 0 : end,
+    end_reading: fallbackEnd === "" ? 0 : fallbackEnd,
     readings: [
       ...(start === "" ? [] : [{ date: period.start, reading: Number(start) }]),
       ...(end === "" ? [] : [{ date: period.end, reading: Number(end) }]),
     ],
     paid: !!paid,
   };
+}
+
+function hasReadingAt(record, date) {
+  const readings = Array.isArray(record?.readings) ? record.readings : [];
+  return readings.some((row) => String(row?.date || "").slice(0, 10) === date);
 }
 
 export default function ElectricityModal({
@@ -100,8 +106,10 @@ export default function ElectricityModal({
         prevRecord?.endReading ??
         "",
     );
-    setEndReading(record?.end_reading ?? record?.endReading ?? "");
-  }, [open, record, prevRecord]);
+    const readings = Array.isArray(record?.readings) ? record.readings : [];
+    const hasExplicitEnd = !readings.length || hasReadingAt(record, period.end);
+    setEndReading(hasExplicitEnd ? (record?.end_reading ?? record?.endReading ?? "") : "");
+  }, [open, period.end, record, prevRecord]);
 
   const preview = useMemo(() => {
     const nextRecord = makeRecord({
@@ -131,7 +139,7 @@ export default function ElectricityModal({
   }, [meta.priceKey, meta.roomKey, period, pricePerUnit, record, records, room, startReading, endReading, utilityType, waterBillingMode]);
 
   const hasMissing = startReading === "" || endReading === "";
-  const hasNegative = Number(endReading || 0) < Number(startReading || 0);
+  const hasNegative = endReading !== "" && Number(endReading || 0) < Number(startReading || 0);
   const canPay = !hasMissing && !hasNegative && !record?.paid;
 
   async function save(paid = false) {

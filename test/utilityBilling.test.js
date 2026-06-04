@@ -129,6 +129,31 @@ test("water no_split charges each occupant full interval usage", () => {
   assert.equal(noSplit.amountByWorkerId.get("w2"), 100000);
 });
 
+test("room utility treats missing period end reading as temporary save", () => {
+  const room = {
+    id: "r1",
+    electricity: [
+      {
+        month: "2026-06",
+        start_reading: 100,
+        end_reading: 100,
+        readings: [{ date: "2026-05-25", reading: 100 }],
+      },
+    ],
+    stays: [{ workerId: "w1", dateIn: "2026-05-01" }],
+  };
+
+  const result = calculateRoomUtility({
+    room,
+    type: "electricity",
+    settings: { billingMonth: "2026-06", billingCloseDay: 25, electricityPrice: 1000 },
+  });
+
+  assert.equal(result.totalAmount, 0);
+  assert.equal(result.amountByWorkerId.has("w1"), false);
+  assert.equal(result.warnings.includes("Thiếu chỉ số ngày 2026-06-25."), true);
+});
+
 test("room rent uses postpaid and prepaid close-day periods", () => {
   const postpaid = calculateRoomRentForStay({
     stay: { workerId: "w1", dateIn: "2026-06-01" },

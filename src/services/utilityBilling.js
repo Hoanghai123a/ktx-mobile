@@ -210,7 +210,8 @@ export function parseReadings(value) {
 
 export function readingsToMap(record, period, room, type = "electricity") {
   const map = new Map();
-  for (const row of parseReadings(record?.readings)) {
+  const parsedReadings = parseReadings(record?.readings);
+  for (const row of parsedReadings) {
     const date = normalizeDate(row?.date);
     const reading = numberOrBlank(row?.reading);
     if (date && reading !== "") map.set(date, reading);
@@ -221,7 +222,8 @@ export function readingsToMap(record, period, room, type = "electricity") {
   if (period?.start && start !== "" && !map.has(period.start)) {
     map.set(period.start, start);
   }
-  if (period?.end && end !== "" && !map.has(period.end)) {
+  const hasExplicitEndReading = !parsedReadings.length || parsedReadings.some((row) => normalizeDate(row?.date) === period?.end);
+  if (period?.end && end !== "" && !map.has(period.end) && hasExplicitEndReading) {
     map.set(period.end, end);
   }
 
