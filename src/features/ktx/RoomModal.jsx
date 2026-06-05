@@ -3,7 +3,6 @@ import { message } from "antd";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
-import Confirm from "../../components/ui/Confirm";
 import clsx from "../../components/ui/clsx";
 import {
   Users,
@@ -51,7 +50,6 @@ export default function RoomModal({
   //                  onViewWorker, transfer, upsertElectricity, markElectricityPaid
   actions,
 }) {
-  const [confirmDel, setConfirmDel] = useState(false);
   const [utilityModal, setUtilityModal] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
@@ -303,6 +301,30 @@ export default function RoomModal({
     }
   }
 
+  const requestDeleteRoom = () => {
+    requireAdmin(() => {
+      const runDelete = async () => {
+        if (!actions?.deleteRoom) {
+          alert("Chưa nối actions.deleteRoom");
+          return;
+        }
+        await actions.deleteRoom({ roomId: room.id });
+        onClose?.();
+      };
+
+      if (typeof actions?.guardDelete === "function") {
+        actions.guardDelete({
+          title: "Xóa phòng",
+          message: `Xóa phòng ${room.code}? Tất cả lịch sử ở phòng này sẽ bị xóa.`,
+          onDelete: runDelete,
+        });
+        return;
+      }
+
+      runDelete();
+    });
+  };
+
   if (!room) {
     return (
       <Modal open={open} title="Phòng" onClose={onClose}>
@@ -331,23 +353,32 @@ export default function RoomModal({
                 </div>
               </div>
               {auth?.isAdmin ? (
-                <button
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-2xl bg-white/80 ring-1 ring-slate-200 hover:bg-white"
-                  onClick={() => {
-                    const next = prompt("Mã phòng", room.code) || room.code;
-                    if (next !== room.code && next.trim()) {
-                      requireAdmin(async () => {
-                        const ok = await actions.updateRoom(room.id, {
-                          code: next,
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    className="grid h-8 w-8 place-items-center rounded-2xl bg-white/80 ring-1 ring-slate-200 hover:bg-white"
+                    onClick={() => {
+                      const next = prompt("Mã phòng", room.code) || room.code;
+                      if (next !== room.code && next.trim()) {
+                        requireAdmin(async () => {
+                          const ok = await actions.updateRoom(room.id, {
+                            code: next,
+                          });
+                          if (ok) onClose?.();
                         });
-                        if (ok) onClose?.();
-                      });
-                    }
-                  }}
-                  title="Sửa mã phòng"
-                >
-                  <Edit className="h-4 w-4 text-slate-600" />
-                </button>
+                      }
+                    }}
+                    title="Sửa mã phòng"
+                  >
+                    <Edit className="h-4 w-4 text-slate-600" />
+                  </button>
+                  <button
+                    className="grid h-8 w-8 place-items-center rounded-2xl bg-white/80 ring-1 ring-rose-100 hover:bg-rose-50"
+                    onClick={requestDeleteRoom}
+                    title="Xóa phòng"
+                  >
+                    <Trash2 className="h-4 w-4 text-rose-600" />
+                  </button>
+                </div>
               ) : null}
             </div>
             <div className="mt-3 flex min-w-0 items-center gap-2 overflow-x-auto pb-0.5">
@@ -1196,42 +1227,6 @@ export default function RoomModal({
           </div>
         </div>
       </Modal>
-
-      <Confirm
-        open={confirmDel}
-        title="Xóa phòng"
-        message={`Bạn chắc chắn muốn xóa phòng ${room.code}?`}
-        confirmText="Xóa"
-        onCancel={() => setConfirmDel(false)}
-        onConfirm={() => {
-          setConfirmDel(false);
-          if (typeof actions?.guardDelete === "function") {
-            actions.guardDelete({
-              title: "Xóa phòng",
-              message: `Xóa phòng ${room.code}? Tất cả lịch sử ở phòng này sẽ bị xóa.`,
-              onDelete: async () => {
-                if (!actions?.deleteRoom) {
-                  alert("Chưa nối actions.deleteRoom");
-                  return;
-                }
-                await actions.deleteRoom({ roomId: room.id });
-                onClose?.();
-              },
-            });
-            return;
-          }
-
-          // Fallback: require admin then delete
-          requireAdmin(async () => {
-            if (!actions?.deleteRoom) {
-              alert("Chưa nối actions.deleteRoom");
-              return;
-            }
-            await actions.deleteRoom({ roomId: room.id });
-            onClose?.();
-          });
-        }}
-      />
 
       <ElectricityModal
         key={`utility-${utilityModal || "none"}-${room?.id}-${actions?.billingMonth}-${actions?.billingCloseDay}`}

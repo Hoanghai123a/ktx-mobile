@@ -762,11 +762,48 @@ async function handlePost(url, data, signal) {
   }
   if (path === "/init-ktx/") {
     if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
-    const F = Number(data.floors);
-    const R = Number(data.roomsPerFloor);
-    const S = Number(data.startNo);
+    const useRanges = data.mode === "ranges" && Array.isArray(data.floorRanges);
+    const ranges = useRanges
+      ? data.floorRanges.map((row, index) => ({
+          name: String(row?.name || `Tầng ${index + 1}`).trim(),
+          startNo: Math.floor(Number(row?.startNo)),
+          endNo: Math.floor(Number(row?.endNo)),
+        }))
+      : [];
+
+    if (useRanges) {
+      if (!ranges.length) throw makeError(400, { error: "Chưa nhập khoảng phòng theo tầng." });
+      const roomCodes = new Set();
+      for (const [index, row] of ranges.entries()) {
+        if (!Number.isInteger(row.startNo) || !Number.isInteger(row.endNo) || row.startNo <= 0 || row.endNo < row.startNo) {
+          throw makeError(400, { error: `Khoảng phòng tầng ${index + 1} không hợp lệ.` });
+        }
+        for (let code = row.startNo; code <= row.endNo; code += 1) {
+          if (roomCodes.has(code)) throw makeError(400, { error: `Mã phòng ${code} bị trùng giữa các tầng.` });
+          roomCodes.add(code);
+        }
+      }
+    }
+
+    const F = Math.floor(Number(data.floors));
+    const R = Math.floor(Number(data.roomsPerFloor));
+    const S = Math.floor(Number(data.startNo));
+    if (!useRanges && (!Number.isInteger(F) || !Number.isInteger(R) || !Number.isInteger(S) || F <= 0 || R <= 0 || S <= 0)) {
+      throw makeError(400, { error: "Số tầng, số phòng và mã bắt đầu không hợp lệ." });
+    }
     const existing = await pbFirst("floors", { filter: buildingFilter() }, signal);
     if (existing) throw makeError(400, { error: "KTX đã có tầng/phòng. Hãy reset dữ liệu trước khi khởi tạo lại." });
+    if (useRanges) {
+      for (const [index, row] of ranges.entries()) {
+        const floor = await pbRequest("floors", "", { method: "POST", body: { building_id, name: row.name || `Tầng ${index + 1}`, sort: index + 1 }, signal });
+        let sort = 1;
+        for (let code = row.startNo; code <= row.endNo; code += 1) {
+          await pbRequest("rooms", "", { method: "POST", body: { building_id, floor_id: floor.id, code: String(code), sort }, signal });
+          sort += 1;
+        }
+      }
+      return { message: "Initialized successfully" };
+    }
     for (let i = 0; i < F; i += 1) {
       const floor = await pbRequest("floors", "", { method: "POST", body: { building_id, name: `Tầng ${i + 1}`, sort: i + 1 }, signal });
       for (let j = 0; j < R; j += 1) {

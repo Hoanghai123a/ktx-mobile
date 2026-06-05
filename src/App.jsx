@@ -39,7 +39,13 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
 import { formatDate } from "./services/dateFormat";
-import { calculateRoomRentForStay, calculateRoomUtility, calculateUtilityBilling, getBillingPeriod, getUtilityCheckoutBounds } from "./services/utilityBilling";
+import {
+  calculateRoomRentForStay,
+  calculateRoomUtility,
+  calculateUtilityBilling,
+  getBillingPeriod,
+  getUtilityCheckoutBounds,
+} from "./services/utilityBilling";
 
 const AuthScreen = lazy(() => import("./features/auth/AuthScreen"));
 const LoginModal = lazy(() => import("./features/auth/LoginModal"));
@@ -104,7 +110,7 @@ function Modal({ open, title, children, onClose }) {
             Đóng
           </button>
         </div>
-        <div className="max-h-[78vh] overflow-auto px-4 pb-5">{children}</div>
+        <div className="max-h-[78vh] overflow-auto px-4 py-5">{children}</div>
         <div className="h-2" />
       </div>
     </div>
@@ -153,17 +159,19 @@ function BuildingStatusLegend() {
   return (
     <div className="fixed inset-x-0 bottom-24 z-30 mx-auto w-full max-w-md px-4">
       <div className="rounded-2xl bg-white/95 px-3 py-3 text-xs text-slate-600 shadow-lg ring-1 ring-slate-100 backdrop-blur">
-      <div className="mb-2 font-semibold text-slate-700">Chú thích trạng thái</div>
-      <div className="grid gap-2">
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
-          <span>Tòa nhà còn hạn sử dụng.</span>
+        <div className="mb-2 font-semibold text-slate-700">
+          Chú thích trạng thái
         </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
-          <span>Tòa nhà đã hết hạn.</span>
+        <div className="grid gap-2">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
+            <span>Tòa nhà còn hạn sử dụng.</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
+            <span>Tòa nhà đã hết hạn.</span>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
@@ -201,7 +209,12 @@ function BuildingsHome({
   }, [storageKey]);
 
   const buildingIdsKey = useMemo(
-    () => buildings.map((b) => b.id).filter(Boolean).sort().join("|"),
+    () =>
+      buildings
+        .map((b) => b.id)
+        .filter(Boolean)
+        .sort()
+        .join("|"),
     [buildings],
   );
   const accessibleIds = useMemo(
@@ -219,13 +232,21 @@ function BuildingsHome({
       try {
         const remote = await buildingService.getPinnedBuildings(token);
         if (!alive || !remote?.synced) return;
-        const localIds = readPinnedBuildingIds(user).filter((id) => accessibleIds.has(id));
-        const remoteIds = normalizePinnedIds(remote.pinnedBuildingIds).filter((id) => accessibleIds.has(id));
+        const localIds = readPinnedBuildingIds(user).filter((id) =>
+          accessibleIds.has(id),
+        );
+        const remoteIds = normalizePinnedIds(remote.pinnedBuildingIds).filter(
+          (id) => accessibleIds.has(id),
+        );
         const next = remote.exists ? remoteIds : localIds;
         const remoteLast = String(remote.lastBuildingId || "").trim();
         const localLast = localStorage.getItem(lastKey) || "";
-        const nextLast = accessibleIds.has(remote.exists ? remoteLast : localLast)
-          ? (remote.exists ? remoteLast : localLast)
+        const nextLast = accessibleIds.has(
+          remote.exists ? remoteLast : localLast,
+        )
+          ? remote.exists
+            ? remoteLast
+            : localLast
           : "";
 
         setPinnedIds(next);
@@ -233,10 +254,16 @@ function BuildingsHome({
         if (nextLast) localStorage.setItem(lastKey, nextLast);
         else localStorage.removeItem(lastKey);
 
-        const remoteHadStaleIds = remote.exists && remoteIds.length !== normalizePinnedIds(remote.pinnedBuildingIds).length;
+        const remoteHadStaleIds =
+          remote.exists &&
+          remoteIds.length !==
+            normalizePinnedIds(remote.pinnedBuildingIds).length;
         const remoteHadStaleLast = remote.exists && !!remoteLast && !nextLast;
         if (!remote.exists || remoteHadStaleIds || remoteHadStaleLast) {
-          await buildingService.savePinnedBuildings({ pinnedBuildingIds: next, lastBuildingId: nextLast }, token);
+          await buildingService.savePinnedBuildings(
+            { pinnedBuildingIds: next, lastBuildingId: nextLast },
+            token,
+          );
         }
       } catch (e) {
         console.warn("Sync pinned buildings failed:", e);
@@ -254,8 +281,13 @@ function BuildingsHome({
     localStorage.setItem(storageKey, JSON.stringify(next));
   }, [accessibleIds, pinnedIds, storageKey]);
 
-  function savePins(next, nextLastId = localStorage.getItem(lastKey) || selectedBuildingId || "") {
-    const clean = [...new Set((next || []).filter((id) => accessibleIds.has(id)))];
+  function savePins(
+    next,
+    nextLastId = localStorage.getItem(lastKey) || selectedBuildingId || "",
+  ) {
+    const clean = [
+      ...new Set((next || []).filter((id) => accessibleIds.has(id))),
+    ];
     const cleanLastId = accessibleIds.has(nextLastId) ? nextLastId : "";
     setPinnedIds(clean);
     localStorage.setItem(storageKey, JSON.stringify(clean));
@@ -263,7 +295,10 @@ function BuildingsHome({
     else localStorage.removeItem(lastKey);
     if (token) {
       buildingService
-        .savePinnedBuildings({ pinnedBuildingIds: clean, lastBuildingId: cleanLastId }, token)
+        .savePinnedBuildings(
+          { pinnedBuildingIds: clean, lastBuildingId: cleanLastId },
+          token,
+        )
         .catch((e) => console.warn("Save pinned buildings failed:", e));
     }
   }
@@ -588,7 +623,8 @@ export default function App() {
     onConfirm: null,
   });
 
-  const [expiredBuildingNoticeOpen, setExpiredBuildingNoticeOpen] = useState(false);
+  const [expiredBuildingNoticeOpen, setExpiredBuildingNoticeOpen] =
+    useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => savePersistedState(state), 150);
@@ -597,8 +633,9 @@ export default function App() {
 
   useEffect(() => {
     const brandName =
-      String(state.settings?.siteName || DEFAULT_SETTINGS.siteName || "KTX").trim() ||
-      "KTX";
+      String(
+        state.settings?.siteName || DEFAULT_SETTINGS.siteName || "KTX",
+      ).trim() || "KTX";
     const logoUrl =
       String(
         state.settings?.logoUrl ||
@@ -637,13 +674,29 @@ export default function App() {
       background_color: "#f0f9ff",
       theme_color: "rgb(44 120 159)",
       icons: [
-        { src: logoUrl, sizes: "192x192", type: "image/png", purpose: "any maskable" },
-        { src: logoUrl, sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        {
+          src: logoUrl,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any maskable",
+        },
+        {
+          src: logoUrl,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any maskable",
+        },
       ],
     };
-    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+    const blobUrl = URL.createObjectURL(
+      new Blob([JSON.stringify(manifest)], {
+        type: "application/manifest+json",
+      }),
+    );
     updateLink('link[rel="manifest"]', "manifest");
-    document.querySelector('link[rel="manifest"]')?.setAttribute("href", blobUrl);
+    document
+      .querySelector('link[rel="manifest"]')
+      ?.setAttribute("href", blobUrl);
     return () => URL.revokeObjectURL(blobUrl);
   }, [
     state.settings?.about?.brandLogoUrl,
@@ -798,12 +851,23 @@ export default function App() {
           ...s,
           settings: {
             ...s.settings,
-            siteName: data.siteName || s.settings?.siteName || DEFAULT_SETTINGS.siteName,
-            logoUrl: data.logoUrl || data.about?.brandLogoUrl || s.settings?.logoUrl || DEFAULT_SETTINGS.logoUrl,
+            siteName:
+              data.siteName ||
+              s.settings?.siteName ||
+              DEFAULT_SETTINGS.siteName,
+            logoUrl:
+              data.logoUrl ||
+              data.about?.brandLogoUrl ||
+              s.settings?.logoUrl ||
+              DEFAULT_SETTINGS.logoUrl,
             about: {
               ...(s.settings?.about || {}),
               ...(data.about || {}),
-              brandLogoUrl: data.logoUrl || data.about?.brandLogoUrl || s.settings?.about?.brandLogoUrl || DEFAULT_SETTINGS.logoUrl,
+              brandLogoUrl:
+                data.logoUrl ||
+                data.about?.brandLogoUrl ||
+                s.settings?.about?.brandLogoUrl ||
+                DEFAULT_SETTINGS.logoUrl,
             },
           },
         }));
@@ -826,9 +890,11 @@ export default function App() {
 
   const [initModal, setInitModal] = useState({
     open: false,
+    mode: "uniform",
     floors: 3,
     roomsPerFloor: 7,
     startNo: 101,
+    floorRanges: [],
   });
 
   // dialogs
@@ -1159,7 +1225,10 @@ export default function App() {
         identityNumber: row.identity_number || row.identityNumber || "",
         electricityFee: Number(row.electricity_fee || row.electricityFee || 0),
         waterFee: Number(row.water_fee || row.waterFee || 0),
-        freeRoomDays: Math.max(0, Math.floor(Number(row.free_room_days || row.freeRoomDays || 0))),
+        freeRoomDays: Math.max(
+          0,
+          Math.floor(Number(row.free_room_days || row.freeRoomDays || 0)),
+        ),
         hometown: row.hometown || "",
         recruiter: row.recruiter || "",
         dob: row.dob || "",
@@ -1193,9 +1262,14 @@ export default function App() {
       Object.keys(fieldMap).forEach((k) => {
         if (Object.prototype.hasOwnProperty.call(patch, k)) {
           if (k === "freeRoomDays") {
-            mappedPatch[fieldMap[k]] = Math.max(0, Math.floor(Number(patch[k] || 0)));
+            mappedPatch[fieldMap[k]] = Math.max(
+              0,
+              Math.floor(Number(patch[k] || 0)),
+            );
           } else {
-            mappedPatch[fieldMap[k]] = ["electricityFee", "waterFee"].includes(k)
+            mappedPatch[fieldMap[k]] = ["electricityFee", "waterFee"].includes(
+              k,
+            )
               ? Number(patch[k] || 0)
               : patch[k] || null;
           }
@@ -1224,7 +1298,13 @@ export default function App() {
     }
   }
 
-  async function checkInWorker({ roomId, workerId, dateIn, electricityStartReading, waterStartReading }) {
+  async function checkInWorker({
+    roomId,
+    workerId,
+    dateIn,
+    electricityStartReading,
+    waterStartReading,
+  }) {
     try {
       const d = dateIn || todayISO();
       if (!token) return setLoginModal(true);
@@ -1268,8 +1348,12 @@ export default function App() {
         if (ctx) break;
       }
 
-      if (!ctx?.stay) throw new Error("Không tìm thấy lượt ở để tính thanh toán.");
-      if (Number(electricityEndReading || 0) < Number(electricityStartReading || 0)) {
+      if (!ctx?.stay)
+        throw new Error("Không tìm thấy lượt ở để tính thanh toán.");
+      if (
+        Number(electricityEndReading || 0) <
+        Number(electricityStartReading || 0)
+      ) {
         throw new Error("Số điện khi rời không được nhỏ hơn số điện đầu.");
       }
       if (Number(waterEndReading || 0) < Number(waterStartReading || 0)) {
@@ -1301,7 +1385,10 @@ export default function App() {
         billingCloseDay: state.settings.billingCloseDay || 1,
         dateOut: d,
       });
-      if (electricityBounds.startReading === "" || electricityBounds.endReading === "") {
+      if (
+        electricityBounds.startReading === "" ||
+        electricityBounds.endReading === ""
+      ) {
         throw new Error("Thiếu chỉ số điện đầu/cuối để tính tiền.");
       }
       if (waterBounds.startReading === "" || waterBounds.endReading === "") {
@@ -1318,7 +1405,9 @@ export default function App() {
       };
       const patchedRoom = {
         ...ctx.room,
-        stays: (ctx.room.stays || []).map((st) => (st.id === stayId ? calcStay : st)),
+        stays: (ctx.room.stays || []).map((st) =>
+          st.id === stayId ? calcStay : st,
+        ),
       };
       const electricityCalc = calculateRoomUtility({
         room: patchedRoom,
@@ -1340,8 +1429,10 @@ export default function App() {
           periodEnd: waterBounds.effectiveEndDate,
         },
       });
-      const electricityAmount = electricityCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
-      const waterAmount = waterCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
+      const electricityAmount =
+        electricityCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
+      const waterAmount =
+        waterCalc.amountByWorkerId.get(ctx.stay.workerId) || 0;
       const roomAmount = calculateRoomRentForStay({
         stay: { ...ctx.stay, dateOut: d },
         worker: workerById.get(ctx.stay.workerId),
@@ -1585,7 +1676,12 @@ export default function App() {
   }, [state.floors]);
 
   const utilityBilling = useMemo(
-    () => calculateUtilityBilling({ floors: state.floors, workers: state.workers, settings: state.settings }),
+    () =>
+      calculateUtilityBilling({
+        floors: state.floors,
+        workers: state.workers,
+        settings: state.settings,
+      }),
     [state.floors, state.settings, state.workers],
   );
 
@@ -1611,7 +1707,8 @@ export default function App() {
           waterPaid: !!water?.paid,
           electricityAmount: roomCharge?.electricity?.totalAmount || 0,
           waterAmount: roomCharge?.water?.totalAmount || 0,
-          electricityEndReading: electricity?.end_reading ?? electricity?.endReading ?? "",
+          electricityEndReading:
+            electricity?.end_reading ?? electricity?.endReading ?? "",
           waterEndReading: water?.end_reading ?? water?.endReading ?? "",
         });
       }
@@ -1626,7 +1723,8 @@ export default function App() {
       for (const r of f.rooms) {
         for (const st of r.stays || []) {
           const w = workerById.get(st.workerId);
-          const charge = utilityBilling.byRoom.get(r.id)?.byWorker?.get(st.workerId) || {};
+          const charge =
+            utilityBilling.byRoom.get(r.id)?.byWorker?.get(st.workerId) || {};
           const rent = utilityBilling.byStay?.get?.(st.id) || {};
           const active = !st.dateOut;
           const electricityAmount = active
@@ -1638,13 +1736,17 @@ export default function App() {
           const storedTotal = Number(st.totalAmount || 0);
           const storedRoomAmount = Math.max(
             0,
-            storedTotal - Number(st.electricityAmount || 0) - Number(st.waterAmount || 0),
+            storedTotal -
+              Number(st.electricityAmount || 0) -
+              Number(st.waterAmount || 0),
           );
           const roomAmount = active
             ? Number(rent.amount || 0)
             : Math.max(storedRoomAmount, Number(rent.amount || 0));
           const calculatedTotal = electricityAmount + waterAmount + roomAmount;
-          const total = active ? calculatedTotal : Math.max(storedTotal, calculatedTotal);
+          const total = active
+            ? calculatedTotal
+            : Math.max(storedTotal, calculatedTotal);
           if (total <= 0) continue;
           const paid = st.utilityPaidMonth === month && !!st.utilityPaidAt;
           rows.push({
@@ -1672,7 +1774,9 @@ export default function App() {
     }
     return rows.sort((a, b) => {
       if (a.paid !== b.paid) return a.paid ? 1 : -1;
-      return String(b.dateOut || b.dateIn || "").localeCompare(String(a.dateOut || a.dateIn || ""));
+      return String(b.dateOut || b.dateIn || "").localeCompare(
+        String(a.dateOut || a.dateIn || ""),
+      );
     });
   }, [state.floors, state.settings.billingMonth, utilityBilling, workerById]);
 
@@ -1713,14 +1817,23 @@ export default function App() {
       }
     }
     return rows;
-  }, [allElectricity, electricityHistoryMode, state.settings.billingMonth, utilityBilling]);
+  }, [
+    allElectricity,
+    electricityHistoryMode,
+    state.settings.billingMonth,
+    utilityBilling,
+  ]);
 
-  const pendingElectricityCount = workerPaymentRows.filter((row) => !row.paid).length;
+  const pendingElectricityCount = workerPaymentRows.filter(
+    (row) => !row.paid,
+  ).length;
   const pendingElectricityAmount = workerPaymentRows.reduce(
     (sum, row) => sum + (row.paid ? 0 : Number(row.electricityAmount || 0)),
     0,
   );
-  const paidElectricityCount = workerPaymentRows.filter((row) => row.paid).length;
+  const paidElectricityCount = workerPaymentRows.filter(
+    (row) => row.paid,
+  ).length;
   const paidElectricityAmount = workerPaymentRows.reduce(
     (sum, row) => sum + (row.paid ? Number(row.electricityAmount || 0) : 0),
     0,
@@ -1837,12 +1950,25 @@ export default function App() {
     const month = state.settings.billingMonth || "";
     const nextMonth = nextBillingMonth(month);
     if (!nextMonth) return;
-    const nextPeriod = getBillingPeriod(nextMonth, state.settings.billingCloseDay || 1);
+    const nextPeriod = getBillingPeriod(
+      nextMonth,
+      state.settings.billingCloseDay || 1,
+    );
     const roomRow = paymentRoomRows.find((row) => row.roomId === roomId);
     if (!roomRow) return;
     const jobs = [
-      { type: "electricity", service: electricityService, record: roomRow.electricity, end: roomRow.electricityEndReading },
-      { type: "water", service: waterService, record: roomRow.water, end: roomRow.waterEndReading },
+      {
+        type: "electricity",
+        service: electricityService,
+        record: roomRow.electricity,
+        end: roomRow.electricityEndReading,
+      },
+      {
+        type: "water",
+        service: waterService,
+        record: roomRow.water,
+        end: roomRow.waterEndReading,
+      },
     ];
     for (const job of jobs) {
       if (job.end === "" || job.end == null) continue;
@@ -1852,8 +1978,10 @@ export default function App() {
             id: job.record.id,
             room_id: roomId,
             month: job.record.month || month,
-            start_reading: job.record.start_reading ?? job.record.startReading ?? 0,
-            end_reading: job.record.end_reading ?? job.record.endReading ?? job.end,
+            start_reading:
+              job.record.start_reading ?? job.record.startReading ?? 0,
+            end_reading:
+              job.record.end_reading ?? job.record.endReading ?? job.end,
             readings: job.record.readings || [],
             paid: true,
           },
@@ -1892,8 +2020,12 @@ export default function App() {
         token,
       );
 
-      const roomRows = workerPaymentRows.filter((item) => item.roomId === row.roomId);
-      const allPaid = roomRows.length > 0 && roomRows.every((item) => item.stayId === row.stayId || item.paid);
+      const roomRows = workerPaymentRows.filter(
+        (item) => item.roomId === row.roomId,
+      );
+      const allPaid =
+        roomRows.length > 0 &&
+        roomRows.every((item) => item.stayId === row.stayId || item.paid);
       if (allPaid) {
         await advanceNextMonthReadingsForRoom(row.roomId);
       }
@@ -2257,7 +2389,11 @@ export default function App() {
           />
         </Suspense>
         <InstallAppBanner installApp={installApp} settings={state.settings} />
-        <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} settings={state.settings} />
+        <InstallGuideModal
+          open={installApp.guideOpen}
+          onClose={() => installApp.setGuideOpen(false)}
+          settings={state.settings}
+        />
       </div>
     );
   }
@@ -2327,10 +2463,7 @@ export default function App() {
           />
         ) : null}
         {tab === "about" ? (
-          <AccountView
-            user={user}
-            settings={state.settings}
-          />
+          <AccountView user={user} settings={state.settings} />
         ) : null}
         {tab === "buildings" ? (
           <BuildingsHome
@@ -2496,7 +2629,8 @@ export default function App() {
                 });
               },
               utilityChargesByWorkerId:
-                utilityBilling.byRoom.get(roomCtx?.room?.id)?.byWorker || new Map(),
+                utilityBilling.byRoom.get(roomCtx?.room?.id)?.byWorker ||
+                new Map(),
               electricityPrice: state.settings.electricityPrice,
               waterPrice: state.settings.waterPrice,
               waterBillingMode: state.settings.waterBillingMode,
@@ -2507,7 +2641,8 @@ export default function App() {
               upsertUtility: async (rec) => {
                 try {
                   if (!token) return setLoginModal(true);
-                  const service = rec.type === "water" ? waterService : electricityService;
+                  const service =
+                    rec.type === "water" ? waterService : electricityService;
                   await service.upsert(
                     {
                       id: rec.id,
@@ -2741,7 +2876,11 @@ export default function App() {
           />
         </Suspense>
       ) : null}
-      <InstallGuideModal open={installApp.guideOpen} onClose={() => installApp.setGuideOpen(false)} settings={state.settings} />
+      <InstallGuideModal
+        open={installApp.guideOpen}
+        onClose={() => installApp.setGuideOpen(false)}
+        settings={state.settings}
+      />
 
       {settingsModal ? (
         <Suspense fallback={null}>
@@ -2788,9 +2927,12 @@ export default function App() {
                 <Clock className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-rose-800">Không thể thực hiện thao tác</div>
+                <div className="text-sm font-semibold text-rose-800">
+                  Không thể thực hiện thao tác
+                </div>
                 <div className="mt-1 text-sm leading-5 text-rose-700">
-                  Tòa nhà hiện tại đã hết hạn. Vui lòng liên hệ admin để gia hạn hoặc chọn tòa nhà khác còn hiệu lực.
+                  Tòa nhà hiện tại đã hết hạn. Vui lòng liên hệ admin để gia hạn
+                  hoặc chọn tòa nhà khác còn hiệu lực.
                 </div>
               </div>
             </div>

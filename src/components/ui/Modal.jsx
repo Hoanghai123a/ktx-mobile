@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 
-export default function Modal({ open, title, children, onClose, zIndex = "z-50" }) {
+export default function Modal({
+  open,
+  title,
+  children,
+  onClose,
+  zIndex = "z-50",
+}) {
   const [mounted, setMounted] = useState(open);
   const [active, setActive] = useState(open);
 
@@ -40,7 +46,7 @@ export default function Modal({ open, title, children, onClose, zIndex = "z-50" 
             Đóng
           </button>
         </div>
-        <div className="max-h-[78vh] overflow-auto px-4 pb-5">{children}</div>
+        <div className="max-h-[78vh] overflow-auto p-4">{children}</div>
         <div className="h-2" />
       </div>
     </div>

@@ -51,7 +51,7 @@ npm run pm2:stop
 npm run pm2:delete
 ```
 
-PM2 app: `ktx-frontend` tai `http://127.0.0.1:5174`.
+PM2 app: `QLKTX` tai `http://127.0.0.1:3001`.
 
 PM2 chay file `pm2_worker.js`. File nay serve thu muc `dist/`, fallback SPA ve `dist/index.html`, va proxy `/pb` sang PocketBase local.
 
