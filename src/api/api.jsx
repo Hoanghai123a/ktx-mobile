@@ -392,6 +392,8 @@ function activityLogOut(row) {
 function buildingOut(building, accessRole = "viewer") {
   return {
     ...building,
+    roomLimit: Math.max(0, Math.floor(Number(building.room_limit ?? building.roomLimit ?? 0))),
+    room_limit: Math.max(0, Math.floor(Number(building.room_limit ?? building.roomLimit ?? 0))),
     start_date: dateOnly(building.start_date),
     end_date: dateOnly(building.end_date),
     accessRole,
@@ -918,6 +920,7 @@ async function handlePost(url, data, signal) {
       owner_id: data.owner_id || null,
       start_date: dateValue(data.start_date),
       end_date: dateValue(data.end_date),
+      room_limit: Math.max(0, Math.floor(Number(data.room_limit ?? data.roomLimit ?? 0))),
       public_view: !!data.public_view,
       note: data.note || "",
     };
@@ -957,6 +960,14 @@ async function handlePost(url, data, signal) {
     if (!useRanges && (!Number.isInteger(F) || !Number.isInteger(R) || !Number.isInteger(S) || F <= 0 || R <= 0 || S <= 0)) {
       throw makeError(400, { error: "Số tầng, số phòng và mã bắt đầu không hợp lệ." });
     }
+    const building = await pbRequest("buildings", `/${building_id}`, { signal });
+    const roomLimit = Math.max(0, Math.floor(Number(building.room_limit || building.roomLimit || 0)));
+    const requestedRooms = useRanges
+      ? ranges.reduce((sum, row) => sum + (row.endNo - row.startNo + 1), 0)
+      : F * R;
+    if (roomLimit > 0 && requestedRooms > roomLimit) {
+      throw makeError(400, { error: `Vượt giới hạn phòng của tòa nhà (${requestedRooms}/${roomLimit}).` });
+    }
     const existing = await pbFirst("floors", { filter: buildingFilter() }, signal);
     if (existing) throw makeError(400, { error: "KTX đã có tầng/phòng. Hãy reset dữ liệu trước khi khởi tạo lại." });
     if (useRanges) {
@@ -992,7 +1003,15 @@ async function handlePost(url, data, signal) {
     return normalizeWorker(await pbRequest("workers", "", { method: "POST", body: payload, signal }));
   }
   if (path === "/floors/") return pbRequest("floors", "", { method: "POST", body: { ...data, building_id, sort: Number(data.sort || 0) }, signal });
-  if (path === "/rooms/") return pbRequest("rooms", "", { method: "POST", body: { ...data, building_id, sort: Number(data.sort || 0) }, signal });
+  if (path === "/rooms/") {
+    const building = await pbRequest("buildings", `/${building_id}`, { signal });
+    const roomLimit = Math.max(0, Math.floor(Number(building.room_limit || building.roomLimit || 0)));
+    if (roomLimit > 0) {
+      const rooms = await pbList("rooms", { filter: buildingFilter() }, signal);
+      if (rooms.length >= roomLimit) throw makeError(400, { error: `Tòa nhà đã đạt giới hạn ${roomLimit} phòng.` });
+    }
+    return pbRequest("rooms", "", { method: "POST", body: { ...data, building_id, sort: Number(data.sort || 0) }, signal });
+  }
   if (path === "/stays/") {
     const activeRows = await pbList("stays", { filter: combineFilters(eq("worker_id", data.worker_id), buildingFilter()), sort: "-date_in" }, signal);
     if (!data.date_out && activeRows.some((s) => !s.date_out)) throw makeError(409, { error: "NLĐ đang có lượt ở hiện tại (date_out = null)." });
@@ -1032,6 +1051,11 @@ async function handlePatch(url, data, signal) {
     if (Object.prototype.hasOwnProperty.call(payload, "code")) payload.code = String(payload.code || "").trim().toUpperCase();
     if (Object.prototype.hasOwnProperty.call(payload, "start_date")) payload.start_date = dateValue(payload.start_date);
     if (Object.prototype.hasOwnProperty.call(payload, "end_date")) payload.end_date = dateValue(payload.end_date);
+    if (Object.prototype.hasOwnProperty.call(payload, "roomLimit")) {
+      payload.room_limit = Math.max(0, Math.floor(Number(payload.roomLimit || 0)));
+      delete payload.roomLimit;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, "room_limit")) payload.room_limit = Math.max(0, Math.floor(Number(payload.room_limit || 0)));
     return buildingOut(await pbRequest("buildings", `/${path.split("/")[2]}`, { method: "PATCH", body: payload, signal }), "admin");
   }
   if (/^\/building-members\/[^/]+\/?$/.test(path)) {

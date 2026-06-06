@@ -34,6 +34,7 @@ const emptyDraft = () => ({
   owner_id: "",
   start_date: today(),
   end_date: nextYear(),
+  room_limit: 0,
   public_view: false,
 });
 
@@ -166,6 +167,7 @@ export default function AdminBuildingsView({
       owner_id: building.owner_id || "",
       start_date: building.start_date || today(),
       end_date: building.end_date || nextYear(),
+      room_limit: Math.max(0, Math.floor(Number(building.room_limit ?? building.roomLimit ?? 0))),
       public_view: !!building.public_view,
     });
   }
@@ -181,8 +183,12 @@ export default function AdminBuildingsView({
   async function saveBuilding() {
     if (!draft.code.trim() || !draft.name.trim())
       return alert("Nhập mã và tên tòa nhà.");
-    if (editId) await actions.updateBuilding(editId, draft);
-    else await actions.createBuilding(draft);
+    const payload = {
+      ...draft,
+      room_limit: Math.max(0, Math.floor(Number(draft.room_limit || 0))),
+    };
+    if (editId) await actions.updateBuilding(editId, payload);
+    else await actions.createBuilding(payload);
     resetDraft();
   }
 
@@ -603,6 +609,7 @@ export default function AdminBuildingsView({
             {buildings.map((b) => {
               const owner = byId.get(b.owner_id);
               const active = b.id === selectedBuildingId;
+              const roomLimit = Number(b.room_limit ?? b.roomLimit ?? 0);
               return (
                 <div
                   key={b.id}
@@ -627,6 +634,9 @@ export default function AdminBuildingsView({
                     </div>
                     <div className="mt-1 truncate text-[11px] text-slate-500">
                       Hạn: {formatDate(b.end_date)}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-slate-500">
+                      Giới hạn: {roomLimit > 0 ? `${roomLimit} phòng` : "Không giới hạn"}
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-slate-500">
                       {userLabel(owner) || b.owner_id || "Chưa gán"}
@@ -895,6 +905,13 @@ export default function AdminBuildingsView({
                     type="date"
                     value={draft.end_date}
                     onChange={(v) => setDraft((s) => ({ ...s, end_date: v }))}
+                  />
+                  <TextField
+                    label="Giới hạn phòng"
+                    type="number"
+                    value={String(draft.room_limit || 0)}
+                    onChange={(v) => setDraft((s) => ({ ...s, room_limit: Math.max(0, Math.floor(Number(v || 0))) }))}
+                    placeholder="0 = không giới hạn"
                   />
                   <div className="col-span-2">
                     <SelectField

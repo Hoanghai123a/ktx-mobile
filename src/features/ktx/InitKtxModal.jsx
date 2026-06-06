@@ -59,10 +59,23 @@ export default function InitKtxModal({
   setInitModal,
   requireAdmin,
   initKtxFromInputs,
+  roomLimit = 0,
+  currentRoomCount = 0,
 }) {
   const [busy, setBusy] = useState(false);
   const mode = initModal.mode || "uniform";
   const floorRanges = useMemo(() => normalizeRanges(initModal), [initModal]);
+  const requestedRooms = useMemo(() => {
+    if (mode === "ranges") {
+      return floorRanges.reduce((sum, row) => {
+        const start = toPositiveInt(row.startNo);
+        const end = toPositiveInt(row.endNo);
+        return sum + (start && end && end >= start ? end - start + 1 : 0);
+      }, 0);
+    }
+    return toPositiveInt(initModal.floors) * toPositiveInt(initModal.roomsPerFloor);
+  }, [floorRanges, initModal.floors, initModal.roomsPerFloor, mode]);
+  const overLimit = roomLimit > 0 && currentRoomCount + requestedRooms > roomLimit;
 
   const setMode = (nextMode) => {
     setInitModal((m) => ({
@@ -93,6 +106,7 @@ export default function InitKtxModal({
 
   const submit = () => {
     requireAdmin(async () => {
+      if (overLimit) return;
       const payload = { ...initModal };
       if (mode === "ranges") {
         const rows = normalizeRanges(initModal).map((row, index) => ({
@@ -223,11 +237,20 @@ export default function InitKtxModal({
 
         <button
           className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-70"
-          disabled={busy}
+          disabled={busy || overLimit}
           onClick={submit}
         >
           {busy ? "Đang tạo..." : "Tạo tầng & phòng"}
         </button>
+
+        {roomLimit > 0 ? (
+          <div className={clsx(
+            "rounded-2xl px-3 py-2 text-xs font-semibold ring-1",
+            overLimit ? "bg-rose-50 text-rose-700 ring-rose-100" : "bg-sky-50 text-sky-700 ring-sky-100",
+          )}>
+            Giới hạn tòa nhà: {currentRoomCount + requestedRooms}/{roomLimit} phòng.
+          </div>
+        ) : null}
 
         <div className="text-xs text-slate-500">
           Tạo đều: mã phòng tăng dần. Từng tầng: nhập khoảng riêng, ví dụ 101-105, 106-108.

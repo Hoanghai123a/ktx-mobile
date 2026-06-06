@@ -1087,21 +1087,55 @@ export default function App() {
     setTab("ktx");
   }, [authLogout, setSelectedBuildingId]);
 
-  async function addFloor(name) {
+  async function addFloor(name, options = {}) {
     try {
       const floorName =
         (name || "").trim() || `Tầng ${state.floors.length + 1}`;
       const sort = state.floors.length + 1;
+      const startNo = Math.floor(Number(options.startNo || 0));
+      const endNo = Math.floor(Number(options.endNo || 0));
+      const createRooms = options.createRooms === true;
+      const roomCount =
+        createRooms && startNo > 0 && endNo >= startNo ? endNo - startNo + 1 : 0;
+
+      if (createRooms) {
+        if (!startNo || !endNo || endNo < startNo) {
+          alert("Khoảng phòng không hợp lệ.");
+          return false;
+        }
+        const existingRoomCodes = new Set(
+          state.floors.flatMap((floor) =>
+            floor.rooms.map((room) => String(room.code || "").trim()),
+          ),
+        );
+        for (let code = startNo; code <= endNo; code += 1) {
+          if (existingRoomCodes.has(String(code))) {
+            alert(`Mã phòng ${code} đã tồn tại.`);
+            return false;
+          }
+        }
+        if (!assertRoomLimit(roomCount)) return false;
+      }
 
       if (!token) return setLoginModal(true);
       const created = await floorService.create(
         { name: floorName, sort },
         token,
       );
+      if (created?.id && roomCount > 0) {
+        for (let code = startNo; code <= endNo; code += 1) {
+          await roomService.create(
+            { floor_id: created.id, code: String(code), sort: code - startNo + 1 },
+            token,
+          );
+        }
+      }
       await loadAllFromDb();
       if (created?.id) setFloorId(created.id);
+      return true;
     } catch (e) {
       alert(e.message || String(e));
+      return false;
     }
   }
 
@@ -1118,6 +1152,7 @@ export default function App() {
 
   async function addRoom(floorId, code) {
     try {
+      if (!assertRoomLimit(1)) return false;
       const floor = state.floors.find((f) => f.id === floorId);
       const sort = (floor?.rooms?.length || 0) + 1;
       const roomCode = (code || "").trim() || String(sort);
@@ -1128,8 +1163,10 @@ export default function App() {
         token,
       );
       await loadAllFromDb();
+      return true;
     } catch (e) {
       alert(e.message || String(e));
+      return false;
     }
   }
 
@@ -1977,6 +2014,27 @@ export default function App() {
     () => state.floors.reduce((sum, f) => sum + f.rooms.length, 0),
     [state.floors],
   );
+  const currentRoomLimit = Math.max(0, Math.floor(Number(currentBuilding?.room_limit ?? currentBuilding?.roomLimit ?? 0)));
+  const roomLimitReached = currentRoomLimit > 0 && totalRooms >= currentRoomLimit;
+
+  function requestedRoomCount(payload = {}) {
+    if (payload.mode === "ranges" && Array.isArray(payload.floorRanges)) {
+      return payload.floorRanges.reduce((sum, row) => {
+        const start = Math.floor(Number(row?.startNo));
+        const end = Math.floor(Number(row?.endNo));
+        return sum + (Number.isInteger(start) && Number.isInteger(end) && end >= start ? end - start + 1 : 0);
+      }, 0);
+    }
+    return Math.max(0, Math.floor(Number(payload.floors || 0))) * Math.max(0, Math.floor(Number(payload.roomsPerFloor || 0)));
+  }
+
+  function assertRoomLimit(extraRooms = 1) {
+    if (currentRoomLimit <= 0) return true;
+    const nextTotal = totalRooms + Number(extraRooms || 0);
+    if (nextTotal <= currentRoomLimit) return true;
+    alert(`Tòa nhà giới hạn ${currentRoomLimit} phòng. Hiện có ${totalRooms}, thao tác này sẽ thành ${nextTotal}.`);
+    return false;
+  }
   const totalCurrentWorkers = useMemo(() => {
     let n = 0;
     for (const f of state.floors)
@@ -2157,6 +2215,7 @@ export default function App() {
   async function initKtxFromInputs(payload) {
     try {
       if (!token) return false;
+      if (!assertRoomLimit(requestedRoomCount(payload))) return false;
       await dataLoader.initKtx(payload, token);
       await loadAllFromDb();
       alert("Khởi tạo KTX thành công!");
@@ -2907,6 +2966,8 @@ export default function App() {
             setInitModal={setInitModal}
             requireAdmin={requireAdmin}
             initKtxFromInputs={initKtxFromInputs}
+            roomLimit={currentRoomLimit}
+            currentRoomCount={totalRooms}
           />
         </Suspense>
       ) : null}
@@ -2919,6 +2980,8 @@ export default function App() {
             onClose={() => setAddFloorModal(false)}
             requireAdmin={requireAdmin}
             addFloor={addFloor}
+            roomLimit={currentRoomLimit}
+            currentRoomCount={totalRooms}
           />
         </Suspense>
       ) : null}
@@ -2932,6 +2995,9 @@ export default function App() {
             floor={floor}
             setFloorId={setFloorId}
             addRoom={addRoom}
+            roomLimit={currentRoomLimit}
+            currentRoomCount={totalRooms}
+            roomLimitReached={roomLimitReached}
           />
         </Suspense>
       ) : null}
