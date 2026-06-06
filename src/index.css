@@ -1,3 +1,40 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes ktx-floor-from-right {
+  from {
+    opacity: 0.35;
+    transform: translateX(32%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes ktx-floor-from-left {
+  from {
+    opacity: 0.35;
+    transform: translateX(-32%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.ktx-floor-slide-from-right {
+  animation: ktx-floor-from-right 240ms ease-out both;
+}
+
+.ktx-floor-slide-from-left {
+  animation: ktx-floor-from-left 240ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ktx-floor-slide-from-right,
+  .ktx-floor-slide-from-left {
+    animation: none;
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   FileDown,
   Plus,
@@ -46,6 +46,58 @@ export default function KtxView({
   }, [state.floors, floorId]);
 
   const cols = Math.min(4, Math.max(2, state?.settings?.roomGridCols || 3));
+  const swipeRef = useRef({ startX: 0, startY: 0, swiped: false });
+  const [slideDirection, setSlideDirection] = useState(null);
+  const floorIndex = useMemo(
+    () => state.floors.findIndex((f) => f.id === (floor?.id || floorId)),
+    [floor?.id, floorId, state.floors],
+  );
+
+  function changeFloor(nextId) {
+    const nextIndex = state.floors.findIndex((f) => f.id === nextId);
+    if (nextIndex < 0 || nextIndex === floorIndex) return;
+    setSlideDirection(nextIndex > floorIndex ? 1 : -1);
+    setFloorId(nextId);
+  }
+
+  function switchFloorBySwipe(direction) {
+    const nextIndex = Math.min(
+      Math.max(floorIndex + direction, 0),
+      state.floors.length - 1,
+    );
+    if (nextIndex !== floorIndex && state.floors[nextIndex]?.id) {
+      setSlideDirection(direction);
+      setFloorId(state.floors[nextIndex].id);
+      return true;
+    }
+    return false;
+  }
+
+  function handleSwipeStart(e) {
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    swipeRef.current = { startX: touch.clientX, startY: touch.clientY, swiped: false };
+  }
+
+  function handleSwipeEnd(e) {
+    const touch = e.changedTouches?.[0];
+    if (!touch) return;
+    const dx = touch.clientX - swipeRef.current.startX;
+    const dy = touch.clientY - swipeRef.current.startY;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (absX < 60 || absX < absY * 1.4) return;
+    swipeRef.current.swiped = true;
+    switchFloorBySwipe(dx < 0 ? 1 : -1);
+    e.preventDefault();
+  }
+
+  function handleSwipeClickCapture(e) {
+    if (!swipeRef.current.swiped) return;
+    e.preventDefault();
+    e.stopPropagation();
+    swipeRef.current.swiped = false;
+  }
 
   if (!auth?.building) {
     return (
@@ -109,7 +161,7 @@ export default function KtxView({
             <select
               className="h-10 w-full appearance-none rounded-2xl border-0 bg-sky-100 py-2 pl-9 pr-8 text-sm font-semibold text-[rgb(2_132_199)] outline-none ring-0 focus:bg-sky-100"
               value={floor?.id || ""}
-              onChange={(e) => setFloorId(e.target.value)}
+              onChange={(e) => changeFloor(e.target.value)}
             >
               {state.floors.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -150,9 +202,24 @@ export default function KtxView({
         </div>
       </div>
       <div
-        className="mt-4 grid gap-3"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        className="mt-4 overflow-hidden"
+        onTouchStart={handleSwipeStart}
+        onTouchEnd={handleSwipeEnd}
+        onClickCapture={handleSwipeClickCapture}
       >
+        <div
+          key={floor?.id || "floor"}
+          className={clsx(
+            "grid gap-3",
+            slideDirection === 1
+              ? "ktx-floor-slide-from-right"
+              : slideDirection === -1
+                ? "ktx-floor-slide-from-left"
+                : "",
+          )}
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          onAnimationEnd={() => setSlideDirection(null)}
+        >
         {floor?.rooms?.length ? (
           floor.rooms.map((r) => (
             <RoomCard
@@ -185,6 +252,7 @@ export default function KtxView({
             />
           </div>
         )}
+        </div>
       </div>
 
       <div
