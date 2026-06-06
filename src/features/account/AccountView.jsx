@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Eye,
@@ -11,6 +11,7 @@ import {
   UserCircle,
 } from "lucide-react";
 import { authService } from "../../services/api-services";
+import { useAuth } from "../../contexts/AuthContext";
 
 const T = {
   account: "T\u00e0i kho\u1ea3n",
@@ -29,6 +30,8 @@ const T = {
   passwordMismatch:
     "M\u1eadt kh\u1ea9u x\u00e1c nh\u1eadn kh\u00f4ng kh\u1edbp.",
   passwordChanged: "\u0110\u00e3 \u0111\u1ed5i m\u1eadt kh\u1ea9u.",
+  phoneUpdated: "Đã cập nhật số điện thoại.",
+  phoneUpdateFailed: "Không cập nhật được số điện thoại.",
   passwordChangeFailed:
     "Kh\u00f4ng \u0111\u1ed5i \u0111\u01b0\u1ee3c m\u1eadt kh\u1ea9u.",
   logout: "\u0110\u0103ng xu\u1ea5t",
@@ -47,6 +50,9 @@ const T = {
     "Th\u00f4ng tin h\u1ed7 tr\u1ee3 t\u00e0i kho\u1ea3n v\u00e0 quy\u1ec1n truy c\u1eadp.",
   adminOwner: "Admin ph\u1ee5 tr\u00e1ch",
   phone: "S\u1ed1 \u0111i\u1ec7n tho\u1ea1i",
+  updatePhone: "Cập nhật số điện thoại",
+  savePhone: "Lưu số điện thoại",
+  saving: "Đang lưu...",
   noContact:
     "Admin ch\u01b0a c\u1eadp nh\u1eadt th\u00f4ng tin li\u00ean h\u1ec7.",
 };
@@ -133,7 +139,9 @@ function tabClass(active) {
 }
 
 export default function AccountView({ user, settings }) {
+  const { setUser } = useAuth();
   const [page, setPage] = useState("account");
+  const [userPhone, setUserPhone] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -141,6 +149,11 @@ export default function AccountView({ user, settings }) {
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+
+  useEffect(() => {
+    setUserPhone(normalizePhone10(user?.phone));
+  }, [user?.phone]);
 
   const contact = settings?.adminContact || {};
   const hasContact = [
@@ -187,6 +200,34 @@ export default function AccountView({ user, settings }) {
     }
   }
 
+  function normalizePhone10(value) {
+    return String(value || "").replace(/\D/g, "").slice(0, 10);
+  }
+
+  async function submitPhone(e) {
+    e?.preventDefault?.();
+    if (!user?.id) return alert(T.accountMissing);
+    const phone = normalizePhone10(userPhone);
+
+    setProfileBusy(true);
+    try {
+      const updated = await authService.updateProfile(user.id, { phone });
+      const nextUser = { ...user, ...(updated || {}), phone };
+      setUser?.(nextUser);
+      setUserPhone(phone);
+      alert(T.phoneUpdated);
+    } catch (err) {
+      alert(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          T.phoneUpdateFailed,
+      );
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-md space-y-4 px-4 pb-24">
       <div className="grid grid-cols-2 gap-2 rounded-2xl bg-sky-100 p-1 shadow-sm ring-1 ring-sky-200">
@@ -228,7 +269,39 @@ export default function AccountView({ user, settings }) {
             <div className="mt-4 grid grid-cols-1 gap-2">
               <FieldRow label={T.displayName} value={user?.name} />
               <FieldRow label="Username" value={user?.username} />
+              <FieldRow label={T.phone} value={userPhone} />
             </div>
+          </section>
+
+          <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+              <Phone className="h-4 w-4 text-sky-700" />
+              {T.updatePhone}
+            </div>
+            <form className="mt-3 space-y-3" onSubmit={submitPhone}>
+              <label className="block space-y-1">
+                <div className="text-xs font-medium text-slate-600">{T.phone}</div>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={userPhone}
+                  onChange={(e) => setUserPhone(normalizePhone10(e.target.value))}
+                  placeholder="VD: 0987654321"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-slate-400"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={profileBusy}
+                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[rgb(36_99_132)] disabled:opacity-60"
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  {profileBusy ? T.saving : T.savePhone}
+                </span>
+              </button>
+            </form>
           </section>
 
           <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">

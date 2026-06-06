@@ -730,6 +730,7 @@ function userPayload(data = {}, includePassword = false) {
   const payload = {};
   if (Object.prototype.hasOwnProperty.call(data, "username")) payload.username = normalizeUsername(data.username);
   if (Object.prototype.hasOwnProperty.call(data, "name")) payload.name = String(data.name || "").trim();
+  if (Object.prototype.hasOwnProperty.call(data, "phone")) payload.phone = String(data.phone || "").replace(/\D/g, "").slice(0, 10);
   if (Object.prototype.hasOwnProperty.call(data, "role")) payload.role = data.role === "admin" ? "admin" : "user";
   if (Object.prototype.hasOwnProperty.call(data, "approved")) payload.approved = data.approved !== false;
   if (includePassword || data.password) {

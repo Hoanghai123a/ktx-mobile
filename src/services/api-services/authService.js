@@ -61,6 +61,10 @@ export const authService = {
       passwordConfirm: newPassword,
     });
   },
+  updateProfile: async (userId, patch) => {
+    if (!userId) throw makeError(400, { error: "Khong tim thay tai khoan." });
+    return api.patch(`/users/${userId}/`, patch || {});
+  },
   logout: () => {
     api.removeToken();
     api.removeCookie("token");

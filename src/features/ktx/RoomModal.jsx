@@ -136,6 +136,8 @@ export default function RoomModal({
     return Number.isFinite(n) ? String(n) : "";
   };
 
+  const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(0, 10);
+
   const stayEndReading = (stay, type) => {
     const prefix = type === "water" ? "water" : "electricity";
     return readingValue(stay?.[`${prefix}EndReading`] ?? stay?.[`${prefix}_end_reading`]);
@@ -732,7 +734,10 @@ export default function RoomModal({
               <TextField
                 label="Số điện thoại"
                 value={phone}
-                onChange={setPhone}
+                onChange={(v) => setPhone(normalizePhone10(v))}
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
                 placeholder="VD: 0987654321"
                 disabled={!auth?.isAdmin}
               />
@@ -849,7 +854,7 @@ export default function RoomModal({
                             electricityFee: Number(electricityFee || 0),
                             waterFee: Number(waterFee || 0),
                             freeRoomDays: Math.max(0, Math.floor(Number(freeRoomDays || 0))),
-                            phone: phone || "",
+                      phone: normalizePhone10(phone),
                             note: note || "",
                           },
                         });
@@ -862,7 +867,7 @@ export default function RoomModal({
                         gender: workerGender || "",
                         identityNumber: identityNumber.trim(),
                         hometown: hometown.trim(),
-                        phone: phone.trim(),
+                      phone: normalizePhone10(phone),
                         recruiter: recruiter.trim(),
                         electricityFee: Number(electricityFee || 0),
                         waterFee: Number(waterFee || 0),
@@ -1034,7 +1039,7 @@ export default function RoomModal({
                     );
                     setDob(w.dob || "");
                     setHometown(w.hometown || "");
-                    setPhone(w.phone || "");
+                    setPhone(normalizePhone10(w.phone));
                     setRecruiter(w.recruiter || "");
                     setElectricityFee(
                       Number(w.electricityFee || w.electricity_fee || 0),
