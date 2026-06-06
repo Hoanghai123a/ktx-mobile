@@ -158,6 +158,7 @@ async function pbRequestWithBuildingFilterFallback(collection, suffix = "", opti
 
 const AUTH_COLLECTION = import.meta.env.VITE_POCKETBASE_AUTH_COLLECTION || "users";
 const USER_PREFERENCES_COLLECTION = "user_preferences";
+const ACTIVITY_LOG_COLLECTION = "activity_logs";
 const BUILDING_KEY = "ktx_current_building_id";
 const AUTH_SETTINGS_KEY = "ktx_auth_require_approval";
 
@@ -371,6 +372,23 @@ function normalizeStay(s) {
   };
 }
 
+function activityLogOut(row) {
+  return {
+    id: row.id,
+    buildingId: row.building_id || "",
+    userId: row.user_id || "",
+    userName: row.user_name || row.expand?.user_id?.name || row.expand?.user_id?.username || "",
+    action: row.action || "",
+    entity: row.entity || "",
+    entityId: row.entity_id || "",
+    summary: row.summary || "",
+    method: row.method || "",
+    path: row.path || "",
+    changes: row.changes || {},
+    created: row.created || row.created_at || "",
+  };
+}
+
 function buildingOut(building, accessRole = "viewer") {
   return {
     ...building,
@@ -526,7 +544,7 @@ async function deleteRowsByFilter(collection, filter, signal) {
 
 async function deleteBuildingCascade(buildingId, signal) {
   const filter = anyEq("building_id", buildingId);
-  for (const collection of ["general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors", "app_settings"]) {
+  for (const collection of ["activity_logs", "general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors", "app_settings"]) {
     await deleteRowsByFilter(collection, filter, signal);
   }
   await deleteRowsByFilter("building_members", filter, signal);
@@ -661,6 +679,17 @@ async function handleGet(url, signal) {
     const roomId = path.split("/")[3];
     return pbList("water_records", { filter: combineFilters(eq("room_id", roomId), buildingFilter()), sort: "-month" }, signal);
   }
+  if (path === "/activity-logs/") {
+    const filters = [buildingFilter()];
+    const dateFrom = dateOnly(u.searchParams.get("date_from"));
+    const dateTo = dateOnly(u.searchParams.get("date_to"));
+    const limit = Math.min(5000, Math.max(1, Number(u.searchParams.get("limit") || 50)));
+    if (dateFrom) filters.push(`created >= "${dateFrom} 00:00:00.000Z"`);
+    if (dateTo) filters.push(`created <= "${dateTo} 23:59:59.999Z"`);
+    return (await safeList(ACTIVITY_LOG_COLLECTION, { filter: combineFilters(...filters), sort: "-created", expand: "user_id" }, signal))
+      .slice(0, limit)
+      .map(activityLogOut);
+  }
   if (path === "/notes/") {
     const filters = [];
     if (u.searchParams.get("target_id")) filters.push(eq("target_id", u.searchParams.get("target_id")));
@@ -741,6 +770,132 @@ function userPayload(data = {}, includePassword = false) {
   }
   if (Object.prototype.hasOwnProperty.call(data, "oldPassword")) payload.oldPassword = String(data.oldPassword || "");
   return payload;
+}
+
+function sanitizeAuditPayload(value) {
+  const blocked = new Set(["password", "passwordConfirm", "oldPassword", "token", "access_token"]);
+  try {
+    const text = JSON.stringify(value || {}, (key, val) => {
+      if (blocked.has(key)) return undefined;
+      if (typeof val === "string" && val.length > 500) return `${val.slice(0, 500)}...`;
+      return val;
+    });
+    if (text.length > 5000) return { truncated: true };
+    return JSON.parse(text || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function routeId(path) {
+  return path.split("/")[2] || "";
+}
+
+function auditSubject(data = {}, result = {}) {
+  return (
+    data.full_name ||
+    data.fullName ||
+    result.full_name ||
+    result.fullName ||
+    data.name ||
+    result.name ||
+    data.code ||
+    result.code ||
+    data.room_id ||
+    result.room_id ||
+    data.worker_id ||
+    result.worker_id ||
+    ""
+  );
+}
+
+function auditMeta(method, url, data = {}, result = {}) {
+  const path = new URL(url, "http://local").pathname;
+  if (data?.__globalBrand === true) return null;
+  if (["/login/", "/register/", "/auth-settings/", "/pinned-buildings/"].includes(path)) return null;
+
+  if (path === "/settings/" && method === "PATCH") return { action: "Cập nhật", entity: "Cài đặt", summary: "Cập nhật cài đặt KTX" };
+  if (path === "/init-ktx/" && method === "POST") return { action: "Khởi tạo", entity: "KTX", summary: "Khởi tạo tầng/phòng KTX" };
+  if (path === "/wipe-database/" && method === "POST") return { action: "Xóa", entity: "KTX", summary: "Xóa dữ liệu KTX" };
+
+  const routes = [
+    { base: "workers", entity: "NLĐ", create: "Thêm NLĐ", update: "Cập nhật NLĐ", remove: "Xóa NLĐ" },
+    { base: "floors", entity: "Tầng", create: "Thêm tầng", update: "Cập nhật tầng", remove: "Xóa tầng" },
+    { base: "rooms", entity: "Phòng", create: "Thêm phòng", update: "Cập nhật phòng", remove: "Xóa phòng" },
+    { base: "notes", entity: "Ghi chú", create: "Thêm ghi chú", update: "Cập nhật ghi chú", remove: "Xóa ghi chú" },
+  ];
+
+  for (const item of routes) {
+    if (path === `/${item.base}/` && method === "POST") {
+      const subject = auditSubject(data, result);
+      return { action: "Thêm", entity: item.entity, entityId: result.id, summary: subject ? `${item.create}: ${subject}` : item.create };
+    }
+    if (new RegExp(`^/${item.base}/[^/]+/?$`).test(path)) {
+      if (method === "PATCH") {
+        const subject = auditSubject(data, result);
+        return { action: "Cập nhật", entity: item.entity, entityId: routeId(path), summary: subject ? `${item.update}: ${subject}` : item.update };
+      }
+      if (method === "DELETE") return { action: "Xóa", entity: item.entity, entityId: routeId(path), summary: item.remove };
+    }
+  }
+
+  if (path === "/stays/" && method === "POST") return { action: "Thêm", entity: "Lượt ở", entityId: result.id, summary: "Thêm NLĐ vào phòng" };
+  if (/^\/stays\/[^/]+\/?$/.test(path)) {
+    if (method === "PATCH") {
+      const summary = data.utility_paid_at ? "Thu tiền NLĐ" : data.date_out ? "Cập nhật rời phòng" : "Cập nhật lượt ở";
+      return { action: "Cập nhật", entity: "Lượt ở", entityId: routeId(path), summary };
+    }
+    if (method === "DELETE") return { action: "Xóa", entity: "Lượt ở", entityId: routeId(path), summary: "Xóa lượt ở" };
+  }
+
+  if (path === "/electricities/" && method === "POST") {
+    return { action: data.paid ? "Thu" : "Cập nhật", entity: "Điện", entityId: result.id || data.id, summary: data.paid ? "Thu tiền điện" : "Lưu chỉ số điện" };
+  }
+  if (path === "/water-records/" && method === "POST") {
+    return { action: data.paid ? "Thu" : "Cập nhật", entity: "Nước", entityId: result.id || data.id, summary: data.paid ? "Thu tiền nước" : "Lưu chỉ số nước" };
+  }
+  if (/^\/electricities\/[^/]+\/pay\/?$/.test(path)) return { action: "Thu", entity: "Điện", entityId: routeId(path), summary: "Thu tiền điện" };
+  if (/^\/water-records\/[^/]+\/pay\/?$/.test(path)) return { action: "Thu", entity: "Nước", entityId: routeId(path), summary: "Thu tiền nước" };
+  if (/^\/electricities\/[^/]+\/?$/.test(path) && method === "DELETE") return { action: "Xóa", entity: "Điện", entityId: routeId(path), summary: "Xóa chỉ số điện" };
+  if (/^\/water-records\/[^/]+\/?$/.test(path) && method === "DELETE") return { action: "Xóa", entity: "Nước", entityId: routeId(path), summary: "Xóa chỉ số nước" };
+
+  return null;
+}
+
+async function recordActivity(method, url, data, result, signal) {
+  const buildingId = currentBuildingId();
+  const meta = auditMeta(method, url, data, result);
+  if (!buildingId || !meta) return;
+  let user = null;
+  try {
+    user = await currentUser(signal);
+  } catch {
+    user = null;
+  }
+  const path = new URL(url, "http://local").pathname;
+  const body = {
+    building_id: buildingId,
+    ...(user?.id ? { user_id: user.id } : {}),
+    user_name: user?.name || user?.username || user?.email || "",
+    action: meta.action,
+    entity: meta.entity,
+    entity_id: meta.entityId || result?.id || data?.id || routeId(path),
+    summary: meta.summary,
+    method,
+    path,
+    changes: sanitizeAuditPayload(data),
+  };
+  try {
+    await pbRequest(ACTIVITY_LOG_COLLECTION, "", { method: "POST", body, signal });
+  } catch (e) {
+    if (![400, 403, 404].includes(e?.response?.status)) console.warn("Activity log failed", e);
+  }
+}
+
+async function withActivityLog(method, url, data, signal, fn) {
+  const result = await fn();
+  await recordActivity(method, url, data, result, signal);
+  return result;
 }
 
 async function handlePost(url, data, signal) {
@@ -966,9 +1121,9 @@ async function wrap(url, fn, delay = DEFAULT_DELAY) {
 }
 
 export const debounceGet = (url, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => handleGet(url, signal), delay);
-export const debouncePost = (url, data, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => handlePost(url, data, signal), delay);
-export const debouncePatch = (url, data, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => handlePatch(url, data, signal), delay);
-export const debounceDelete = (url, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => handleDelete(url, signal), delay);
+export const debouncePost = (url, data, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => withActivityLog("POST", url, data, signal, () => handlePost(url, data, signal)), delay);
+export const debouncePatch = (url, data, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => withActivityLog("PATCH", url, data, signal, () => handlePatch(url, data, signal)), delay);
+export const debounceDelete = (url, _token, delay = DEFAULT_DELAY) => wrap(url, (signal) => withActivityLog("DELETE", url, {}, signal, () => handleDelete(url, signal)), delay);
 
 function error(e) {
   const data = e?.response?.data;

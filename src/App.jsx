@@ -32,6 +32,7 @@ import TabButton from "./components/ui/TabButton";
 import { importExcelFileToDb } from "./services/excelImportService";
 import {
   exportExcel as exportExcelSvc,
+  exportActivityLogExcel as exportActivityLogExcelSvc,
   exportPaymentExcel as exportPaymentExcelSvc,
 } from "./services/excelExportService";
 import Pill from "./components/ui/Pill";
@@ -487,6 +488,7 @@ import {
   settingsService,
   buildingService,
   authService,
+  activityLogService,
 } from "./services/api-services";
 import { message } from "antd";
 import { InstallAppBanner, InstallGuideModal } from "./features/pwa/InstallApp";
@@ -533,6 +535,8 @@ export default function App() {
   const [buildingUsers, setBuildingUsers] = useState([]);
   const [buildingMembers, setBuildingMembers] = useState([]);
   const [authSettings, setAuthSettings] = useState({ require_approval: true });
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [activityLogLoading, setActivityLogLoading] = useState(false);
   const [selectedBuildingId, setSelectedBuildingIdState] = useState(
     () => localStorage.getItem("ktx_current_building_id") || "",
   );
@@ -740,6 +744,23 @@ export default function App() {
   useEffect(() => {
     refreshBuildings();
   }, [refreshBuildings]);
+
+  const loadActivityLogs = useCallback(async () => {
+    if (!token || !selectedBuildingId) {
+      setActivityLogs([]);
+      return;
+    }
+    try {
+      setActivityLogLoading(true);
+      const rows = await activityLogService.getAll(token, { limit: 50 });
+      setActivityLogs(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.warn("Load activity logs error:", err);
+      setActivityLogs([]);
+    } finally {
+      setActivityLogLoading(false);
+    }
+  }, [selectedBuildingId, token]);
 
   useEffect(() => {
     const userKey = user?.id || user?.username || "";
@@ -1675,6 +1696,47 @@ export default function App() {
     );
   }, [state.floors]);
 
+  const activityLogLookup = useMemo(() => {
+    const workers = new Map();
+    const rooms = new Map();
+    const floors = new Map();
+    const stays = new Map();
+
+    for (const w of state.workers || []) {
+      workers.set(w.id, {
+        id: w.id,
+        name: w.fullName || w.employeeCode || "",
+        label: [w.employeeCode, w.fullName].filter(Boolean).join(" - ") || w.id,
+      });
+    }
+
+    for (const f of state.floors || []) {
+      floors.set(f.id, { id: f.id, name: f.name || "", label: f.name || f.id });
+      for (const r of f.rooms || []) {
+        rooms.set(r.id, {
+          id: r.id,
+          code: r.code || "",
+          floorName: f.name || "",
+          label: `${f.name ? `${f.name} · ` : ""}Phòng ${r.code || r.id}`,
+        });
+        for (const st of r.stays || []) {
+          const worker = workers.get(st.workerId);
+          const room = rooms.get(r.id);
+          stays.set(st.id, {
+            id: st.id,
+            workerId: st.workerId,
+            roomId: r.id,
+            workerLabel: worker?.label || worker?.name || "",
+            roomLabel: room?.label || "",
+            label: [worker?.label || worker?.name, room?.label].filter(Boolean).join(" · "),
+          });
+        }
+      }
+    }
+
+    return { workers, rooms, floors, stays };
+  }, [state.floors, state.workers]);
+
   const utilityBilling = useMemo(
     () =>
       calculateUtilityBilling({
@@ -1944,6 +2006,31 @@ export default function App() {
       workerPaymentRows,
       todayISO,
     });
+  }
+
+  async function exportActivityLogs({ dateFrom, dateTo, resolveDetail }) {
+    if (!dateFrom || !dateTo) {
+      alert("Chọn khoảng ngày cần xuất log.");
+      return;
+    }
+    try {
+      const rows = await activityLogService.getAll(token, {
+        dateFrom,
+        dateTo,
+        limit: 5000,
+      });
+      exportActivityLogExcelSvc({
+        rows: (Array.isArray(rows) ? rows : []).map((row) => ({
+          ...row,
+          detail: resolveDetail?.(row) || "",
+        })),
+        dateFrom,
+        dateTo,
+        todayISO,
+      });
+    } catch (e) {
+      alert(e.message || String(e));
+    }
   }
 
   async function advanceNextMonthReadingsForRoom(roomId) {
@@ -2460,6 +2547,11 @@ export default function App() {
             workerPaymentRows={workerPaymentRows}
             markWorkerUtilityPaid={markWorkerUtilityPaid}
             openElectricityHistory={openHistory}
+            activityLogs={activityLogs}
+            activityLogLoading={activityLogLoading}
+            loadActivityLogs={loadActivityLogs}
+            activityLogLookup={activityLogLookup}
+            exportActivityLogs={exportActivityLogs}
           />
         ) : null}
         {tab === "about" ? (
@@ -2687,6 +2779,31 @@ export default function App() {
               billingCloseDay: state.settings.billingCloseDay,
               updateWorker: async ({ workerId, patch }) => {
                 return await updateWorker(workerId, patch || {});
+              },
+              updateStayReadings: async ({
+                stayId,
+                electricityStartReading,
+                waterStartReading,
+              }) => {
+                try {
+                  if (!token) {
+                    setLoginModal(true);
+                    return false;
+                  }
+                  await stayService.update(
+                    stayId,
+                    {
+                      electricity_start_reading: Number(electricityStartReading || 0),
+                      water_start_reading: Number(waterStartReading || 0),
+                    },
+                    token,
+                  );
+                  await loadAllFromDb();
+                  return true;
+                } catch (e) {
+                  alert(e.message || String(e));
+                  return false;
+                }
               },
               deleteWorker: async ({ workerId }) => {
                 await deleteWorker(workerId);

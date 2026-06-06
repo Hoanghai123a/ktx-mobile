@@ -1,19 +1,100 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
   Droplets,
   FileDown,
   Home,
+  History,
+  RefreshCw,
   UserRound,
   Users,
   Zap,
 } from "lucide-react";
 
 import Pill from "../../components/ui/Pill";
+import Modal from "../../components/ui/Modal";
 
 function Money({ value }) {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
+}
+
+function formatLogTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function dateInputValue(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function addMonths(dateText, months) {
+  const [year, month, day] = String(dateText || "").split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1 + months, day, 23, 59, 59, 999);
+}
+
+function defaultLogDateFrom() {
+  const date = new Date();
+  date.setMonth(date.getMonth() - 1);
+  return dateInputValue(date);
+}
+
+function workerLabel(lookup, id) {
+  return lookup?.workers?.get?.(id)?.label || "";
+}
+
+function roomLabel(lookup, id) {
+  return lookup?.rooms?.get?.(id)?.label || "";
+}
+
+function stayLabel(lookup, id) {
+  return lookup?.stays?.get?.(id)?.label || "";
+}
+
+function logDetail(row, lookup) {
+  const changes = row?.changes || {};
+  const entity = row?.entity || "";
+
+  if (entity === "NLĐ") {
+    const label = workerLabel(lookup, row.entityId || changes.worker_id) || changes.full_name || changes.fullName;
+    return label ? `NLĐ · ${label}` : "NLĐ";
+  }
+
+  if (entity === "Phòng") {
+    const label = roomLabel(lookup, row.entityId || changes.room_id) || changes.code;
+    return label || "Phòng";
+  }
+
+  if (entity === "Tầng") {
+    const label = lookup?.floors?.get?.(row.entityId)?.label || changes.name;
+    return label ? `Tầng · ${label}` : "Tầng";
+  }
+
+  if (entity === "Lượt ở") {
+    const fromStay = stayLabel(lookup, row.entityId);
+    const fromChanges = [
+      workerLabel(lookup, changes.worker_id),
+      roomLabel(lookup, changes.room_id),
+    ].filter(Boolean).join(" · ");
+    return fromStay || fromChanges || "Lượt ở";
+  }
+
+  if (entity === "Điện" || entity === "Nước") {
+    const label = roomLabel(lookup, changes.room_id);
+    const month = changes.month ? String(changes.month).slice(0, 7) : "";
+    return [entity, label, month].filter(Boolean).join(" · ") || entity;
+  }
+
+  return entity || "Log";
 }
 
 export default function StatsView({
@@ -37,8 +118,16 @@ export default function StatsView({
   workerPaymentRows = [],
   markWorkerUtilityPaid,
   openElectricityHistory,
+  activityLogs = [],
+  activityLogLoading = false,
+  loadActivityLogs,
+  activityLogLookup,
+  exportActivityLogs,
 }) {
   const [section, setSection] = useState("workers");
+  const [logExportOpen, setLogExportOpen] = useState(false);
+  const [logDateFrom, setLogDateFrom] = useState(defaultLogDateFrom);
+  const [logDateTo, setLogDateTo] = useState(() => dateInputValue());
   const electricityTotal = (pendingElectricityAmount || 0) + (paidElectricityAmount || 0);
   const waterTotal = (pendingWaterAmount || 0) + (paidWaterAmount || 0);
   const roomTotal = (pendingRoomAmount || 0) + (paidRoomAmount || 0);
@@ -52,9 +141,39 @@ export default function StatsView({
     [electricityTotal, roomTotal, waterTotal],
   );
 
+  useEffect(() => {
+    if (section === "logs") loadActivityLogs?.();
+  }, [loadActivityLogs, section]);
+
+  const visibleActivityLogs = useMemo(() => activityLogs.slice(0, 50), [activityLogs]);
+
+  function handleExportLogs() {
+    if (!logDateFrom || !logDateTo) {
+      alert("Chọn khoảng ngày cần xuất log.");
+      return;
+    }
+    const start = new Date(`${logDateFrom}T00:00:00`);
+    const end = new Date(`${logDateTo}T23:59:59`);
+    const maxEnd = addMonths(logDateFrom, 3);
+    if (end < start) {
+      alert("Ngày kết thúc phải sau ngày bắt đầu.");
+      return;
+    }
+    if (maxEnd && end > maxEnd) {
+      alert("Khoảng ngày xuất log tối đa 3 tháng.");
+      return;
+    }
+    exportActivityLogs?.({
+      dateFrom: logDateFrom,
+      dateTo: logDateTo,
+      resolveDetail: (row) => logDetail(row, activityLogLookup),
+    });
+    setLogExportOpen(false);
+  }
+
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-24">
-      <div className="grid grid-cols-2 gap-2 rounded-3xl bg-white p-1.5 shadow-sm ring-1 ring-slate-100">
+      <div className="grid grid-cols-3 gap-2 rounded-3xl bg-white p-1.5 shadow-sm ring-1 ring-slate-100">
         <button
           className={`rounded-2xl px-3 py-2 text-sm font-semibold ${section === "workers" ? "bg-[rgb(44_120_159)] text-white" : "text-slate-600"}`}
           onClick={() => setSection("workers")}
@@ -66,6 +185,12 @@ export default function StatsView({
           onClick={() => setSection("payments")}
         >
           Thanh toán
+        </button>
+        <button
+          className={`rounded-2xl px-3 py-2 text-sm font-semibold ${section === "logs" ? "bg-[rgb(44_120_159)] text-white" : "text-slate-600"}`}
+          onClick={() => setSection("logs")}
+        >
+          Log
         </button>
       </div>
 
@@ -133,7 +258,7 @@ export default function StatsView({
             )}
           </div>
         </>
-      ) : (
+      ) : section === "payments" ? (
         <>
           <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
             <div className="flex items-start justify-between gap-3">
@@ -242,7 +367,108 @@ export default function StatsView({
             </div>
           </div>
         </>
+      ) : (
+        <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900">
+              <History className="h-4 w-4 shrink-0" />
+              <span className="truncate">Log chỉnh sửa</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+                onClick={() => loadActivityLogs?.()}
+                title="Tải lại"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+              <button
+                className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+                onClick={() => setLogExportOpen(true)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <FileDown className="h-4 w-4" />
+                  Excel
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {activityLogLoading ? (
+              <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">Đang tải log...</div>
+            ) : visibleActivityLogs.length ? (
+              visibleActivityLogs.map((row) => {
+                const detail = logDetail(row, activityLogLookup);
+                return (
+                <div key={row.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">
+                        {row.summary || `${row.action || "Cập nhật"} ${row.entity || "dữ liệu"}`}
+                      </div>
+                      <div className="mt-0.5 truncate text-xs text-slate-500">
+                        {row.userName || "Không rõ user"} · {formatLogTime(row.created)}
+                      </div>
+                    </div>
+                    <div className="shrink-0 rounded-2xl bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
+                      {row.action || row.method || "Log"}
+                    </div>
+                  </div>
+                  {detail ? (
+                    <div className="mt-2 text-xs text-slate-500">
+                      {detail}
+                    </div>
+                  ) : null}
+                </div>
+                );
+              })
+            ) : (
+              <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">Chưa có log chỉnh sửa.</div>
+            )}
+          </div>
+        </div>
       )}
+
+      <Modal
+        open={logExportOpen}
+        title="Xuất Excel log"
+        onClose={() => setLogExportOpen(false)}
+        zIndex="z-[70]"
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block space-y-1">
+              <div className="text-xs font-medium text-slate-600">Từ ngày</div>
+              <input
+                type="date"
+                value={logDateFrom}
+                onChange={(e) => setLogDateFrom(e.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+              />
+            </label>
+            <label className="block space-y-1">
+              <div className="text-xs font-medium text-slate-600">Đến ngày</div>
+              <input
+                type="date"
+                value={logDateTo}
+                onChange={(e) => setLogDateTo(e.target.value)}
+                className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400"
+              />
+            </label>
+          </div>
+          <button
+            className="w-full rounded-2xl bg-[rgb(44_120_159)] px-3 py-3 text-sm font-semibold text-white"
+            onClick={handleExportLogs}
+          >
+            <span className="inline-flex items-center justify-center gap-2">
+              <FileDown className="h-4 w-4" />
+              Tải Excel log
+            </span>
+          </button>
+          <div className="text-[11px] leading-4 text-slate-500">Khoảng ngày xuất tối đa 3 tháng.</div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -67,6 +67,121 @@ test("checkout bounds use room readings outside stay-specific billing window", (
   assert.equal(bounds.endSource, "stay");
 });
 
+test("checkout start reading uses stay reading for workers entering on period start", () => {
+  const room = {
+    id: "r1",
+    electricity: [{ month: "2026-06", start_reading: 100, end_reading: 200 }],
+  };
+
+  const bounds = getUtilityCheckoutBounds({
+    room,
+    stay: {
+      workerId: "w1",
+      dateIn: "2026-05-25",
+      dateOut: "2026-06-20",
+      electricityStartReading: 123,
+      electricityEndReading: 170,
+    },
+    type: "electricity",
+    billingMonth: "2026-06",
+    billingCloseDay: 25,
+    dateOut: "2026-06-20",
+  });
+
+  assert.equal(bounds.period.start, "2026-05-25");
+  assert.equal(bounds.effectiveStartDate, "2026-05-25");
+  assert.equal(bounds.startReading, 123);
+  assert.equal(bounds.startSource, "stay");
+});
+
+test("checkout start reading uses room reading for workers entering before period start", () => {
+  const room = {
+    id: "r1",
+    electricity: [{ month: "2026-06", start_reading: 100, end_reading: 200 }],
+  };
+
+  const bounds = getUtilityCheckoutBounds({
+    room,
+    stay: {
+      workerId: "w1",
+      dateIn: "2026-05-24",
+      dateOut: "2026-06-20",
+      electricityStartReading: 123,
+      electricityEndReading: 170,
+    },
+    type: "electricity",
+    billingMonth: "2026-06",
+    billingCloseDay: 25,
+    dateOut: "2026-06-20",
+  });
+
+  assert.equal(bounds.period.start, "2026-05-25");
+  assert.equal(bounds.effectiveStartDate, "2026-05-25");
+  assert.equal(bounds.startReading, 100);
+  assert.equal(bounds.startSource, "room");
+});
+
+test("checkout start reading can use period-start reading from previous utility record", () => {
+  const room = {
+    id: "6393nq4ry6d1otb",
+    electricity: [
+      {
+        month: "2026-05",
+        start_reading: 346,
+        end_reading: 387,
+        readings: [
+          { date: "2026-04-10", reading: 346 },
+          { date: "2026-05-10", reading: 387 },
+        ],
+      },
+    ],
+  };
+
+  const bounds = getUtilityCheckoutBounds({
+    room,
+    stay: {
+      workerId: "wa0rqt7rbxg0ek9",
+      dateIn: "2026-03-29",
+      electricityStartReading: 20,
+      electricityEndReading: 0,
+    },
+    type: "electricity",
+    billingMonth: "2026-06",
+    billingCloseDay: 10,
+    dateOut: "2026-06-06",
+  });
+
+  assert.equal(bounds.period.start, "2026-05-10");
+  assert.equal(bounds.effectiveStartDate, "2026-05-10");
+  assert.equal(bounds.startReading, 387);
+  assert.equal(bounds.startSource, "room");
+});
+
+test("checkout start reading does not fall back to stay reading before period start", () => {
+  const room = {
+    id: "r1",
+    electricity: [],
+  };
+
+  const bounds = getUtilityCheckoutBounds({
+    room,
+    stay: {
+      workerId: "w1",
+      dateIn: "2026-05-01",
+      dateOut: "2026-06-20",
+      electricityStartReading: 0,
+      electricityEndReading: 170,
+    },
+    type: "electricity",
+    billingMonth: "2026-06",
+    billingCloseDay: 25,
+    dateOut: "2026-06-20",
+  });
+
+  assert.equal(bounds.startReading, "");
+  assert.equal(bounds.startSource, "room");
+});
+
 test("room utility is split by occupants in each reading interval", () => {
   const room = {
     id: "r1",

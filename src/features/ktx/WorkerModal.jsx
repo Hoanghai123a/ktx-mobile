@@ -52,6 +52,8 @@ export default function WorkerModal({
   const [electricityFee, setElectricityFee] = useState(worker?.electricityFee || 0);
   const [waterFee, setWaterFee] = useState(worker?.waterFee || 0);
   const [freeRoomDays, setFreeRoomDays] = useState(worker?.freeRoomDays || 0);
+  const [electricityStartReading, setElectricityStartReading] = useState("");
+  const [waterStartReading, setWaterStartReading] = useState("");
   const [note, setNote] = useState(worker?.note || "");
   const [confirmDel, setConfirmDel] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -93,6 +95,11 @@ export default function WorkerModal({
     const list = stays || [];
     return list.find((s) => !s.dateOut) || null;
   }, [stays]);
+
+  useEffect(() => {
+    setElectricityStartReading(numberOrBlank(currentStay?.electricityStartReading ?? currentStay?.electricity_start_reading));
+    setWaterStartReading(numberOrBlank(currentStay?.waterStartReading ?? currentStay?.water_start_reading));
+  }, [currentStay?.id, currentStay?.electricityStartReading, currentStay?.electricity_start_reading, currentStay?.waterStartReading, currentStay?.water_start_reading]);
 
   const startReadings = useMemo(() => {
     const room = currentStay?.roomId ? roomById?.get?.(currentStay.roomId) : null;
@@ -243,18 +250,22 @@ export default function WorkerModal({
                   disabled={!auth?.isAdmin}
                 />
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-medium text-slate-600">Số điện đầu vào</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">
-                      {startReadings.electricity === "" ? "Chưa có" : Number(startReadings.electricity).toLocaleString("vi-VN")}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="text-xs font-medium text-slate-600">Số nước đầu vào</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">
-                      {startReadings.water === "" ? "Chưa có" : Number(startReadings.water).toLocaleString("vi-VN")}
-                    </div>
-                  </div>
+                  <TextField
+                    label="Số điện đầu vào"
+                    value={electricityStartReading}
+                    onChange={setElectricityStartReading}
+                    type="number"
+                    placeholder={startReadings.electricity === "" ? "0" : String(startReadings.electricity)}
+                    disabled={!auth?.isAdmin || !currentStay}
+                  />
+                  <TextField
+                    label="Số nước đầu vào"
+                    value={waterStartReading}
+                    onChange={setWaterStartReading}
+                    type="number"
+                    placeholder={startReadings.water === "" ? "0" : String(startReadings.water)}
+                    disabled={!auth?.isAdmin || !currentStay}
+                  />
                 </div>
                 <TextField
                   label="Ghi chú"
@@ -304,6 +315,18 @@ export default function WorkerModal({
                           note: note || "",
                         },
                       });
+
+                      if (result && currentStay?.id && actions?.updateStayReadings) {
+                        const stayResult = await actions.updateStayReadings({
+                          stayId: currentStay.id,
+                          electricityStartReading: Number(electricityStartReading || 0),
+                          waterStartReading: Number(waterStartReading || 0),
+                        });
+                        if (stayResult === false) {
+                          message.error("Lưu chỉ số điện/nước thất bại.");
+                          return;
+                        }
+                      }
 
                       if (result) {
                         message.success("Cập nhật thông tin thành công!");

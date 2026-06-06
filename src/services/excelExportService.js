@@ -184,3 +184,26 @@ export function exportPaymentExcel({ floors, workerById, billingMonth, utilityBi
   const suffix = billingMonth || todayISO();
   XLSX.writeFile(wb, `Thanh_toan_KTX_${suffix}.xlsx`);
 }
+
+export function exportActivityLogExcel({ rows = [], dateFrom = "", dateTo = "", todayISO }) {
+  const sheetRows = rows.map((row) => ({
+    "Thời gian": row.created || "",
+    "User": row.userName || "",
+    "Hành động": row.action || "",
+    "Loại dữ liệu": row.entity || "",
+    "Nội dung": row.summary || "",
+    "Chi tiết": row.detail || "",
+    "Phương thức": row.method || "",
+    "Đường dẫn": row.path || "",
+  }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(sheetRows),
+    "Log",
+  );
+
+  const suffix = dateFrom && dateTo ? `${dateFrom}_${dateTo}` : todayISO();
+  XLSX.writeFile(wb, `Log_KTX_${suffix}.xlsx`);
+}

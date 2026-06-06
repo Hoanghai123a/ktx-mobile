@@ -9,6 +9,7 @@ import noteService from "./noteService.js";
 import electricityService from "./electricityService.js";
 import waterService from "./waterService.js";
 import buildingService from "./buildingService.js";
+import activityLogService from "./activityLogService.js";
 
 export {
   workerService,
@@ -22,4 +23,5 @@ export {
   electricityService,
   waterService,
   buildingService,
+  activityLogService,
 };

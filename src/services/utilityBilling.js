@@ -292,6 +292,22 @@ export function findUtilityRecord(room, type, billingMonth) {
   return list.find((row) => String(row?.month || "").slice(0, 7) === month) || null;
 }
 
+function findRoomReadingAtDate(room, type, date) {
+  const config = UTILITY_CONFIG[type] || UTILITY_CONFIG.electricity;
+  const targetDate = normalizeDate(date);
+  if (!targetDate) return "";
+  const list = Array.isArray(room?.[config.roomKey]) ? room[config.roomKey] : [];
+  for (const record of list) {
+    for (const row of parseReadings(record?.readings)) {
+      if (normalizeDate(row?.date) === targetDate) {
+        const reading = numberOrBlank(row?.reading);
+        if (reading !== "") return reading;
+      }
+    }
+  }
+  return "";
+}
+
 export function getUtilityCheckoutBounds({ room, stay, type = "electricity", billingMonth, billingCloseDay = 1, dateOut }) {
   const period = getBillingPeriod(billingMonth || dateOut, billingCloseDay || 1);
   const record = findUtilityRecord(room, type, period.month);
@@ -299,18 +315,19 @@ export function getUtilityCheckoutBounds({ room, stay, type = "electricity", bil
   const leaveDate = normalizeDate(dateOut ?? stay?.dateOut ?? stay?.date_out) || period.end;
   const stayStart = stayReading(stay, type, "start");
   const stayEnd = stayReading(stay, type, "end");
-  const roomStart = numberOrBlank(record?.start_reading ?? record?.startReading);
+  const currentRoomStart = numberOrBlank(record?.start_reading ?? record?.startReading);
+  const roomStart = currentRoomStart !== "" ? currentRoomStart : findRoomReadingAtDate(room, type, period.start);
   const roomEnd = numberOrBlank(record?.end_reading ?? record?.endReading);
-  const enteredAfterPeriodStart = !!dateIn && dateIn > period.start;
+  const enteredInPeriod = !!dateIn && dateIn >= period.start;
   const leftBeforePeriodEnd = !!leaveDate && leaveDate < period.end;
 
   return {
     period,
-    effectiveStartDate: enteredAfterPeriodStart ? dateIn : period.start,
+    effectiveStartDate: enteredInPeriod ? dateIn : period.start,
     effectiveEndDate: leftBeforePeriodEnd ? leaveDate : period.end,
-    startReading: enteredAfterPeriodStart ? stayStart : roomStart || stayStart,
-    endReading: leftBeforePeriodEnd ? stayEnd : roomEnd || stayEnd,
-    startSource: enteredAfterPeriodStart ? "stay" : "room",
+    startReading: enteredInPeriod ? stayStart : roomStart,
+    endReading: leftBeforePeriodEnd ? stayEnd : roomEnd,
+    startSource: enteredInPeriod ? "stay" : "room",
     endSource: leftBeforePeriodEnd ? "stay" : "room",
   };
 }

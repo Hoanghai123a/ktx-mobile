@@ -139,6 +139,7 @@ export default function RoomModal({
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(0, 10);
 
   const stayEndReading = (stay, type) => {
+    if (!stay?.dateOut && !stay?.date_out) return "";
     const prefix = type === "water" ? "water" : "electricity";
     return readingValue(stay?.[`${prefix}EndReading`] ?? stay?.[`${prefix}_end_reading`]);
   };
@@ -172,17 +173,12 @@ export default function RoomModal({
   const checkOutAmount = useMemo(() => {
     const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
     const workerId = checkOutCtx.workerId || stay?.workerId;
-    const hasInputs =
-      stay &&
-      workerId &&
-      checkOutCtx.dateOut &&
-      checkOutCtx.electricityStartReading !== "" &&
-      checkOutCtx.electricityEndReading !== "" &&
-      checkOutCtx.waterStartReading !== "" &&
-      checkOutCtx.waterEndReading !== "";
-    if (!hasInputs) return { electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0 };
+    const hasBase = stay && workerId && checkOutCtx.dateOut;
+    if (!hasBase) return { electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0 };
 
     const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
+    const canCalcElectricity = checkOutCtx.electricityStartReading !== "" && checkOutCtx.electricityEndReading !== "";
+    const canCalcWater = checkOutCtx.waterStartReading !== "" && checkOutCtx.waterEndReading !== "";
     const electricityBounds = getUtilityCheckoutBounds({
       room,
       stay: {
@@ -211,12 +207,12 @@ export default function RoomModal({
     });
     const patchedStay = {
       ...stay,
-      dateIn: electricityBounds.effectiveStartDate,
-      dateOut: electricityBounds.effectiveEndDate,
-      electricityStartReading: Number(electricityBounds.startReading || 0),
-      electricityEndReading: Number(electricityBounds.endReading || 0),
-      waterStartReading: Number(waterBounds.startReading || 0),
-      waterEndReading: Number(waterBounds.endReading || 0),
+      dateIn: canCalcElectricity ? electricityBounds.effectiveStartDate : waterBounds.effectiveStartDate,
+      dateOut: canCalcElectricity ? electricityBounds.effectiveEndDate : waterBounds.effectiveEndDate,
+      electricityStartReading: canCalcElectricity ? Number(electricityBounds.startReading || 0) : "",
+      electricityEndReading: canCalcElectricity ? Number(electricityBounds.endReading || 0) : "",
+      waterStartReading: canCalcWater ? Number(waterBounds.startReading || 0) : "",
+      waterEndReading: canCalcWater ? Number(waterBounds.endReading || 0) : "",
     };
     const patchedRoom = {
       ...room,
@@ -231,14 +227,18 @@ export default function RoomModal({
       periodStart: electricityBounds.effectiveStartDate,
       periodEnd: electricityBounds.effectiveEndDate,
     };
-    const electricity = calculateRoomUtility({ room: patchedRoom, type: "electricity", settings });
-    const water = calculateRoomUtility({
-      room: patchedRoom,
-      type: "water",
-      settings: { ...settings, periodStart: waterBounds.effectiveStartDate, periodEnd: waterBounds.effectiveEndDate },
-    });
-    const electricityAmount = electricity.amountByWorkerId.get(workerId) || 0;
-    const waterAmount = water.amountByWorkerId.get(workerId) || 0;
+    const electricity = canCalcElectricity
+      ? calculateRoomUtility({ room: patchedRoom, type: "electricity", settings })
+      : null;
+    const water = canCalcWater
+      ? calculateRoomUtility({
+          room: patchedRoom,
+          type: "water",
+          settings: { ...settings, periodStart: waterBounds.effectiveStartDate, periodEnd: waterBounds.effectiveEndDate },
+        })
+      : null;
+    const electricityAmount = electricity?.amountByWorkerId.get(workerId) || 0;
+    const waterAmount = water?.amountByWorkerId.get(workerId) || 0;
     const roomAmount = calculateRoomRentForStay({
       stay: { ...stay, dateOut: checkOutCtx.dateOut },
       worker: workerById?.get?.(workerId),
