@@ -961,7 +961,7 @@ export default function AdminBuildingsView({
                   {editingUserId ? "Sửa tài khoản" : "Tạo mới tài khoản"}
                 </div>
                 <div className="mt-0.5 text-xs text-slate-600">
-                  Username, tên hiển thị, quyền và mật khẩu.
+                  Username, Họ và tên, quyền và mật khẩu.
                 </div>
               </div>
               <button
@@ -983,7 +983,7 @@ export default function AdminBuildingsView({
                     placeholder="vd: user01"
                   />
                   <TextField
-                    label="Tên hiển thị"
+                    label="Họ và tên"
                     value={userDraft.name}
                     onChange={(v) => setUserDraft((s) => ({ ...s, name: v }))}
                     placeholder="Nguyễn Văn A"

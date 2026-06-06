@@ -186,9 +186,10 @@ function saveLocalRequireApproval(value) {
 async function getAuthSettings(signal) {
   try {
     const row = await pbFirst("system_settings", { filter: eq("key", "auth") }, signal);
-    const requireApproval = row?.require_approval !== false;
+    if (!row) return { id: null, require_approval: localRequireApproval() };
+    const requireApproval = row.require_approval !== false;
     saveLocalRequireApproval(requireApproval);
-    return { id: row?.id || null, require_approval: requireApproval };
+    return { id: row.id, require_approval: requireApproval };
   } catch {
     return { id: null, require_approval: localRequireApproval() };
   }
@@ -711,9 +712,10 @@ async function pbRegisterUser(data, signal) {
     signal,
   });
   if (!approved) {
-    return { pending_approval: true, message: "Tài khoản đã được tạo và đang chờ admin phê duyệt." };
+    return { pending_approval: true, approved: false, message: "Tài khoản đã được tạo và đang chờ admin phê duyệt." };
   }
-  return pbAuthWithPassword(username, password, signal);
+  const auth = await pbAuthWithPassword(username, password, signal);
+  return { ...auth, approved: true, message: "Tạo tài khoản thành công." };
 }
 
 function userPayload(data = {}, includePassword = false) {

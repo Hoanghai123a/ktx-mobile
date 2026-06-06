@@ -1,11 +1,25 @@
 import React, { useState } from "react";
-import { Building2, Eye, EyeOff, LogIn, ShieldCheck, UserPlus } from "lucide-react";
+import {
+  Building2,
+  Eye,
+  EyeOff,
+  LogIn,
+  ShieldCheck,
+  UserPlus,
+} from "lucide-react";
 import Pill from "../../components/ui/Pill";
 import TextField from "../../components/ui/TextField";
 import { authService } from "../../services/api-services";
 import { useAuth } from "../../contexts/AuthContext";
 
-function PasswordField({ label, value, onChange, placeholder, visible, onToggle }) {
+function PasswordField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggle,
+}) {
   const Icon = visible ? EyeOff : Eye;
   return (
     <label className="block space-y-1">
@@ -34,7 +48,10 @@ function PasswordField({ label, value, onChange, placeholder, visible, onToggle 
 
 function brandFromSettings(settings) {
   const siteName = String(settings?.siteName || "KTX").trim() || "KTX";
-  const logoUrl = String(settings?.logoUrl || settings?.about?.brandLogoUrl || "/logo.png").trim() || "/logo.png";
+  const logoUrl =
+    String(
+      settings?.logoUrl || settings?.about?.brandLogoUrl || "/logo.png",
+    ).trim() || "/logo.png";
   return { siteName, logoUrl };
 }
 
@@ -55,22 +72,32 @@ export default function AuthScreen({ settings }) {
   async function submit(e) {
     e?.preventDefault?.();
     const nextUsername = username.trim().toLowerCase();
-    if (!nextUsername || !password) return alert("Nhập username và mật khẩu.");
-    if (isRegister && password.length < 8) return alert("Mật khẩu đăng ký phải có ít nhất 8 ký tự.");
-    if (isRegister && password !== confirm) return alert("Mật khẩu xác nhận không khớp.");
+    if (!nextUsername || !password) return alert("Nhập tài khoản và mật khẩu.");
+    if (isRegister && password.length < 8)
+      return alert("Mật khẩu đăng ký phải có ít nhất 8 ký tự.");
+    if (isRegister && password !== confirm)
+      return alert("Mật khẩu xác nhận không khớp.");
     setBusy(true);
     try {
       const res = isRegister
         ? await authService.register({ username: nextUsername, password, name })
         : await authService.login(nextUsername, password);
       if (res?.pending_approval) {
-        alert(res.message || "Tài khoản đã được tạo và đang chờ admin phê duyệt.");
+        alert(
+          res.message || "Tài khoản đã được tạo và đang chờ admin phê duyệt.",
+        );
         setMode("login");
         return;
       }
+      if (isRegister) alert(res?.message || "Tạo tài khoản thành công.");
       login(res);
     } catch (err) {
-      alert(err?.response?.data?.message || err?.response?.data?.error || err?.message || "Không đăng nhập được.");
+      alert(
+        err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          err?.message ||
+          isRegister ? "Tạo tài khoản thất bại." : "Không đăng nhập được.",
+      );
     } finally {
       setBusy(false);
     }
@@ -85,8 +112,12 @@ export default function AuthScreen({ settings }) {
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <div className="text-xs font-medium text-sky-600">{brand.siteName}</div>
-              <div className="text-lg font-semibold text-slate-900">Quản lý tòa nhà</div>
+              <div className="text-xs font-medium text-sky-600">
+                {brand.siteName}
+              </div>
+              <div className="text-lg font-semibold text-slate-900">
+                Quản lý tòa nhà
+              </div>
             </div>
           </div>
           <Pill icon={ShieldCheck} text="Bảo mật" tone="sky" />
@@ -102,44 +133,77 @@ export default function AuthScreen({ settings }) {
               />
             </div>
             <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
-            <div className="mb-4 grid grid-cols-2 rounded-2xl bg-sky-50 p-1 ring-1 ring-sky-100">
-              <button
-                type="button"
-                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${!isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
-                onClick={() => setMode("login")}
-              >
-                Đăng nhập
-              </button>
-              <button
-                type="button"
-                className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
-                onClick={() => setMode("register")}
-              >
-                Đăng ký
-              </button>
-            </div>
+              <div className="mb-4 grid grid-cols-2 rounded-2xl bg-sky-50 p-1 ring-1 ring-sky-100">
+                <button
+                  type="button"
+                  className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${!isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
+                  onClick={() => setMode("login")}
+                >
+                  Đăng nhập
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isRegister ? "bg-[rgb(44_120_159)] text-white shadow-sm" : "text-slate-500"}`}
+                  onClick={() => setMode("register")}
+                >
+                  Đăng ký
+                </button>
+              </div>
 
-            <form className="space-y-3" onSubmit={submit}>
-              {isRegister ? (
-                <TextField label="Tên hiển thị" value={name} onChange={setName} placeholder="Nguyễn Văn A" />
-              ) : null}
-              <TextField label="Username" value={username} onChange={setUsername} placeholder="vd: admin01" type="text" />
-              <PasswordField label="Mật khẩu" value={password} onChange={setPassword} placeholder="Nhập mật khẩu" visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />
-              {isRegister ? (
-                <PasswordField label="Nhập lại mật khẩu" value={confirm} onChange={setConfirm} placeholder="Nhập lại mật khẩu" visible={showConfirm} onToggle={() => setShowConfirm((v) => !v)} />
-              ) : null}
+              <form className="space-y-3" onSubmit={submit}>
+                {isRegister ? (
+                  <TextField
+                    label="Họ và tên"
+                    value={name}
+                    onChange={setName}
+                    placeholder="Nguyễn Văn A"
+                  />
+                ) : null}
+                <TextField
+                  label="Tài khoản"
+                  value={username}
+                  onChange={setUsername}
+                  placeholder="Nhập tài khoản"
+                  type="text"
+                />
+                <PasswordField
+                  label="Mật khẩu"
+                  value={password}
+                  onChange={setPassword}
+                  placeholder="ít nhất 8 ký tự"
+                  visible={showPassword}
+                  onToggle={() => setShowPassword((v) => !v)}
+                />
+                {isRegister ? (
+                  <PasswordField
+                    label="Nhập lại mật khẩu"
+                    value={confirm}
+                    onChange={setConfirm}
+                    placeholder="Nhập lại mật khẩu"
+                    visible={showConfirm}
+                    onToggle={() => setShowConfirm((v) => !v)}
+                  />
+                ) : null}
 
-              <button
-                type="submit"
-                disabled={busy}
-                className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[rgb(36_99_132)] disabled:opacity-60"
-              >
-                <span className="inline-flex items-center justify-center gap-2">
-                  {isRegister ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
-                  {busy ? "Đang xử lý..." : isRegister ? "Tạo tài khoản" : "Đăng nhập"}
-                </span>
-              </button>
-            </form>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[rgb(36_99_132)] disabled:opacity-60"
+                >
+                  <span className="inline-flex items-center justify-center gap-2">
+                    {isRegister ? (
+                      <UserPlus className="h-4 w-4" />
+                    ) : (
+                      <LogIn className="h-4 w-4" />
+                    )}
+                    {busy
+                      ? "Đang xử lý..."
+                      : isRegister
+                        ? "Tạo tài khoản"
+                        : "Đăng nhập"}
+                  </span>
+                </button>
+              </form>
             </div>
           </div>
         </div>

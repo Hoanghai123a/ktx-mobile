@@ -25,7 +25,7 @@ export default function LoginModal({
     const username = (loginUsername || "").trim().toLowerCase();
     const password = loginPassword || "";
     if (!username || !password) {
-      alert("Vui lòng nhập username và mật khẩu.");
+      alert("Vui lòng nhập tài khoản và mật khẩu.");
       return;
     }
 
@@ -63,10 +63,10 @@ export default function LoginModal({
         </div>
 
         <TextField
-          label="Username"
+          label="Tài khoản"
           value={loginUsername}
           onChange={(v) => setLoginUsername(v)}
-          placeholder="vd: admin01"
+          placeholder="Nhập tài khoản"
           type="text"
           inputRef={usernameRef}
           onFocus={() => (lastFieldRef.current = "username")}
@@ -76,7 +76,7 @@ export default function LoginModal({
           <div className="text-xs font-medium text-slate-600">Mật khẩu</div>
           <div className="relative">
             <input
-              autocomplete="current-password"
+              autoComplete="current-password"
               type={showPassword ? "text" : "password"}
               value={loginPassword}
               onChange={(e) => setLoginPassword(e.target.value)}
@@ -98,7 +98,7 @@ export default function LoginModal({
         </label>
 
         <button
-          className="w-full rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
+          className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
           onClick={handleLogin}
         >
           <span className="inline-flex items-center justify-center gap-2">
