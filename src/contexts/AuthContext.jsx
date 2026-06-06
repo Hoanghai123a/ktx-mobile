@@ -42,12 +42,21 @@ export const AuthProvider = ({ children }) => {
 
   const login = (userData) => {
     const nextUser = userData?.data || userData || null;
+    const isAdmin = nextUser?.role === "admin" || nextUser?.isAdmin === true;
+    if (nextUser && !isAdmin && nextUser.approved === false) {
+      setUser(null);
+      setToken(null);
+      api.removeToken();
+      api.removeCookie("token");
+      return false;
+    }
     setUser(nextUser);
     if (userData?.access_token) {
       setToken(userData.access_token);
       api.saveToken(userData.access_token);
       api.setCookie("token", userData.access_token, userData.expires_in || 604800);
     }
+    return true;
   };
 
   const logout = () => {

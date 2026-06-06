@@ -92,12 +92,8 @@ export default function AuthScreen({ settings }) {
       if (isRegister) alert(res?.message || "Tạo tài khoản thành công.");
       login(res);
     } catch (err) {
-      alert(
-        err?.response?.data?.message ||
-          err?.response?.data?.error ||
-          err?.message ||
-          isRegister ? "Tạo tài khoản thất bại." : "Không đăng nhập được.",
-      );
+      const fallback = isRegister ? "Tạo tài khoản thất bại." : "Không đăng nhập được.";
+      alert(err?.response?.data?.message || err?.response?.data?.error || err?.message || fallback);
     } finally {
       setBusy(false);
     }

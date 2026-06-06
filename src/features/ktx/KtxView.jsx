@@ -4,6 +4,7 @@ import {
   Plus,
   Trash2,
   Building2,
+  ChevronDown,
   DoorClosed,
   DoorOpen,
   Mars,
@@ -12,7 +13,6 @@ import {
 } from "lucide-react";
 
 import clsx from "../../components/ui/clsx";
-import SelectField from "../../components/ui/SelectField";
 import Empty from "../../components/ui/Empty";
 import Pill from "../../components/ui/Pill";
 
@@ -102,64 +102,53 @@ export default function KtxView({
 
   return (
     <div className="mx-auto max-w-md px-4 pb-24">
-      <div className="flex items-end gap-2">
-        <div className="">
-          <SelectField
-            label="Chọn tầng"
-            value={floor?.id || ""}
-            onChange={(v) => setFloorId(v)}
-            options={state.floors.map((f) => ({
-              value: f.id,
-              label: `${f.name} (${f.rooms.length} phòng)`,
-            }))}
-          />
+      <div className="grid grid-cols-2 items-end gap-2">
+        <div className="min-w-0">
+          <label className="relative block">
+            <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[rgb(2_132_199)]" />
+            <select
+              className="h-10 w-full appearance-none rounded-2xl border-0 bg-sky-100 py-2 pl-9 pr-8 text-sm font-semibold text-[rgb(2_132_199)] outline-none ring-0 focus:bg-sky-100"
+              value={floor?.id || ""}
+              onChange={(e) => setFloorId(e.target.value)}
+            >
+              {state.floors.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[rgb(2_132_199)]" />
+          </label>
         </div>
-        <button
-          className={clsx(
-            "rounded-2xl px-3 py-2 text-sm font-semibold shadow-sm",
-            auth?.isAdmin
-              ? "bg-[rgb(44_120_159)] text-white"
-              : "bg-slate-100 text-slate-700",
-          )}
-          onClick={() => {
-            const el = document.getElementById("floor-management");
-            if (el && el.scrollIntoView)
-              el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }}
-        >
-          Quản lý
-        </button>
+
+        <div className="flex min-w-0 justify-end gap-2 pt-2">
+          <button
+            className={clsx(
+              "shrink-0 rounded-2xl px-3 py-3 text-xs font-semibold shadow-sm",
+              auth?.isAdmin
+                ? "bg-[rgb(255,255,255)]"
+                : "bg-slate-100 text-slate-700",
+            )}
+            onClick={() =>
+              auth?.isAdmin ? setAddRoomModal(true) : setLoginModal(true)
+            }
+          >
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <Plus className="h-4 w-4" />
+              Phòng
+            </span>
+          </button>
+          <button
+            className="shrink-0 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-xs font-semibold shadow-sm"
+            onClick={() => exportExcel()}
+          >
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <FileDown className="h-4 w-4" />
+              Excel
+            </span>
+          </button>
+        </div>
       </div>
-
-      <div className="mt-3 flex gap-2">
-        <button
-          className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold shadow-sm"
-          onClick={() => exportExcel()}
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            <FileDown className="h-4 w-4" />
-            Xuất Excel
-          </span>
-        </button>
-
-        <button
-          className={clsx(
-            "rounded-2xl px-4 py-3 text-sm font-semibold shadow-sm",
-            auth?.isAdmin
-              ? "bg-[rgb(44_120_159)] text-white"
-              : "bg-slate-100 text-slate-700",
-          )}
-          onClick={() =>
-            auth?.isAdmin ? setAddRoomModal(true) : setLoginModal(true)
-          }
-        >
-          <span className="inline-flex items-center justify-center gap-2">
-            <Plus className="h-4 w-4" />
-            Phòng
-          </span>
-        </button>
-      </div>
-
       <div
         className="mt-4 grid gap-3"
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}

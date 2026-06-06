@@ -284,7 +284,13 @@ async function currentUser(signal) {
     return null;
   }
   try {
-    return await pbRequest(AUTH_COLLECTION, `/${payload.id}`, { signal });
+    const user = await pbRequest(AUTH_COLLECTION, `/${payload.id}`, { signal });
+    if (user?.role !== "admin" && user?.approved === false) {
+      removeToken();
+      removeCookie("token");
+      return null;
+    }
+    return user;
   } catch (error) {
     if ([400, 401, 403].includes(error?.response?.status)) {
       removeToken();
@@ -679,11 +685,13 @@ async function pbAuthWithPassword(username, password, signal) {
   const payload = text ? JSON.parse(text) : null;
   if (!res.ok) throw makeError(res.status, payload);
   const record = payload.record || {};
-  saveToken(payload.token);
-  setCookie("token", payload.token, 604800);
   if (record.role !== "admin" && record.approved === false) {
+    removeToken();
+    removeCookie("token");
     throw makeError(403, { error: "Tài khoản đang chờ admin phê duyệt." });
   }
+  saveToken(payload.token);
+  setCookie("token", payload.token, 604800);
   return {
     access_token: payload.token,
     expires_in: 604800,
