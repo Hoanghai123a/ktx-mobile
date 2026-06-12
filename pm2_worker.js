@@ -7,10 +7,11 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("./dist", import.meta.url)));
 const host = process.env.HOST || "0.0.0.0";
-const port = Number(process.env.PORT || 3001);
+const port = Number(process.env.PORT || 3000);
 const pocketBaseUrl = new URL(
-  process.env.POCKETBASE_URL || "http://127.0.0.1:8091",
+  process.env.POCKETBASE_URL || "http://127.0.0.1:8090",
 );
+const pocketBasePrefix = "/api/public/pb";
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -61,7 +62,8 @@ function staticFile(req, res) {
 }
 
 function proxyPocketBase(req, res) {
-  const upstreamPath = req.url.replace(/^\/pb(?=\/|\?|$)/, "") || "/";
+  const upstreamPath =
+    req.url.replace(/^\/api\/public\/pb(?=\/|\?|$)/, "") || "/";
   const transport =
     pocketBaseUrl.protocol === "https:" ? httpsRequest : httpRequest;
   const proxyReq = transport(
@@ -75,7 +77,7 @@ function proxyPocketBase(req, res) {
         ...req.headers,
         host: pocketBaseUrl.host,
         "x-forwarded-host": req.headers.host || "",
-        "x-forwarded-proto": "http",
+        "x-forwarded-proto": req.headers["x-forwarded-proto"] || "http",
       },
     },
     (proxyRes) => {
@@ -99,9 +101,9 @@ if (!existsSync(root)) {
 
 createServer((req, res) => {
   if (
-    req.url === "/pb" ||
-    req.url.startsWith("/pb/") ||
-    req.url.startsWith("/pb?")
+    req.url === pocketBasePrefix ||
+    req.url.startsWith(`${pocketBasePrefix}/`) ||
+    req.url.startsWith(`${pocketBasePrefix}?`)
   ) {
     return proxyPocketBase(req, res);
   }

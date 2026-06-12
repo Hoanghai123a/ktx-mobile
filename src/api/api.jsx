@@ -2,8 +2,8 @@ import { message } from "antd";
 
 const PB_URL = String(
   import.meta.env.DEV
-    ? "/pb"
-    : import.meta.env.VITE_POCKETBASE_URL || "/pb",
+    ? "/api/public/pb"
+    : import.meta.env.VITE_POCKETBASE_URL || "/api/public/pb",
 ).replace(/\/$/, "");
 const debugMode = import.meta.env.VITE_DEBUGMODE === "development";
 const pocketBaseHint = "Khong ket noi duoc PocketBase local.";
