@@ -12,8 +12,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         HOST: "0.0.0.0",
-        PORT: "3000",
-        POCKETBASE_URL: "http://127.0.0.1:8090",
+        PORT: "3001",
+        POCKETBASE_URL: "http://127.0.0.1:8091",
       },
     },
   ],

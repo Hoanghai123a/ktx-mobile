@@ -4,15 +4,15 @@ Ung dung quan ly KTX/NLD chay tren React + Vite, du lieu PocketBase local.
 
 Kien truc production muc tieu:
 
-- User -> Cloudflare DNS -> Cloudflare Tunnel -> app Node/PM2 `127.0.0.1:3000`
+- User -> Cloudflare DNS -> Cloudflare Tunnel -> app Node/PM2 `127.0.0.1:3001`
 - App Node/PM2 serve web va proxy same-origin `/api/public/pb/...`
-- PocketBase chi nghe local tai `127.0.0.1:8090`
+- PocketBase chi nghe local tai `127.0.0.1:8091`
 
 ## Yeu cau
 
 - Node.js 20+
 - npm 10+
-- PocketBase local tai `http://127.0.0.1:8090`
+- PocketBase local tai `http://127.0.0.1:8091`
 - PM2 neu muon chay production local
 
 ## Cai dat
@@ -27,7 +27,7 @@ Root `.env`:
 
 ```env
 VITE_POCKETBASE_URL=/api/public/pb
-VITE_POCKETBASE_PROXY_TARGET=http://127.0.0.1:8090
+VITE_POCKETBASE_PROXY_TARGET=http://127.0.0.1:8091
 VITE_DEBUGMODE=development
 VITE_PORT=5174
 ```
@@ -42,7 +42,7 @@ Frontend: `http://127.0.0.1:5174/`
 
 ## Chay local bang PM2
 
-PocketBase can chay truoc tai `http://127.0.0.1:8090`.
+PocketBase can chay truoc tai `http://127.0.0.1:8091`.
 
 ```bash
 npm run pm2:start
@@ -57,7 +57,7 @@ npm run pm2:stop
 npm run pm2:delete
 ```
 
-PM2 app: `QLKTX` tai `http://127.0.0.1:3000`.
+PM2 app: `QLKTX` tai `http://127.0.0.1:3001`.
 
 PM2 chay file `pm2_worker.js`. File nay serve thu muc `dist/`, fallback SPA ve `dist/index.html`, va proxy `/api/public/pb` sang PocketBase local.
 

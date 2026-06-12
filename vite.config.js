@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const appPort = Number(env.VITE_PORT || 5174);
-  const pocketBaseUrl = env.VITE_POCKETBASE_PROXY_TARGET || "http://127.0.0.1:8090";
+  const pocketBaseUrl = env.VITE_POCKETBASE_PROXY_TARGET || "http://127.0.0.1:8091";
   const proxy = {
     "/api/public/pb": {
       target: pocketBaseUrl,
