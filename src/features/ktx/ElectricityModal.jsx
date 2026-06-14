@@ -6,6 +6,7 @@ import {
   calculateRoomUtility,
   formatPeriodLabel,
   getBillingPeriod,
+  mergeMonthlyReadings,
   normalizeBillingMonth,
 } from "../../services/utilityBilling";
 
@@ -53,10 +54,12 @@ function makeRecord({ record, room, period, startReading, endReading, paid }) {
     month: period.month,
     start_reading: start === "" ? 0 : start,
     end_reading: fallbackEnd === "" ? 0 : fallbackEnd,
-    readings: [
-      ...(start === "" ? [] : [{ date: period.start, reading: Number(start) }]),
-      ...(end === "" ? [] : [{ date: period.end, reading: Number(end) }]),
-    ],
+    readings: mergeMonthlyReadings({
+      readings: record?.readings,
+      period,
+      startReading: start,
+      endReading: end,
+    }),
     paid: !!paid,
   };
 }

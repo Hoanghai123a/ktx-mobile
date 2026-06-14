@@ -208,6 +208,28 @@ export function parseReadings(value) {
   return [];
 }
 
+export function mergeMonthlyReadings({ readings, period, startReading, endReading }) {
+  const map = new Map();
+  for (const row of parseReadings(readings)) {
+    const date = normalizeDate(row?.date);
+    const reading = numberOrBlank(row?.reading);
+    if (date && reading !== "") map.set(date, Number(reading));
+  }
+  const start = numberOrBlank(startReading);
+  const end = numberOrBlank(endReading);
+  if (period?.start && start !== "") map.set(period.start, Number(start));
+  if (period?.end) {
+    if (end !== "") map.set(period.end, Number(end));
+    else map.delete(period.end);
+  }
+  const lo = period?.start || "";
+  const hi = period?.end || "";
+  return [...map.entries()]
+    .filter(([date]) => (!lo || date >= lo) && (!hi || date <= hi))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, reading]) => ({ date, reading }));
+}
+
 export function readingsToMap(record, period, room, type = "electricity") {
   const map = new Map();
   const parsedReadings = parseReadings(record?.readings);

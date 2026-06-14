@@ -6,6 +6,7 @@ import {
   calculateRoomUtility,
   calculateUtilityBilling,
   getUtilityCheckoutBounds,
+  mergeMonthlyReadings,
 } from "../src/services/utilityBilling.js";
 
 test("checkout bounds use room readings outside stay-specific billing window", () => {
@@ -407,4 +408,97 @@ test("utility billing includes room rent in worker totals", () => {
   assert.equal(charge.totalAmount, 720000);
   assert.equal(result.byStay.get("s1").amount, 700000);
   assert.equal(result.byStay.get("s1").chargedDays, 7);
+});
+
+
+test("mergeMonthlyReadings keeps mid-period readings instead of overwriting", () => {
+  const period = { month: "2026-06", start: "2026-05-10", end: "2026-06-10", closeDay: 10 };
+  const merged = mergeMonthlyReadings({
+    readings: [
+      { date: "2026-05-10", reading: 100 },
+      { date: "2026-05-22", reading: 140 },
+    ],
+    period,
+    startReading: 100,
+    endReading: 210,
+  });
+
+  assert.deepEqual(merged, [
+    { date: "2026-05-10", reading: 100 },
+    { date: "2026-05-22", reading: 140 },
+    { date: "2026-06-10", reading: 210 },
+  ]);
+});
+
+test("mergeMonthlyReadings drops period end when end reading is cleared", () => {
+  const period = { month: "2026-06", start: "2026-05-10", end: "2026-06-10", closeDay: 10 };
+  const merged = mergeMonthlyReadings({
+    readings: [
+      { date: "2026-05-10", reading: 100 },
+      { date: "2026-06-10", reading: 210 },
+    ],
+    period,
+    startReading: 100,
+    endReading: "",
+  });
+
+  assert.deepEqual(merged, [{ date: "2026-05-10", reading: 100 }]);
+});
+
+test("mergeMonthlyReadings stays within the billing window", () => {
+  const period = { month: "2026-06", start: "2026-05-10", end: "2026-06-10", closeDay: 10 };
+  const merged = mergeMonthlyReadings({
+    readings: [
+      { date: "2026-04-10", reading: 50 },
+      { date: "2026-05-10", reading: 100 },
+      { date: "2026-07-01", reading: 999 },
+    ],
+    period,
+    startReading: 100,
+    endReading: 210,
+  });
+
+  assert.deepEqual(merged, [
+    { date: "2026-05-10", reading: 100 },
+    { date: "2026-06-10", reading: 210 },
+  ]);
+});
+
+test("billing chains readings across many months long-term", () => {
+  const electricity = [];
+  // 12 thang lien tiep, moi thang +30 so dien, dong nhat boundary date.
+  for (let i = 0; i < 12; i += 1) {
+    const month = `2026-${String(i + 1).padStart(2, "0")}`;
+    const startVal = 100 + i * 30;
+    const endVal = startVal + 30;
+    const prevMonth = i === 0 ? "2025-12" : `2026-${String(i).padStart(2, "0")}`;
+    const startDate = `${prevMonth}-10`;
+    const endDate = `${month}-10`;
+    electricity.push({
+      month,
+      start_reading: startVal,
+      end_reading: endVal,
+      readings: [
+        { date: startDate, reading: startVal },
+        { date: endDate, reading: endVal },
+      ],
+    });
+  }
+
+  const room = {
+    id: "r1",
+    electricity,
+    stays: [{ workerId: "w1", dateIn: "2025-01-01" }],
+  };
+
+  const december = calculateRoomUtility({
+    room,
+    type: "electricity",
+    settings: { billingMonth: "2026-12", billingCloseDay: 10, electricityPrice: 1000 },
+  });
+
+  assert.equal(december.unitsByWorkerId.get("w1"), 30);
+  assert.equal(december.amountByWorkerId.get("w1"), 30000);
+  assert.equal(december.warnings.length, 0);
+  assert.equal(room.electricity.length, 12);
 });

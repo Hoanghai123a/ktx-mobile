@@ -96,6 +96,14 @@ function nextBillingMonth(month) {
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function earlierBillingMonth(month, monthsBack = 0) {
+  const text = String(month || "").slice(0, 7);
+  const [y, m] = text.split("-").map(Number);
+  if (!y || !m) return "";
+  const prev = new Date(y, m - 1 - Number(monthsBack || 0), 1);
+  return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function Modal({ open, title, children, onClose }) {
   if (!open) return null;
   return (
@@ -1899,12 +1907,15 @@ export default function App() {
   }, [state.floors, billingMonth]);
 
   const electricityHistoryRecords = useMemo(() => {
-    const month = state.settings.billingMonth;
+    const month = String(state.settings.billingMonth || "").slice(0, 7);
+    // Hi???n th??? t???i ??a 12 th??ng g???n nh???t t??nh ?????n k??? ??ang ch??n.
+    const minMonth = month ? earlierBillingMonth(month, 11) : "";
     const rows = [];
     for (const x of allElectricity) {
       const list = Array.isArray(x.electricityList) ? x.electricityList : [];
       for (const e of list) {
-        if (month && e?.month !== month) continue;
+        const em = String(e?.month || "").slice(0, 7);
+        if (month && em && (em > month || (minMonth && em < minMonth))) continue;
         if (electricityHistoryMode === "paid" && !e?.paid) continue;
         if (electricityHistoryMode === "pending" && e?.paid) continue;
         rows.push({
@@ -3095,7 +3106,6 @@ export default function App() {
             records={electricityHistoryRecords}
             pricePerUnit={state.settings.electricityPrice || 0}
             mode={electricityHistoryMode}
-            month={state.settings.billingMonth}
           />
         </Suspense>
       ) : null}
