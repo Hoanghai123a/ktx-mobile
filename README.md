@@ -73,6 +73,25 @@ Vao PocketBase Admin UI > Collections > `users` > API rules, mo Create rule de f
 - `npm run lint`: kiem tra ESLint
 - `npm test`: chay frontend tests
 
+## Deploy server
+
+Co script deploy Linux tai `deploy_app.sh` cho luong:
+
+- backup `.env` va `pm2_worker.js` neu server dang co local change
+- `git pull --ff-only`
+- `npm ci`
+- `npm run build:only`
+- restart/ start lai PM2 app `QLKTX`
+- health check web va proxy PocketBase
+
+Dung tren server:
+
+```bash
+bash deploy_app.sh
+```
+
+Script tao backup tai `.deploy-backups/<timestamp>/` va neu co stash local thi se giu lai de ban review sau.
+
 ## Ghi chu
 
 - Khong commit `.env`.

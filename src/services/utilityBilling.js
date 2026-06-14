@@ -222,6 +222,10 @@ export function readingsToMap(record, period, room, type = "electricity") {
   if (period?.start && start !== "" && !map.has(period.start)) {
     map.set(period.start, start);
   }
+  if (period?.start && !map.has(period.start)) {
+    const carried = findRoomReadingAtDate(room, type, period.start);
+    if (carried !== "") map.set(period.start, carried);
+  }
   const hasExplicitEndReading = !parsedReadings.length || parsedReadings.some((row) => normalizeDate(row?.date) === period?.end);
   if (period?.end && end !== "" && !map.has(period.end) && hasExplicitEndReading) {
     map.set(period.end, end);

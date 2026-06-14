@@ -269,6 +269,39 @@ test("room utility treats missing period end reading as temporary save", () => {
   assert.equal(result.warnings.includes("Thiếu chỉ số ngày 2026-06-25."), true);
 });
 
+test("room utility carries previous month end reading into next month start", () => {
+  const room = {
+    id: "r1",
+    electricity: [
+      {
+        month: "2026-05",
+        start_reading: 100,
+        end_reading: 150,
+        readings: [
+          { date: "2026-04-10", reading: 100 },
+          { date: "2026-05-10", reading: 150 },
+        ],
+      },
+      {
+        month: "2026-06",
+        end_reading: 210,
+        readings: [{ date: "2026-06-10", reading: 210 }],
+      },
+    ],
+    stays: [{ workerId: "w1", dateIn: "2026-01-01" }],
+  };
+
+  const result = calculateRoomUtility({
+    room,
+    type: "electricity",
+    settings: { billingMonth: "2026-06", billingCloseDay: 10, electricityPrice: 1000 },
+  });
+
+  assert.equal(result.unitsByWorkerId.get("w1"), 60);
+  assert.equal(result.amountByWorkerId.get("w1"), 60000);
+  assert.equal(result.warnings.length, 0);
+});
+
 test("room rent uses postpaid and prepaid close-day periods", () => {
   const postpaid = calculateRoomRentForStay({
     stay: { workerId: "w1", dateIn: "2026-06-01" },

@@ -29,6 +29,7 @@ export function useInstallApp() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installed, setInstalled] = useState(() => isStandaloneMode());
   const [guideOpen, setGuideOpen] = useState(false);
+  const [guidePlatform, setGuidePlatform] = useState(() => (isIos ? "ios" : "android"));
   const [dismissed, setDismissed] = useState(() => dismissedRecently());
 
   useEffect(() => {
@@ -69,35 +70,43 @@ export function useInstallApp() {
   const requestInstall = useCallback(async () => {
     if (installed) return "installed";
     if (isIos) {
+      setGuidePlatform("ios");
       setGuideOpen(true);
       return "ios-guide";
     }
-    if (!deferredPrompt) {
-      window.alert("Vui lòng mở bằng Chrome trên Android, tải lại trang rồi bấm Cài đặt.");
-      return "unavailable";
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      if (choice?.outcome === "accepted") {
+        localStorage.removeItem(DISMISS_KEY);
+        setDismissed(false);
+      }
+      return choice?.outcome || "dismissed";
     }
-    deferredPrompt.prompt();
-    const choice = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    if (choice?.outcome === "accepted") {
-      localStorage.removeItem(DISMISS_KEY);
-      setDismissed(false);
+    if (isAndroid) {
+      setGuidePlatform("android");
+      setGuideOpen(true);
+      return "android-guide";
     }
-    return choice?.outcome || "dismissed";
-  }, [deferredPrompt, installed, isIos]);
+    window.alert("Trình duyệt hiện tại chưa hỗ trợ cài ứng dụng từ trang này.");
+    return "unavailable";
+  }, [deferredPrompt, installed, isAndroid, isIos]);
 
   return useMemo(
     () => ({
       isIos,
       isAndroid,
       installed,
+      canPromptInstall: Boolean(deferredPrompt),
       guideOpen,
+      guidePlatform,
       setGuideOpen,
       requestInstall,
       dismissBanner,
       shouldShowBanner: !installed && !dismissed && (isIos || isAndroid || !!deferredPrompt),
-      actionLabel: installed ? "Đã cài" : isIos ? "Hướng dẫn" : "Cài đặt",
+      actionLabel: installed ? "Đã cài" : isIos || (isAndroid && !deferredPrompt) ? "Hướng dẫn" : "Cài đặt",
     }),
-    [deferredPrompt, dismissBanner, dismissed, guideOpen, installed, isAndroid, isIos, requestInstall],
+    [deferredPrompt, dismissBanner, dismissed, guideOpen, guidePlatform, installed, isAndroid, isIos, requestInstall],
   );
 }
