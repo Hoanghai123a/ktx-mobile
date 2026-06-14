@@ -7,6 +7,7 @@ import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
 import { InstallAppSettingsCard } from "../pwa/InstallApp";
+import { APP_VERSION } from "../../constants/appVersion";
 
 export default function SettingsModal({
   open,
@@ -288,6 +289,17 @@ export default function SettingsModal({
             }}
           />
 
+        </div>
+
+        {/* VERSION */}
+        <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-900">Phiên bản ứng dụng</div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
+              {APP_VERSION}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-slate-500">Định dạng tháng.ngày.số lần build trong ngày.</div>
         </div>
 
         {/* SAVE */}
