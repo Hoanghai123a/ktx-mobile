@@ -66,6 +66,17 @@ function hasReadingAt(record, date) {
   return readings.some((row) => String(row?.date || "").slice(0, 10) === date);
 }
 
+function chainedStartReading({ record, prevRecord, period, billingCloseDay }) {
+  const ownStart = record?.start_reading ?? record?.startReading;
+  const prevEnd = prevRecord?.end_reading ?? prevRecord?.endReading;
+  // Cuối kỳ tháng trước = đầu kỳ tháng sau, nhưng chỉ khi hai kỳ thật sự nối ngày với nhau.
+  if (prevRecord && prevEnd != null && prevEnd !== "") {
+    const prevPeriod = getBillingPeriod(prevRecord.month, billingCloseDay || 1);
+    if (prevPeriod.end === period.start) return prevEnd;
+  }
+  return ownStart ?? (prevEnd ?? "");
+}
+
 export default function ElectricityModal({
   open,
   onClose,
@@ -100,16 +111,17 @@ export default function ElectricityModal({
   useEffect(() => {
     if (!open) return;
     setStartReading(
-      record?.start_reading ??
-        record?.startReading ??
-        prevRecord?.end_reading ??
-        prevRecord?.endReading ??
-        "",
+      chainedStartReading({
+        record,
+        prevRecord,
+        period,
+        billingCloseDay,
+      }),
     );
     const readings = Array.isArray(record?.readings) ? record.readings : [];
     const hasExplicitEnd = !readings.length || hasReadingAt(record, period.end);
     setEndReading(hasExplicitEnd ? (record?.end_reading ?? record?.endReading ?? "") : "");
-  }, [open, period.end, record, prevRecord]);
+  }, [open, period, billingCloseDay, record, prevRecord]);
 
   const preview = useMemo(() => {
     const nextRecord = makeRecord({
