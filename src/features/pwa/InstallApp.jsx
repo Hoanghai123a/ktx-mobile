@@ -12,13 +12,6 @@ const IOS_STEPS = [
   { image: "/install-ios/B5.jpg", title: "Bước 5", text: "Chọn Thêm" },
 ];
 
-const ANDROID_STEPS = [
-  { title: "Bước 1", text: "Mở trang web này bằng trình duyệt bất kỳ trên Android." },
-  { title: "Bước 2", text: "Nhấn menu của trình duyệt như dấu 3 chấm, nút chia sẻ hoặc thanh công cụ." },
-  { title: "Bước 3", text: "Chọn Cài ứng dụng, Thêm vào màn hình chính hoặc mục tương tự." },
-  { title: "Bước 4", text: "Xác nhận Cài đặt hoặc Thêm để tạo biểu tượng ngoài màn hình chính." },
-];
-
 function brandFromSettings(settings) {
   return {
     siteName: String(settings?.siteName || "KTX").trim() || "KTX",
@@ -35,10 +28,9 @@ function BrandLogo({ settings, className = "h-10 w-10 rounded-2xl" }) {
   );
 }
 
-export function InstallGuideModal({ open, onClose, settings, installApp }) {
+export function InstallGuideModal({ open, onClose, settings }) {
   const brand = brandFromSettings(settings);
-  const isAndroidGuide = installApp?.guidePlatform === "android";
-  const steps = isAndroidGuide ? ANDROID_STEPS : IOS_STEPS;
+  const steps = IOS_STEPS;
   return (
     <Modal open={open} title={`Cài ${brand.siteName} ra màn hình chính`} onClose={onClose} zIndex="z-[90]">
       <div className="space-y-3">
@@ -49,11 +41,7 @@ export function InstallGuideModal({ open, onClose, settings, installApp }) {
             <div className="text-xs text-slate-600">Biểu tượng sẽ hiển thị trên màn hình chính.</div>
           </div>
         </div>
-        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-          {isAndroidGuide
-            ? "Tên nút có thể khác nhau theo từng trình duyệt Android, nhưng đều có thể cài trực tiếp từ trang web này."
-            : "Làm theo 5 bước trên iPhone/iPad để thêm app vào màn hình chính."}
-        </div>
+        <div className="rounded-2xl bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">Làm theo 5 bước trên iPhone/iPad để thêm app vào màn hình chính.</div>
         <div className="space-y-3">
           {steps.map((step) => (
             <div key={step.title} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -90,9 +78,11 @@ export function InstallAppBanner({ installApp, settings }) {
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-slate-900">Cài {brand.siteName} ra màn hình chính</div>
             <div className="mt-0.5 text-xs leading-5 text-slate-600">
-              {installApp.canPromptInstall
-                ? "Truy cập nhanh hơn như một ứng dụng trên điện thoại."
-                : "Xem cách thêm app từ trình duyệt Android hoặc iPhone/iPad."}
+              {installApp.isIos
+                ? "Xem hướng dẫn thêm app trên iPhone/iPad."
+                : installApp.canPromptInstall
+                  ? "Nhấn Cài đặt để mở hộp cài ứng dụng ngay trên Android."
+                  : "Android sẽ cài trực tiếp khi trình duyệt đang dùng hỗ trợ hộp cài ứng dụng."}
             </div>
             <button type="button" onClick={installApp.requestInstall} className="mt-2 rounded-2xl px-4 py-2 text-xs font-semibold text-white" style={{ backgroundColor: BRAND }}>
               <span className="inline-flex items-center gap-1.5">
@@ -127,7 +117,7 @@ export function InstallAppSettingsCard({ installApp, settings }) {
                   ? "Xem hướng dẫn 5 bước cho iPhone/iPad."
                   : installApp.canPromptInstall
                     ? "Cài nhanh bằng hộp cài đặt của trình duyệt."
-                    : "Xem hướng dẫn cài từ các trình duyệt Android khác nhau."}
+                    : "Android sẽ cài trực tiếp khi trình duyệt đang dùng hỗ trợ hộp cài đặt."}
             </div>
           </div>
         </div>

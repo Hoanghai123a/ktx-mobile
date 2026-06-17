@@ -2566,7 +2566,6 @@ export default function App() {
           open={installApp.guideOpen}
           onClose={() => installApp.setGuideOpen(false)}
           settings={state.settings}
-          installApp={installApp}
         />
       </div>
     );
@@ -3096,7 +3095,6 @@ export default function App() {
         open={installApp.guideOpen}
         onClose={() => installApp.setGuideOpen(false)}
         settings={state.settings}
-        installApp={installApp}
       />
 
       {settingsModal ? (

@@ -29,7 +29,6 @@ export function useInstallApp() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installed, setInstalled] = useState(() => isStandaloneMode());
   const [guideOpen, setGuideOpen] = useState(false);
-  const [guidePlatform, setGuidePlatform] = useState(() => (isIos ? "ios" : "android"));
   const [dismissed, setDismissed] = useState(() => dismissedRecently());
   const [isStandalone, setIsStandalone] = useState(() => isStandaloneMode());
 
@@ -85,7 +84,6 @@ export function useInstallApp() {
   const requestInstall = useCallback(async () => {
     if (installed) return "installed";
     if (isIos) {
-      setGuidePlatform("ios");
       setGuideOpen(true);
       return "ios-guide";
     }
@@ -100,9 +98,10 @@ export function useInstallApp() {
       return choice?.outcome || "dismissed";
     }
     if (isAndroid) {
-      setGuidePlatform("android");
-      setGuideOpen(true);
-      return "android-guide";
+      window.alert(
+        "Trình duyệt này chưa cho phép cài trực tiếp. Hãy thử mở bằng Chrome, Edge hoặc trình duyệt hỗ trợ cài ứng dụng rồi bấm Cài đặt lại.",
+      );
+      return "unavailable";
     }
     window.alert("Trình duyệt hiện tại chưa hỗ trợ cài ứng dụng từ trang này.");
     return "unavailable";
@@ -116,13 +115,12 @@ export function useInstallApp() {
       isStandalone,
       canPromptInstall: Boolean(deferredPrompt),
       guideOpen,
-      guidePlatform,
       setGuideOpen,
       requestInstall,
       dismissBanner,
       shouldShowBanner: !installed && !dismissed && (isIos || isAndroid || !!deferredPrompt),
-      actionLabel: installed ? "Đã cài" : isIos || (isAndroid && !deferredPrompt) ? "Hướng dẫn" : "Cài đặt",
+      actionLabel: installed ? "Đã cài" : isIos ? "Hướng dẫn" : "Cài đặt",
     }),
-    [deferredPrompt, dismissBanner, dismissed, guideOpen, guidePlatform, installed, isAndroid, isIos, isStandalone, requestInstall],
+    [deferredPrompt, dismissBanner, dismissed, guideOpen, installed, isAndroid, isIos, isStandalone, requestInstall],
   );
 }
