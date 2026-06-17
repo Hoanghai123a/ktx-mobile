@@ -1,4 +1,6 @@
-﻿{
+{
+  "lang": "vi",
+  "dir": "ltr",
   "name": "KTX HRPro",
   "short_name": "KTX",
   "description": "Quản lý ký túc xá và người lao động.",
@@ -10,6 +12,7 @@
   "orientation": "portrait",
   "background_color": "#f0f9ff",
   "theme_color": "#2c789f",
+  "prefer_related_applications": false,
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
