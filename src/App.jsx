@@ -663,6 +663,9 @@ export default function App() {
     document
       .querySelector('meta[name="application-name"]')
       ?.setAttribute("content", brandName);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", "#2c789f");
 
     const updateLink = (selector, rel) => {
       let el = document.querySelector(selector);
@@ -680,9 +683,12 @@ export default function App() {
     const manifest = {
       name: brandName,
       short_name: brandName,
+      id: "/",
       start_url: "/",
       scope: "/",
       display: "standalone",
+      display_override: ["window-controls-overlay", "standalone"],
+      orientation: "portrait",
       background_color: "#f0f9ff",
       theme_color: "rgb(44 120 159)",
       icons: [
@@ -2249,7 +2255,7 @@ export default function App() {
 
   const Header = (
     <div className="sticky top-0 z-40 bg-gradient-to-b from-white to-white/80 backdrop-blur">
-      <div className="mx-auto w-full max-w-md px-4 pt-4">
+      <div className="mx-auto w-full max-w-md px-4 pt-4 app-safe-top">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
@@ -2457,7 +2463,12 @@ export default function App() {
   // ---------------------------
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-slate-50 text-sm text-slate-500">
+      <div
+        className={clsx(
+          "app-shell grid place-items-center bg-slate-50 text-sm text-slate-500",
+          installApp?.isStandalone && "app-shell--standalone",
+        )}
+      >
         Đang tải...
       </div>
     );
@@ -2473,9 +2484,14 @@ export default function App() {
 
   if (systemAdmin) {
     return (
-      <div className="min-h-screen bg-sky-50 text-slate-900">
+      <div
+        className={clsx(
+          "app-shell min-h-screen bg-sky-50 text-slate-900",
+          installApp?.isStandalone && "app-shell--standalone",
+        )}
+      >
         <div className="sticky top-0 z-40 bg-gradient-to-b from-sky-50 to-sky-50/80 backdrop-blur">
-          <div className="mx-auto w-full max-w-md px-4 py-4">
+          <div className="mx-auto w-full max-w-md px-4 py-4 app-safe-top">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-medium text-slate-500">
@@ -2557,7 +2573,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div
+      className={clsx(
+        "app-shell min-h-screen bg-slate-50 text-slate-900",
+        installApp?.isStandalone && "app-shell--standalone",
+      )}
+    >
       {Header}
       <Suspense fallback={<LazyFallback />}>
         {tab === "ktx" ? (
@@ -2669,7 +2690,7 @@ export default function App() {
       </Suspense>
       {/* bottom nav */}
       <div className="fixed inset-x-0 bottom-0 z-40">
-        <div className="mx-auto w-full max-w-md px-4 pb-4">
+        <div className="mx-auto w-full max-w-md px-4 pb-4 app-safe-bottom app-no-select">
           <div className="grid grid-cols-5 overflow-hidden rounded-3xl bg-white shadow-lg ring-1 ring-slate-200">
             <TabButton
               icon={Building2}

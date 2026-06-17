@@ -83,7 +83,7 @@ export function InstallAppBanner({ installApp, settings }) {
   const brand = brandFromSettings(settings);
   if (!installApp?.shouldShowBanner) return null;
   return (
-    <div className="fixed inset-x-0 bottom-24 z-[45] mx-auto w-full max-w-md px-4">
+    <div className="fixed inset-x-0 bottom-24 z-[45] mx-auto w-full max-w-md px-4 app-safe-bottom">
       <div className="rounded-3xl border border-slate-200 bg-white p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <BrandLogo settings={settings} />

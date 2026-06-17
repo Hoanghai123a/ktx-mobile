@@ -100,8 +100,8 @@ export default function AuthScreen({ settings }) {
   }
 
   return (
-    <div className="min-h-screen bg-sky-50 text-slate-900">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-5">
+    <div className="app-shell min-h-screen bg-sky-50 text-slate-900">
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-4 py-5 app-safe-top app-safe-bottom">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-[rgb(44_120_159)] text-white shadow-sm">

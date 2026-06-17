@@ -31,6 +31,20 @@ export function useInstallApp() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [guidePlatform, setGuidePlatform] = useState(() => (isIos ? "ios" : "android"));
   const [dismissed, setDismissed] = useState(() => dismissedRecently());
+  const [isStandalone, setIsStandalone] = useState(() => isStandaloneMode());
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const media = window.matchMedia("(display-mode: standalone)");
+    const syncStandalone = () => setIsStandalone(isStandaloneMode());
+    syncStandalone();
+    media.addEventListener?.("change", syncStandalone);
+    window.addEventListener("visibilitychange", syncStandalone);
+    return () => {
+      media.removeEventListener?.("change", syncStandalone);
+      window.removeEventListener("visibilitychange", syncStandalone);
+    };
+  }, []);
 
   useEffect(() => {
     const onBeforeInstallPrompt = (event) => {
@@ -39,6 +53,7 @@ export function useInstallApp() {
     };
     const onInstalled = () => {
       setInstalled(true);
+      setIsStandalone(isStandaloneMode());
       setDeferredPrompt(null);
       localStorage.removeItem(DISMISS_KEY);
     };
@@ -98,6 +113,7 @@ export function useInstallApp() {
       isIos,
       isAndroid,
       installed,
+      isStandalone,
       canPromptInstall: Boolean(deferredPrompt),
       guideOpen,
       guidePlatform,
@@ -107,6 +123,6 @@ export function useInstallApp() {
       shouldShowBanner: !installed && !dismissed && (isIos || isAndroid || !!deferredPrompt),
       actionLabel: installed ? "Đã cài" : isIos || (isAndroid && !deferredPrompt) ? "Hướng dẫn" : "Cài đặt",
     }),
-    [deferredPrompt, dismissBanner, dismissed, guideOpen, guidePlatform, installed, isAndroid, isIos, requestInstall],
+    [deferredPrompt, dismissBanner, dismissed, guideOpen, guidePlatform, installed, isAndroid, isIos, isStandalone, requestInstall],
   );
 }

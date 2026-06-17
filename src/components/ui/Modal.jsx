@@ -33,7 +33,7 @@ export default function Modal({
         onClick={onClose}
       />
       <div
-        className={`absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl transition-transform duration-200 ${
+        className={`absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-white shadow-2xl transition-transform duration-200 app-modal-safe-bottom ${
           active ? "translate-y-0" : "translate-y-3"
         }`}
       >

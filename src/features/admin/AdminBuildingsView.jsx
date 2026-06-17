@@ -692,7 +692,7 @@ export default function AdminBuildingsView({
             className="absolute inset-0 bg-slate-900/40"
             onClick={() => setShowPermissions(false)}
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100 app-modal-safe-bottom">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="min-w-0">
                 <div className="truncate text-base font-semibold text-slate-900">
@@ -857,7 +857,7 @@ export default function AdminBuildingsView({
             className="absolute inset-0 bg-slate-900/40"
             onClick={resetDraft}
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100 app-modal-safe-bottom">
             <div className="flex items-center justify-between px-4 py-3">
               <div>
                 <div className="text-base font-semibold text-slate-900">
@@ -971,7 +971,7 @@ export default function AdminBuildingsView({
             className="absolute inset-0 bg-slate-900/40"
             onClick={resetUserDraft}
           />
-          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100">
+          <div className="absolute inset-x-0 bottom-0 mx-auto w-full max-w-md rounded-t-3xl bg-sky-50 shadow-2xl ring-1 ring-sky-100 app-modal-safe-bottom">
             <div className="flex items-center justify-between px-4 py-3">
               <div>
                 <div className="text-base font-semibold text-slate-900">
