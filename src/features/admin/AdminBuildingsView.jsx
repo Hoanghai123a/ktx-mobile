@@ -16,7 +16,7 @@ import Pill from "../../components/ui/Pill";
 import TextField from "../../components/ui/TextField";
 import SelectField from "../../components/ui/SelectField";
 import { formatDate } from "../../services/dateFormat";
-import { InstallAppSettingsCard } from "../pwa/InstallApp";
+import PwaInstallSettingsCard from "../../components/layout/PwaInstallSettingsCard";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -341,7 +341,7 @@ export default function AdminBuildingsView({
 
       {page === "settings" ? (
         <div className="space-y-4">
-          <InstallAppSettingsCard installApp={installApp} settings={settings} />
+          <PwaInstallSettingsCard installApp={installApp} settings={settings} />
           <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
             <div className="flex items-center justify-between gap-3">
               <div>

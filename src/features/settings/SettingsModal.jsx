@@ -6,7 +6,7 @@ import clsx from "../../components/ui/clsx";
 import Modal from "../../components/ui/Modal";
 import TextField from "../../components/ui/TextField";
 import Pill from "../../components/ui/Pill";
-import { InstallAppSettingsCard } from "../pwa/InstallApp";
+import PwaInstallSettingsCard from "../../components/layout/PwaInstallSettingsCard";
 import { APP_VERSION } from "../../constants/appVersion";
 
 export default function SettingsModal({
@@ -65,7 +65,7 @@ export default function SettingsModal({
   return (
     <Modal open={open} title="Cài đặt" onClose={onClose}>
       <div className="space-y-4">
-        <InstallAppSettingsCard installApp={installApp} settings={mergedDraft} />
+        <PwaInstallSettingsCard installApp={installApp} settings={mergedDraft} />
 
         {/* MAIN SETTINGS */}
         <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">

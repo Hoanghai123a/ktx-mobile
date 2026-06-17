@@ -499,8 +499,9 @@ import {
   activityLogService,
 } from "./services/api-services";
 import { message } from "antd";
-import { InstallAppBanner, InstallGuideModal } from "./features/pwa/InstallApp";
-import { useInstallApp } from "./features/pwa/useInstallApp";
+import InstallFloatingBanner from "./components/layout/InstallFloatingBanner";
+import IosInstallGuideDialog from "./components/layout/IosInstallGuideDialog";
+import { usePwaInstall } from "./lib/pwa-install";
 
 // ... existing imports ...
 
@@ -537,7 +538,7 @@ function mergeUsers(primary = [], fallback = []) {
 // ---------------------------
 export default function App() {
   const { user, token, logout: authLogout, loading } = useAuth();
-  const installApp = useInstallApp();
+  const installApp = usePwaInstall();
   const [state, setState] = useState(() => loadPersistedState());
   const [buildings, setBuildings] = useState([]);
   const [buildingUsers, setBuildingUsers] = useState([]);
@@ -678,44 +679,99 @@ export default function App() {
     };
 
     updateLink('link[rel="icon"]', "icon");
+    updateLink('link[rel="shortcut icon"]', "shortcut icon");
     updateLink('link[rel="apple-touch-icon"]', "apple-touch-icon");
 
-    const manifest = {
-      name: brandName,
-      short_name: brandName,
-      id: "/",
-      start_url: "/",
-      scope: "/",
-      display: "standalone",
-      display_override: ["window-controls-overlay", "standalone"],
-      orientation: "portrait",
-      background_color: "#f0f9ff",
-      theme_color: "rgb(44 120 159)",
-      icons: [
-        {
-          src: logoUrl,
-          sizes: "192x192",
-          type: "image/png",
-          purpose: "any maskable",
-        },
-        {
-          src: logoUrl,
-          sizes: "512x512",
-          type: "image/png",
-          purpose: "any maskable",
-        },
-      ],
+    let active = true;
+    let blobUrl = null;
+
+    const renderManifestIcon = (size) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) throw new Error("Canvas unavailable");
+            ctx.clearRect(0, 0, size, size);
+
+            const target = size * 0.82;
+            const scale = Math.min(target / img.width, target / img.height);
+            const width = Math.max(1, Math.round(img.width * scale));
+            const height = Math.max(1, Math.round(img.height * scale));
+            const x = Math.round((size - width) / 2);
+            const y = Math.round((size - height) / 2);
+            ctx.drawImage(img, x, y, width, height);
+            resolve(canvas.toDataURL("image/png"));
+          } catch (error) {
+            reject(error);
+          }
+        };
+        img.onerror = () => reject(new Error("Logo load failed"));
+        img.src = logoUrl;
+      });
+
+    const applyManifest = async () => {
+      let icon192 = "/icons/icon-192.png";
+      let icon512 = "/icons/icon-512.png";
+
+      try {
+        [icon192, icon512] = await Promise.all([
+          renderManifestIcon(192),
+          renderManifestIcon(512),
+        ]);
+      } catch {
+        // Fallback to static installable icons if logo can't be rasterized.
+      }
+
+      const manifest = {
+        name: brandName,
+        short_name: brandName,
+        id: "/",
+        start_url: "/",
+        scope: "/",
+        display: "standalone",
+        display_override: ["window-controls-overlay", "standalone"],
+        orientation: "portrait",
+        background_color: "#f0f9ff",
+        theme_color: "rgb(44 120 159)",
+        icons: [
+          {
+            src: icon192,
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: icon512,
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+        ],
+      };
+
+      if (!active) return;
+      blobUrl = URL.createObjectURL(
+        new Blob([JSON.stringify(manifest)], {
+          type: "application/manifest+json",
+        }),
+      );
+      updateLink('link[rel="manifest"]', "manifest");
+      document
+        .querySelector('link[rel="manifest"]')
+        ?.setAttribute("href", blobUrl);
     };
-    const blobUrl = URL.createObjectURL(
-      new Blob([JSON.stringify(manifest)], {
-        type: "application/manifest+json",
-      }),
-    );
-    updateLink('link[rel="manifest"]', "manifest");
-    document
-      .querySelector('link[rel="manifest"]')
-      ?.setAttribute("href", blobUrl);
-    return () => URL.revokeObjectURL(blobUrl);
+
+    applyManifest();
+
+    return () => {
+      active = false;
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+    };
   }, [
     state.settings?.about?.brandLogoUrl,
     state.settings?.logoUrl,
@@ -2561,11 +2617,12 @@ export default function App() {
             }}
           />
         </Suspense>
-        <InstallAppBanner installApp={installApp} settings={state.settings} />
-        <InstallGuideModal
+        <InstallFloatingBanner installApp={installApp} settings={state.settings} />
+        <IosInstallGuideDialog
           open={installApp.guideOpen}
           onClose={() => installApp.setGuideOpen(false)}
           settings={state.settings}
+          platform={installApp.guideMode}
         />
       </div>
     );
@@ -2724,7 +2781,7 @@ export default function App() {
           </div>
         </div>
       </div>
-      <InstallAppBanner installApp={installApp} settings={state.settings} />
+      <InstallFloatingBanner installApp={installApp} settings={state.settings} />
       {/* Modals */}
       {/* RoomModal - component tách file */}
       {roomModal.open ? (
@@ -3091,10 +3148,11 @@ export default function App() {
           />
         </Suspense>
       ) : null}
-      <InstallGuideModal
+      <IosInstallGuideDialog
         open={installApp.guideOpen}
         onClose={() => installApp.setGuideOpen(false)}
         settings={state.settings}
+        platform={installApp.guideMode}
       />
 
       {settingsModal ? (
