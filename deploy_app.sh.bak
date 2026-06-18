@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -72,22 +72,6 @@ fi
 
 log "Installing dependencies."
 npm ci
-
-log "Generating build-version.json."
-VERSION_DAY="$(date +%m.%d)"
-LAST_DAY=""
-LAST_COUNT="0"
-if [ -f build-version.json ] && command -v jq >/dev/null 2>&1; then
-  LAST_DAY="$(jq -r '.day // ""' build-version.json 2>/dev/null || true)"
-  LAST_COUNT="$(jq -r '.count // 0' build-version.json 2>/dev/null || echo 0)"
-fi
-if [ "$LAST_DAY" = "$VERSION_DAY" ]; then
-  VERSION_COUNT="$((LAST_COUNT + 1))"
-else
-  VERSION_COUNT="1"
-fi
-printf '{\n  "day": "%s",\n  "count": %s\n}\n' "$VERSION_DAY" "$VERSION_COUNT" > build-version.json
-log "build-version.json: day=$VERSION_DAY count=$VERSION_COUNT"
 
 log "Building production bundle."
 npm run build:only

@@ -1,6 +1,7 @@
 import React from "react";
 import { Download, Share2, X } from "lucide-react";
-import { BRAND, BrandLogo, brandFromSettings } from "./pwaInstallUi.jsx";
+import { BRAND, brandFromSettings } from "./pwaInstallConstants";
+import { BrandLogo } from "./pwaInstallUi.jsx";
 
 export default function InstallFloatingBanner({ installApp, settings }) {
   const brand = brandFromSettings(settings);

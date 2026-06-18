@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 const DISMISS_KEY = "ktx_install_banner_dismissed_at";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -121,7 +121,7 @@ export function dismissInstallBanner() {
 }
 
 export function usePwaInstall() {
-  const platformRef = useRef(getPlatform());
+  const [platform] = useState(() => getPlatform());
   const [snapshot, setSnapshot] = useState(() => {
     installed = isStandaloneMode();
     isStandalone = installed;
@@ -157,7 +157,7 @@ export function usePwaInstall() {
 
   const requestInstall = useCallback(async () => {
     if (snapshot.installed) return "installed";
-    if (platformRef.current.isIos) {
+    if (platform.isIos) {
       setGuideMode("ios");
       return "ios-guide";
     }
@@ -188,12 +188,12 @@ export function usePwaInstall() {
     }
 
     setGuideMode("android");
-    return platformRef.current.isAndroid ? "android-guide" : "manual-guide";
-  }, [snapshot.installed]);
+    return platform.isAndroid ? "android-guide" : "manual-guide";
+  }, [platform, snapshot.installed]);
 
   return useMemo(
     () => ({
-      ...platformRef.current,
+      ...platform,
       installed: snapshot.installed,
       isStandalone: snapshot.isStandalone,
       canPromptInstall: Boolean(snapshot.deferredPrompt),
@@ -206,7 +206,7 @@ export function usePwaInstall() {
         }
         setGuideMode((current) => {
           if (current) return current;
-          return platformRef.current.isIos ? "ios" : "android";
+          return platform.isIos ? "ios" : "android";
         });
       },
       requestInstall,
@@ -214,15 +214,15 @@ export function usePwaInstall() {
       shouldShowBanner:
         !snapshot.installed &&
         !snapshot.dismissed &&
-        (platformRef.current.isIos ||
-          platformRef.current.isAndroid ||
+        (platform.isIos ||
+          platform.isAndroid ||
           !!snapshot.deferredPrompt),
       actionLabel: snapshot.installed
         ? "Đã cài"
-        : platformRef.current.isIos
+        : platform.isIos
           ? "Hướng dẫn"
           : "Cài đặt",
     }),
-    [guideMode, requestInstall, snapshot.deferredPrompt, snapshot.dismissed, snapshot.installed, snapshot.isStandalone],
+    [guideMode, platform, requestInstall, snapshot.deferredPrompt, snapshot.dismissed, snapshot.installed, snapshot.isStandalone],
   );
 }

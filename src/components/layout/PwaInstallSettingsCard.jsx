@@ -2,9 +2,9 @@ import React from "react";
 import { Download, Share2 } from "lucide-react";
 import {
   BRAND_DARK,
-  BrandLogo,
   brandFromSettings,
-} from "./pwaInstallUi.jsx";
+} from "./pwaInstallConstants";
+import { BrandLogo } from "./pwaInstallUi.jsx";
 
 export default function PwaInstallSettingsCard({ installApp, settings }) {
   const brand = brandFromSettings(settings);

@@ -3,10 +3,10 @@ import { CheckCircle2 } from "lucide-react";
 import Modal from "../ui/Modal";
 import {
   BRAND,
-  BrandLogo,
   IOS_INSTALL_STEPS,
   brandFromSettings,
-} from "./pwaInstallUi.jsx";
+} from "./pwaInstallConstants";
+import { BrandLogo } from "./pwaInstallUi.jsx";
 
 export default function IosInstallGuideDialog({
   open,

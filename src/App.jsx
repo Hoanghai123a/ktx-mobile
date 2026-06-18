@@ -2641,6 +2641,7 @@ export default function App() {
           <KtxView
             state={state}
             auth={auth}
+            currentBuilding={currentBuilding}
             floorId={floorId}
             setFloorId={setFloorId}
             q={q}

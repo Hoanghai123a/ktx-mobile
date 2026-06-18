@@ -19,6 +19,7 @@ import Pill from "../../components/ui/Pill";
 export default function KtxView({
   state,
   auth,
+  currentBuilding,
 
   floorId,
   setFloorId,
@@ -99,7 +100,7 @@ export default function KtxView({
     swipeRef.current.swiped = false;
   }
 
-  if (!auth?.building) {
+  if (!currentBuilding) {
     return (
       <div className="mx-auto w-full max-w-md px-4 pb-24">
         <div className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-slate-100">
