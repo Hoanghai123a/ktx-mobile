@@ -9,6 +9,8 @@ export const DEFAULT_SETTINGS = {
   waterBillingMode: "shared",
   roomMonthlyPrice: 0,
   roomBillingMode: "postpaid",
+  defaultRoomCapacity: 8,
+  roomCapacityById: {},
   billingMonth: "",
   billingCloseDay: 10,
   adminContact: {

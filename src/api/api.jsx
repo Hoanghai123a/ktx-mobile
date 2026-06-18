@@ -455,6 +455,16 @@ const DEFAULT_SETTINGS = {
 
 function settingsFromRecord(row) {
   if (!row) return DEFAULT_SETTINGS;
+  const roomCapacityById =
+    row.room_capacity_by_id &&
+    typeof row.room_capacity_by_id === "object" &&
+    !Array.isArray(row.room_capacity_by_id)
+      ? Object.fromEntries(
+          Object.entries(row.room_capacity_by_id)
+            .map(([roomId, value]) => [roomId, Math.max(1, Math.floor(Number(value) || 0))])
+            .filter(([, value]) => Number.isFinite(value) && value > 0),
+        )
+      : DEFAULT_SETTINGS.roomCapacityById;
   return {
     ...DEFAULT_SETTINGS,
     siteName: row.site_name ?? DEFAULT_SETTINGS.siteName,
@@ -467,6 +477,8 @@ function settingsFromRecord(row) {
     waterBillingMode: row.about?.utilitySettings?.waterBillingMode === "no_split" ? "no_split" : "shared",
     roomMonthlyPrice: row.room_monthly_price ?? row.about?.utilitySettings?.roomMonthlyPrice ?? 0,
     roomBillingMode: row.about?.utilitySettings?.roomBillingMode === "prepaid" ? "prepaid" : "postpaid",
+    defaultRoomCapacity: row.default_room_capacity ?? DEFAULT_SETTINGS.defaultRoomCapacity,
+    roomCapacityById,
     billingMonth: row.billing_month || "",
     billingCloseDay: row.billing_close_day ?? row.about?.utilitySettings?.billingCloseDay ?? 10,
     about: { ...DEFAULT_SETTINGS.about, ...(row.about || {}) },
@@ -491,6 +503,14 @@ function applyGlobalBrand(settings, globalRow) {
 function settingsToRecord(data) {
   const global = data.__globalBrand === true;
   const buildingId = global ? "" : currentBuildingId();
+  const roomCapacityById =
+    data.roomCapacityById && typeof data.roomCapacityById === "object"
+      ? Object.fromEntries(
+          Object.entries(data.roomCapacityById)
+            .map(([roomId, value]) => [roomId, Math.max(1, Math.floor(Number(value) || 0))])
+            .filter(([, value]) => Number.isFinite(value) && value > 0),
+        )
+      : {};
   return {
     key: settingsKey(global),
     ...(buildingId ? { building_id: buildingId } : {}),
@@ -500,6 +520,8 @@ function settingsToRecord(data) {
     require_password_on_delete: !!data.requirePasswordOnDelete,
     electricity_price: Number(data.electricityPrice || 0),
     water_price: Number(data.waterPrice || 0),
+    default_room_capacity: Math.max(1, Math.floor(Number(data.defaultRoomCapacity || 8))),
+    room_capacity_by_id: roomCapacityById,
     billing_month: data.billingMonth || "",
     billing_close_day: Math.min(31, Math.max(1, Number(data.billingCloseDay || 10))),
     about: {
