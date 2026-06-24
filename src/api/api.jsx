@@ -841,6 +841,29 @@ function auditMeta(method, url, data = {}, result = {}) {
   if (path === "/settings/" && method === "PATCH") return { action: "Cập nhật", entity: "Cài đặt", summary: "Cập nhật cài đặt KTX" };
   if (path === "/init-ktx/" && method === "POST") return { action: "Khởi tạo", entity: "KTX", summary: "Khởi tạo tầng/phòng KTX" };
   if (path === "/wipe-database/" && method === "POST") return { action: "Xóa", entity: "KTX", summary: "Xóa dữ liệu KTX" };
+  if (path === "/transfer-stay/" && method === "POST") {
+    const fromCode = result?.from_room_code || data?.from_room_code || "";
+    const toCode = result?.to_room_code || data?.to_room_code || "";
+    const subject = result?.worker_name || data?.worker_name || "";
+    const where = fromCode && toCode ? ` ${fromCode} → ${toCode}` : "";
+    return {
+      action: "Chuyển phòng",
+      entity: "Lượt ở",
+      entityId: result?.new_stay_id || result?.id || data?.stay_id,
+      summary: subject ? `Chuyển phòng${where}: ${subject}` : `Chuyển phòng${where}`,
+    };
+  }
+  if (path === "/checkout-stay/" && method === "POST") {
+    const subject = result?.worker_name || data?.worker_name || "";
+    const roomCode = result?.room_code || data?.room_code || "";
+    const where = roomCode ? ` phòng ${roomCode}` : "";
+    return {
+      action: "Rời phòng",
+      entity: "Lượt ở",
+      entityId: result?.id || data?.stay_id,
+      summary: subject ? `Rời phòng${where}: ${subject}` : `Rời phòng${where}`,
+    };
+  }
 
   const routes = [
     { base: "workers", entity: "NLĐ", create: "Thêm NLĐ", update: "Cập nhật NLĐ", remove: "Xóa NLĐ" },
@@ -1038,6 +1061,141 @@ async function handlePost(url, data, signal) {
     const activeRows = await pbList("stays", { filter: combineFilters(eq("worker_id", data.worker_id), buildingFilter()), sort: "-date_in" }, signal);
     if (!data.date_out && activeRows.some((s) => !s.date_out)) throw makeError(409, { error: "NLĐ đang có lượt ở hiện tại (date_out = null)." });
     return normalizeStay(await pbRequest("stays", "", { method: "POST", body: { ...data, building_id, date_in: dateValue(data.date_in), date_out: dateValue(data.date_out) }, signal }));
+  }
+  if (path === "/transfer-stay/") {
+    if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
+    const stayId = String(data?.stay_id || "").trim();
+    const toRoomId = String(data?.to_room_id || "").trim();
+    const transferDate = dateOnly(data?.transfer_date);
+    if (!stayId || !toRoomId || !transferDate) {
+      throw makeError(400, { error: "Thiếu thông tin chuyển phòng (stay_id, to_room_id, transfer_date)." });
+    }
+    const fromElec = Number(data?.from_electricity_reading);
+    const fromWater = Number(data?.from_water_reading);
+    const toElec = Number(data?.to_electricity_reading);
+    const toWater = Number(data?.to_water_reading);
+    if (![fromElec, fromWater, toElec, toWater].every(Number.isFinite)) {
+      throw makeError(400, { error: "Thiếu chỉ số điện/nước phòng cũ hoặc phòng mới." });
+    }
+    const oldStay = await pbRequest("stays", `/${stayId}`, { signal });
+    if (!oldStay?.id) throw makeError(404, { error: "Không tìm thấy lượt ở cần chuyển." });
+    if (oldStay.date_out) throw makeError(409, { error: "Lượt ở này đã đóng, không thể chuyển." });
+    const oldRoom = oldStay.room_id ? await pbRequest("rooms", `/${oldStay.room_id}`, { signal }) : null;
+    const newRoom = await pbRequest("rooms", `/${toRoomId}`, { signal });
+    if (!newRoom?.id) throw makeError(404, { error: "Không tìm thấy phòng đích." });
+    if (newRoom.id === oldStay.room_id) throw makeError(400, { error: "Phòng đích trùng phòng hiện tại." });
+    const snapshot = {
+      date_out: oldStay.date_out || null,
+      electricity_end_reading: oldStay.electricity_end_reading ?? null,
+      water_end_reading: oldStay.water_end_reading ?? null,
+    };
+    await pbRequest("stays", `/${stayId}`, {
+      method: "PATCH",
+      body: {
+        date_out: dateValue(transferDate),
+        electricity_end_reading: fromElec,
+        water_end_reading: fromWater,
+      },
+      signal,
+    });
+    let newStay = null;
+    try {
+      newStay = await pbRequest("stays", "", {
+        method: "POST",
+        body: {
+          building_id,
+          room_id: toRoomId,
+          worker_id: oldStay.worker_id,
+          date_in: dateValue(transferDate),
+          date_out: null,
+          electricity_start_reading: toElec,
+          water_start_reading: toWater,
+        },
+        signal,
+      });
+    } catch (createErr) {
+      try {
+        await pbRequest("stays", `/${stayId}`, { method: "PATCH", body: snapshot, signal });
+      } catch (rollbackErr) {
+        console.error("Transfer rollback failed:", rollbackErr);
+      }
+      throw createErr;
+    }
+    let workerName = "";
+    try {
+      const worker = oldStay.worker_id ? await pbRequest("workers", `/${oldStay.worker_id}`, { signal }) : null;
+      workerName = worker?.full_name || worker?.employee_code || "";
+    } catch {
+      workerName = "";
+    }
+    return {
+      old_stay_id: stayId,
+      new_stay_id: newStay?.id || "",
+      new_stay: newStay ? normalizeStay(newStay) : null,
+      from_room_id: oldStay.room_id || "",
+      from_room_code: oldRoom?.code || "",
+      to_room_id: toRoomId,
+      to_room_code: newRoom?.code || "",
+      worker_id: oldStay.worker_id || "",
+      worker_name: workerName,
+    };
+  }
+  if (path === "/checkout-stay/") {
+    if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
+    const stayId = String(data?.stay_id || "").trim();
+    const dateOut = dateOnly(data?.date_out);
+    if (!stayId || !dateOut) {
+      throw makeError(400, { error: "Thiếu thông tin checkout (stay_id, date_out)." });
+    }
+    const elecStart = Number(data?.electricity_start_reading);
+    const elecEnd = Number(data?.electricity_end_reading);
+    const waterStart = Number(data?.water_start_reading);
+    const waterEnd = Number(data?.water_end_reading);
+    if (![elecStart, elecEnd, waterStart, waterEnd].every(Number.isFinite)) {
+      throw makeError(400, { error: "Thiếu chỉ số điện/nước khi rời." });
+    }
+    if (elecEnd < elecStart) throw makeError(400, { error: "Số điện khi rời không được nhỏ hơn số điện đầu." });
+    if (waterEnd < waterStart) throw makeError(400, { error: "Số nước khi rời không được nhỏ hơn số nước đầu." });
+    const electricityAmount = Math.max(0, Math.floor(Number(data?.electricity_amount || 0)));
+    const waterAmount = Math.max(0, Math.floor(Number(data?.water_amount || 0)));
+    const totalAmount = Math.max(0, Math.floor(Number(data?.total_amount || 0)));
+    const utilityPaidMonth = String(data?.utility_paid_month || "").slice(0, 7);
+    const oldStay = await pbRequest("stays", `/${stayId}`, { signal });
+    if (!oldStay?.id) throw makeError(404, { error: "Không tìm thấy lượt ở cần checkout." });
+    if (oldStay.date_out) throw makeError(409, { error: "Lượt ở này đã đóng trước đó." });
+    const updated = await pbRequest("stays", `/${stayId}`, {
+      method: "PATCH",
+      body: {
+        date_out: dateValue(dateOut),
+        electricity_start_reading: elecStart,
+        electricity_end_reading: elecEnd,
+        water_start_reading: waterStart,
+        water_end_reading: waterEnd,
+        electricity_amount: electricityAmount,
+        water_amount: waterAmount,
+        total_amount: totalAmount,
+        utility_paid_at: new Date().toISOString(),
+        utility_paid_month: utilityPaidMonth,
+      },
+      signal,
+    });
+    let workerName = "";
+    let roomCode = "";
+    try {
+      const [worker, room] = await Promise.all([
+        oldStay.worker_id ? pbRequest("workers", `/${oldStay.worker_id}`, { signal }) : null,
+        oldStay.room_id ? pbRequest("rooms", `/${oldStay.room_id}`, { signal }) : null,
+      ]);
+      workerName = worker?.full_name || worker?.employee_code || "";
+      roomCode = room?.code || "";
+    } catch {
+      // ignore lookup errors
+    }
+    return {
+      ...normalizeStay(updated),
+      worker_name: workerName,
+      room_code: roomCode,
+    };
   }
   if (path === "/electricities/") {
     const payload = { ...data, building_id, start_reading: Number(data.start_reading || 0), end_reading: Number(data.end_reading || 0), readings: data.readings || [], paid: !!data.paid, paid_at: data.paid ? new Date().toISOString() : null };

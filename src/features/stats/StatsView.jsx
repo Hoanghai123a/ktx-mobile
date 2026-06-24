@@ -117,6 +117,7 @@ export default function StatsView({
   paidRoomAmount = 0,
   workerPaymentRows = [],
   markWorkerUtilityPaid,
+  exportWorkerInvoice,
   openElectricityHistory,
   activityLogs = [],
   activityLogLoading = false,
@@ -349,11 +350,23 @@ export default function StatsView({
                         <div className="truncate text-sm font-semibold text-slate-900">{row.employeeCode ? `${row.employeeCode} - ` : ""}{row.workerName}</div>
                         <div className="mt-0.5 text-xs text-slate-500">Phòng {row.roomCode} · {row.active ? "Đang ở" : `Rời ${row.dateOut}`}</div>
                       </div>
-                      {row.paid ? (
-                        <div className="shrink-0 rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Đã thu</div>
-                      ) : (
-                        <button className="shrink-0 rounded-2xl bg-[rgb(44_120_159)] px-3 py-2 text-xs font-semibold text-white" onClick={() => markWorkerUtilityPaid?.(row)}>Đã thu</button>
-                      )}
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {exportWorkerInvoice ? (
+                          <button
+                            className="grid h-8 w-8 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                            onClick={() => exportWorkerInvoice(row)}
+                            title="Xuất phiếu thanh toán"
+                            aria-label="Xuất phiếu thanh toán"
+                          >
+                            <FileDown className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                        {row.paid ? (
+                          <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Đã thu</div>
+                        ) : (
+                          <button className="rounded-2xl bg-[rgb(44_120_159)] px-3 py-2 text-xs font-semibold text-white" onClick={() => markWorkerUtilityPaid?.(row)}>Đã thu</button>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-slate-500">
                       <span>Phòng <Money value={row.roomAmount} /> · Điện <Money value={row.electricityAmount} /> · Nước <Money value={row.waterAmount} /></span>

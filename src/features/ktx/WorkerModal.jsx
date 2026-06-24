@@ -125,7 +125,11 @@ export default function WorkerModal({
     const list = stays || [];
     return list
       .filter((s) => !!s.dateOut)
-      .sort((a, b) => new Date(b.dateOut || 0) - new Date(a.dateOut || 0));
+      .sort((a, b) => {
+        const aKey = String(a.dateOut || "") > String(a.dateIn || "") ? a.dateOut : a.dateIn;
+        const bKey = String(b.dateOut || "") > String(b.dateIn || "") ? b.dateOut : b.dateIn;
+        return String(bKey || "").localeCompare(String(aKey || ""));
+      });
   }, [stays]);
 
   return (

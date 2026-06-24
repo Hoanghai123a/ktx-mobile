@@ -7,9 +7,9 @@ export default function StaysHistoryModal({ open, onClose, stays = [], roomById,
     return (stays || [])
       .slice()
       .sort((a, b) => {
-        const da = a.dateIn ? String(a.dateIn) : "";
-        const db = b.dateIn ? String(b.dateIn) : "";
-        return db.localeCompare(da);
+        const aKey = String(a.dateOut || "") > String(a.dateIn || "") ? a.dateOut : a.dateIn;
+        const bKey = String(b.dateOut || "") > String(b.dateIn || "") ? b.dateOut : b.dateIn;
+        return String(bKey || "").localeCompare(String(aKey || ""));
       })
       .map((s) => ({
         ...s,

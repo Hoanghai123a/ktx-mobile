@@ -17,6 +17,7 @@ import {
   Droplets,
   LoaderCircle,
   Zap,
+  FileDown,
 } from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
@@ -121,11 +122,36 @@ export default function RoomModal({
     return stays.filter((s) => !s.dateOut);
   }, [room]);
 
+  const [invoiceModal, setInvoiceModal] = useState({ open: false, stayId: null });
+
+  const invoiceData = useMemo(() => {
+    if (!invoiceModal.stayId) return null;
+    const stay = (room?.stays || []).find((s) => s.id === invoiceModal.stayId);
+    if (!stay) return null;
+    const worker = workerById?.get(stay.workerId);
+    const charge = actions?.utilityChargesByWorkerId?.get?.(stay.workerId) || {};
+    const roomAmount = Number(charge.roomAmount || 0);
+    const electricityAmount = Number(charge.electricityAmount || 0);
+    const waterAmount = Number(charge.waterAmount || 0);
+    return {
+      stay,
+      worker,
+      roomAmount,
+      electricityAmount,
+      waterAmount,
+      totalAmount: roomAmount + electricityAmount + waterAmount,
+    };
+  }, [invoiceModal.stayId, room?.stays, workerById, actions?.utilityChargesByWorkerId]);
+
   const history = useMemo(() => {
     const stays = room?.stays || [];
     return stays
       .filter((s) => !!s.dateOut)
-      .sort((a, b) => new Date(b.dateOut || 0) - new Date(a.dateOut || 0));
+      .sort((a, b) => {
+        const aKey = String(a.dateOut || "") > String(a.dateIn || "") ? a.dateOut : a.dateIn;
+        const bKey = String(b.dateOut || "") > String(b.dateIn || "") ? b.dateOut : b.dateIn;
+        return String(bKey || "").localeCompare(String(aKey || ""));
+      });
   }, [room]);
 
   const recentDepartures = useMemo(() => history.slice(0, 5), [history]);
@@ -437,33 +463,45 @@ export default function RoomModal({
 
           {/* Current stays */}
           <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-sm font-semibold">Người đang ở</div>
                 <div className="text-xs text-slate-600">
                   Checkout từng người hoặc thêm người
                 </div>
               </div>
 
-              <button
-                className={clsx(
-                  "rounded-2xl px-3 py-2 text-xs font-semibold",
-                  auth?.isAdmin
-                    ? "bg-[rgb(44_120_159)] text-white"
-                    : "bg-slate-50 text-slate-400",
-                )}
-                onClick={() =>
-                  requireAdmin(() => {
-                    resetAddForm();
-                    setAddOpen(true);
-                  })
-                }
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Thêm mới
-                </span>
-              </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {actions?.exportRoomInvoice && current.length ? (
+                  <button
+                    className="grid h-9 w-9 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    onClick={() => actions.exportRoomInvoice()}
+                    title="Xuất phiếu thu cả phòng"
+                    aria-label="Xuất phiếu thu cả phòng"
+                  >
+                    <FileDown className="h-4 w-4" />
+                  </button>
+                ) : null}
+                <button
+                  className={clsx(
+                    "rounded-2xl px-3 py-2 text-xs font-semibold",
+                    auth?.isAdmin
+                      ? "bg-[rgb(44_120_159)] text-white"
+                      : "bg-slate-50 text-slate-400",
+                  )}
+                  onClick={() =>
+                    requireAdmin(() => {
+                      resetAddForm();
+                      setAddOpen(true);
+                    })
+                  }
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Thêm mới
+                  </span>
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 space-y-2">
@@ -502,7 +540,17 @@ export default function RoomModal({
                         </div>
                       </button>
 
-                      <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        <button
+                          className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                          onClick={() => setInvoiceModal({ open: true, stayId: s.id })}
+                          title="Xem phiếu thanh toán"
+                        >
+                          <span className="inline-flex items-center justify-center gap-1.5">
+                            <FileDown className="h-4 w-4" />
+                            Phiếu
+                          </span>
+                        </button>
                         {actions?.transfer ? (
                           <button
                             className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
@@ -522,7 +570,6 @@ export default function RoomModal({
                             auth?.isAdmin
                               ? "bg-slate-100 text-slate-700"
                               : "bg-slate-50 text-slate-400",
-                            actions?.transfer ? "" : "col-span-2",
                           )}
                           onClick={() =>
                             requireAdmin(async () => {
@@ -1255,6 +1302,78 @@ export default function RoomModal({
           upsertUtility: actions?.upsertUtility,
         }}
       />
+
+      <Modal
+        open={invoiceModal.open}
+        title="Phiếu thanh toán"
+        onClose={() => setInvoiceModal({ open: false, stayId: null })}
+        zIndex="z-[80]"
+      >
+        {invoiceData ? (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
+              <div className="text-xs font-medium text-slate-500">
+                {actions?.billingMonth ? `Kỳ thu: ${actions.billingMonth}` : "Phiếu thanh toán"}
+              </div>
+              <div className="mt-1 text-base font-semibold text-slate-900">
+                {invoiceData.worker?.employeeCode ? `${invoiceData.worker.employeeCode} - ` : ""}
+                {invoiceData.worker?.fullName || invoiceData.stay.workerId}
+              </div>
+              <div className="mt-0.5 text-xs text-slate-600">
+                {floor?.name ? `${floor.name} · ` : ""}Phòng {room?.code || "—"}
+              </div>
+              <div className="mt-0.5 text-xs text-slate-600">
+                Vào: {formatDate(invoiceData.stay.dateIn)}
+                {invoiceData.stay.dateOut ? ` · Rời: ${formatDate(invoiceData.stay.dateOut)}` : ""}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-100">
+              <div className="flex items-center justify-between py-1.5">
+                <span className="text-sm text-slate-700">Tiền phòng</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {invoiceData.roomAmount.toLocaleString("vi-VN")}đ
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 py-1.5">
+                <span className="text-sm text-slate-700">Tiền điện</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {invoiceData.electricityAmount.toLocaleString("vi-VN")}đ
+                </span>
+              </div>
+              <div className="flex items-center justify-between border-t border-slate-100 py-1.5">
+                <span className="text-sm text-slate-700">Tiền nước</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {invoiceData.waterAmount.toLocaleString("vi-VN")}đ
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-white">
+              <span className="text-sm font-semibold">Tổng cần thu</span>
+              <span className="text-lg font-bold">
+                {invoiceData.totalAmount.toLocaleString("vi-VN")}đ
+              </span>
+            </div>
+
+            {actions?.exportWorkerInvoice ? (
+              <button
+                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700"
+                onClick={() => {
+                  actions.exportWorkerInvoice(invoiceData.stay.workerId);
+                }}
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  <FileDown className="h-4 w-4" />
+                  Tải Excel
+                </span>
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="text-sm text-slate-600">Không tìm thấy thông tin thanh toán.</div>
+        )}
+      </Modal>
     </>
   );
 }

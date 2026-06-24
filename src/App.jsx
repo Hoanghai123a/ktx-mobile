@@ -18,12 +18,14 @@ import {
   LogOut,
   Settings,
   Building2,
-  DoorOpen,
   Clock,
   ShieldCheck,
-  Pin,
-  PinOff,
 } from "lucide-react";
+import BuildingsHome from "./features/ktx/BuildingsHome";
+import {
+  lastBuildingKey,
+  readPinnedBuildingIds,
+} from "./lib/buildingPins";
 // UI (App.jsx thường chỉ còn 2 cái này)
 import Confirm from "./components/ui/Confirm";
 import TabButton from "./components/ui/TabButton";
@@ -34,10 +36,13 @@ import {
   exportExcel as exportExcelSvc,
   exportActivityLogExcel as exportActivityLogExcelSvc,
   exportPaymentExcel as exportPaymentExcelSvc,
+  exportWorkerInvoice as exportWorkerInvoiceSvc,
+  exportRoomInvoice as exportRoomInvoiceSvc,
 } from "./services/excelExportService";
 import Pill from "./components/ui/Pill";
 import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
+import { useBrandManifest } from "./hooks/useBrandManifest";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
 import { formatDate } from "./services/dateFormat";
 import {
@@ -126,360 +131,6 @@ function Modal({ open, title, children, onClose }) {
   );
 }
 
-function Empty({ title, hint, action }) {
-  return (
-    <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-6 text-center shadow-sm">
-      <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-slate-100">
-        <DoorOpen className="h-6 w-6 text-slate-500" />
-      </div>
-      <div className="text-sm font-semibold">{title}</div>
-      <div className="mt-1 text-xs text-slate-600">{hint}</div>
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
-
-function pinnedBuildingKey(user) {
-  return `ktx_pinned_buildings_${user?.id || user?.username || "guest"}`;
-}
-
-function lastBuildingKey(user) {
-  return `ktx_last_building_${user?.id || user?.username || "guest"}`;
-}
-
-function normalizePinnedIds(rows) {
-  return Array.isArray(rows)
-    ? [...new Set(rows.map((id) => String(id || "").trim()).filter(Boolean))]
-    : [];
-}
-
-function readPinnedBuildingIds(user) {
-  try {
-    const rows = JSON.parse(
-      localStorage.getItem(pinnedBuildingKey(user)) || "[]",
-    );
-    return normalizePinnedIds(rows);
-  } catch {
-    return [];
-  }
-}
-
-function BuildingStatusLegend() {
-  return (
-    <div className="fixed inset-x-0 bottom-24 z-30 mx-auto w-full max-w-md px-4">
-      <div className="rounded-2xl bg-white/95 px-3 py-3 text-xs text-slate-600 shadow-lg ring-1 ring-slate-100 backdrop-blur">
-        <div className="mb-2 font-semibold text-slate-700">
-          Chú thích trạng thái
-        </div>
-        <div className="grid gap-2">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-400" />
-            <span>Tòa nhà còn hạn sử dụng.</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-rose-400" />
-            <span>Tòa nhà đã hết hạn.</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BuildingsHome({
-  buildings,
-  selectedBuildingId,
-  setSelectedBuildingId,
-  setTab,
-  user,
-  token,
-}) {
-  const storageKey = pinnedBuildingKey(user);
-  const lastKey = lastBuildingKey(user);
-  const [query, setQuery] = useState("");
-  const remoteLoadedRef = useRef("");
-  const [pinnedIds, setPinnedIds] = useState(() => {
-    try {
-      const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      return normalizePinnedIds(rows);
-    } catch {
-      return [];
-    }
-  });
-
-  useEffect(() => {
-    try {
-      const rows = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      setPinnedIds(normalizePinnedIds(rows));
-    } catch {
-      setPinnedIds([]);
-    }
-    remoteLoadedRef.current = "";
-  }, [storageKey]);
-
-  const buildingIdsKey = useMemo(
-    () =>
-      buildings
-        .map((b) => b.id)
-        .filter(Boolean)
-        .sort()
-        .join("|"),
-    [buildings],
-  );
-  const accessibleIds = useMemo(
-    () => new Set(buildings.map((b) => b.id).filter(Boolean)),
-    [buildings],
-  );
-
-  useEffect(() => {
-    if (!token || !buildingIdsKey) return;
-    const syncKey = `${storageKey}:${buildingIdsKey}`;
-    if (remoteLoadedRef.current === syncKey) return;
-    remoteLoadedRef.current = syncKey;
-    let alive = true;
-    (async () => {
-      try {
-        const remote = await buildingService.getPinnedBuildings(token);
-        if (!alive || !remote?.synced) return;
-        const localIds = readPinnedBuildingIds(user).filter((id) =>
-          accessibleIds.has(id),
-        );
-        const remoteIds = normalizePinnedIds(remote.pinnedBuildingIds).filter(
-          (id) => accessibleIds.has(id),
-        );
-        const next = remote.exists ? remoteIds : localIds;
-        const remoteLast = String(remote.lastBuildingId || "").trim();
-        const localLast = localStorage.getItem(lastKey) || "";
-        const nextLast = accessibleIds.has(
-          remote.exists ? remoteLast : localLast,
-        )
-          ? remote.exists
-            ? remoteLast
-            : localLast
-          : "";
-
-        setPinnedIds(next);
-        localStorage.setItem(storageKey, JSON.stringify(next));
-        if (nextLast) localStorage.setItem(lastKey, nextLast);
-        else localStorage.removeItem(lastKey);
-
-        const remoteHadStaleIds =
-          remote.exists &&
-          remoteIds.length !==
-            normalizePinnedIds(remote.pinnedBuildingIds).length;
-        const remoteHadStaleLast = remote.exists && !!remoteLast && !nextLast;
-        if (!remote.exists || remoteHadStaleIds || remoteHadStaleLast) {
-          await buildingService.savePinnedBuildings(
-            { pinnedBuildingIds: next, lastBuildingId: nextLast },
-            token,
-          );
-        }
-      } catch (e) {
-        console.warn("Sync pinned buildings failed:", e);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [accessibleIds, buildingIdsKey, lastKey, storageKey, token, user]);
-
-  useEffect(() => {
-    const next = pinnedIds.filter((id) => accessibleIds.has(id));
-    if (next.length === pinnedIds.length) return;
-    setPinnedIds(next);
-    localStorage.setItem(storageKey, JSON.stringify(next));
-  }, [accessibleIds, pinnedIds, storageKey]);
-
-  function savePins(
-    next,
-    nextLastId = localStorage.getItem(lastKey) || selectedBuildingId || "",
-  ) {
-    const clean = [
-      ...new Set((next || []).filter((id) => accessibleIds.has(id))),
-    ];
-    const cleanLastId = accessibleIds.has(nextLastId) ? nextLastId : "";
-    setPinnedIds(clean);
-    localStorage.setItem(storageKey, JSON.stringify(clean));
-    if (cleanLastId) localStorage.setItem(lastKey, cleanLastId);
-    else localStorage.removeItem(lastKey);
-    if (token) {
-      buildingService
-        .savePinnedBuildings(
-          { pinnedBuildingIds: clean, lastBuildingId: cleanLastId },
-          token,
-        )
-        .catch((e) => console.warn("Save pinned buildings failed:", e));
-    }
-  }
-
-  function pinBuilding(id) {
-    if (!id || !accessibleIds.has(id) || pinnedIds.includes(id)) return;
-    savePins([...pinnedIds, id]);
-  }
-
-  function unpinBuilding(id) {
-    const next = pinnedIds.filter((x) => x !== id);
-    if (selectedBuildingId === id) {
-      const nextSelected = next[0] || "";
-      savePins(next, nextSelected);
-      setSelectedBuildingId(nextSelected);
-      if (!next.length) setTab("buildings");
-      return;
-    }
-    savePins(next);
-  }
-
-  function openBuilding(id) {
-    setSelectedBuildingId(id);
-    savePins(pinnedIds, id);
-    setTab("ktx");
-  }
-
-  const pinnedBuildings = useMemo(
-    () => buildings.filter((b) => pinnedIds.includes(b.id)),
-    [buildings, pinnedIds],
-  );
-  const searchResults = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    if (!text) return [];
-    return buildings.filter((b) =>
-      `${b.code || ""} ${b.name || ""}`.toLowerCase().includes(text),
-    );
-  }, [buildings, query]);
-
-  return (
-    <div className="mx-auto w-full max-w-md px-4 pb-44 space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Tìm tòa nhà để ghim"
-            className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-          />
-          {query ? (
-            <button
-              className="rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              onClick={() => setQuery("")}
-            >
-              Xóa
-            </button>
-          ) : null}
-        </div>
-      </div>
-
-      {query.trim() ? (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500">
-            Kết quả tìm kiếm
-          </div>
-          {searchResults.length ? (
-            <div className="grid grid-cols-2 gap-2">
-              {searchResults.map((b) => {
-                const pinned = pinnedIds.includes(b.id);
-                return (
-                  <div
-                    key={b.id}
-                    className="rounded-2xl bg-white p-2.5 shadow-sm ring-1 ring-sky-100"
-                  >
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold text-slate-900">
-                        {b.code || "-"}
-                      </div>
-                      <div className="mt-0.5 truncate text-xs font-medium text-slate-700">
-                        {b.name}
-                      </div>
-                    </div>
-                    <button
-                      disabled={pinned}
-                      className={`mt-2 w-full rounded-xl px-2 py-1.5 text-xs font-semibold ${pinned ? "bg-slate-100 text-slate-400" : "bg-[rgb(44_120_159)] text-white"}`}
-                      onClick={() => pinBuilding(b.id)}
-                    >
-                      <span className="inline-flex items-center justify-center gap-1.5">
-                        <Pin className="h-3.5 w-3.5" />
-                        {pinned ? "Đã ghim" : "Ghim"}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-500">
-              Không tìm thấy tòa nhà phù hợp.
-            </div>
-          )}
-        </div>
-      ) : null}
-
-      {pinnedBuildings.length ? (
-        <div className="space-y-2">
-          <div className="text-xs font-semibold text-slate-500">
-            Tòa nhà đã ghim
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            {pinnedBuildings.map((b) => {
-              const active = b.id === selectedBuildingId;
-              const canManage =
-                b.accessRole === "manager" || b.accessRole === "owner";
-              return (
-                <div
-                  key={b.id}
-                  className={`rounded-2xl bg-white p-2.5 text-left shadow-sm ring-1 ${active ? "ring-sky-300" : "ring-slate-100"}`}
-                >
-                  <button
-                    className="w-full text-left"
-                    onClick={() => openBuilding(b.id)}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-slate-900">
-                          {b.code || "-"}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs font-medium text-slate-700">
-                          {b.name}
-                        </div>
-                      </div>
-                      <span
-                        className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${b.expired ? "bg-rose-400" : "bg-emerald-400"}`}
-                      />
-                    </div>
-                    <div className="mt-1 truncate text-[11px] text-slate-500">
-                      Hạn: {formatDate(b.end_date)}
-                    </div>
-                    <div className="mt-0.5 truncate text-[11px] text-slate-500">
-                      {canManage ? "Quản lý" : "Chỉ xem"}
-                    </div>
-                  </button>
-                  <div className="mt-2 flex items-center justify-between gap-1">
-                    <span className="truncate text-[11px] font-medium text-slate-400">
-                      {b.public_view ? "Công khai" : "Được gán"}
-                    </span>
-                    <button
-                      className="rounded-lg bg-slate-100 p-1.5 text-slate-500"
-                      onClick={() => unpinBuilding(b.id)}
-                      title="Bỏ ghim"
-                    >
-                      <PinOff className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <Empty
-          title="Chưa ghim tòa nhà"
-          hint="Tìm tòa nhà ở ô phía trên, sau đó bấm Ghim để lưu vào danh sách chính."
-        />
-      )}
-
-      <BuildingStatusLegend />
-    </div>
-  );
-}
 function LazyFallback() {
   return <div className="px-4 py-6 text-sm text-slate-500">Đang tải...</div>;
 }
@@ -644,139 +295,7 @@ export default function App() {
     return () => clearTimeout(t);
   }, [state]);
 
-  useEffect(() => {
-    const brandName =
-      String(
-        state.settings?.siteName || DEFAULT_SETTINGS.siteName || "KTX",
-      ).trim() || "KTX";
-    const logoUrl =
-      String(
-        state.settings?.logoUrl ||
-          state.settings?.about?.brandLogoUrl ||
-          DEFAULT_SETTINGS.logoUrl ||
-          "/logo.png",
-      ).trim() || "/logo.png";
-
-    document.title = brandName;
-    document
-      .querySelector('meta[name="apple-mobile-web-app-title"]')
-      ?.setAttribute("content", brandName);
-    document
-      .querySelector('meta[name="application-name"]')
-      ?.setAttribute("content", brandName);
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute("content", "#2c789f");
-
-    const updateLink = (selector, rel) => {
-      let el = document.querySelector(selector);
-      if (!el) {
-        el = document.createElement("link");
-        el.setAttribute("rel", rel);
-        document.head.appendChild(el);
-      }
-      el.setAttribute("href", logoUrl);
-    };
-
-    updateLink('link[rel="icon"]', "icon");
-    updateLink('link[rel="shortcut icon"]', "shortcut icon");
-    updateLink('link[rel="apple-touch-icon"]', "apple-touch-icon");
-
-    let active = true;
-    let blobUrl = null;
-
-    const renderManifestIcon = (size) =>
-      new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          try {
-            const canvas = document.createElement("canvas");
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) throw new Error("Canvas unavailable");
-            ctx.clearRect(0, 0, size, size);
-
-            const target = size * 0.82;
-            const scale = Math.min(target / img.width, target / img.height);
-            const width = Math.max(1, Math.round(img.width * scale));
-            const height = Math.max(1, Math.round(img.height * scale));
-            const x = Math.round((size - width) / 2);
-            const y = Math.round((size - height) / 2);
-            ctx.drawImage(img, x, y, width, height);
-            resolve(canvas.toDataURL("image/png"));
-          } catch (error) {
-            reject(error);
-          }
-        };
-        img.onerror = () => reject(new Error("Logo load failed"));
-        img.src = logoUrl;
-      });
-
-    const applyManifest = async () => {
-      let icon192 = "/icons/icon-192.png";
-      let icon512 = "/icons/icon-512.png";
-
-      try {
-        [icon192, icon512] = await Promise.all([
-          renderManifestIcon(192),
-          renderManifestIcon(512),
-        ]);
-      } catch {
-        // Fallback to static installable icons if logo can't be rasterized.
-      }
-
-      const manifest = {
-        name: brandName,
-        short_name: brandName,
-        id: "/",
-        start_url: "/",
-        scope: "/",
-        display: "standalone",
-        display_override: ["window-controls-overlay", "standalone"],
-        orientation: "portrait",
-        background_color: "#f0f9ff",
-        theme_color: "rgb(44 120 159)",
-        icons: [
-          {
-            src: icon192,
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any",
-          },
-          {
-            src: icon512,
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any",
-          },
-        ],
-      };
-
-      if (!active) return;
-      blobUrl = URL.createObjectURL(
-        new Blob([JSON.stringify(manifest)], {
-          type: "application/manifest+json",
-        }),
-      );
-      updateLink('link[rel="manifest"]', "manifest");
-      document
-        .querySelector('link[rel="manifest"]')
-        ?.setAttribute("href", blobUrl);
-    };
-
-    applyManifest();
-
-    return () => {
-      active = false;
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
-  }, [
-    state.settings?.about?.brandLogoUrl,
-    state.settings?.logoUrl,
-    state.settings?.siteName,
-  ]);
+  useBrandManifest(state.settings, DEFAULT_SETTINGS);
   // ---------------------------
   // Settings persistence (Supabase)
   // Table: app_settings (id=1, data=jsonb)
@@ -899,13 +418,17 @@ export default function App() {
   }, [refreshBuildingMembers]);
 
   const loadAllFromDb = useCallback(async () => {
+    const targetBuildingId = selectedBuildingId;
     try {
-      if (!selectedBuildingId) {
+      if (!targetBuildingId) {
         setState((s) => ({ ...s, floors: [], workers: [] }));
         setFloorId("");
         return;
       }
       const data = await dataLoader.loadAll(token);
+      if (localStorage.getItem("ktx_current_building_id") !== targetBuildingId) {
+        return;
+      }
       if (data) {
         setState((s) => ({ ...s, ...data }));
         setFloorId((prev) =>
@@ -1026,6 +549,10 @@ export default function App() {
     fromRoomId: null,
     toRoomId: "",
     date: todayISO(),
+    fromElectricityReading: "",
+    fromWaterReading: "",
+    toElectricityReading: "",
+    toWaterReading: "",
   });
 
   const [importModal, setImportModal] = useState({
@@ -1054,7 +581,7 @@ export default function App() {
         setTab("ktx"); // Chuyển về tab KTX
       } catch (error) {
         console.error("❌ Lỗi khi nhập Excel:", error);
-        alert("Lỗi khi nhập Excel. Vui lòng xem console để biết chi tiết.");
+        message.error("Lỗi khi nhập Excel. Vui lòng xem console để biết chi tiết.");
         setImportModal((m) => ({ ...m, busy: false, result: null }));
       }
     },
@@ -1115,7 +642,7 @@ export default function App() {
       setTab("ktx");
     } catch (e) {
       setImportModal((m) => ({ ...m, busy: false }));
-      alert("Nhập Excel lỗi: " + (e?.message || String(e)));
+      message.error("Nhập Excel lỗi: " + (e?.message || String(e)));
     }
   }
 
@@ -1128,7 +655,7 @@ export default function App() {
       return;
     }
     if (!selectedBuildingId) {
-      alert("Chưa chọn tòa nhà.");
+      message.warning("Chưa chọn tòa nhà.");
       return;
     }
     if (currentBuildingExpired && !systemAdmin) {
@@ -1136,7 +663,7 @@ export default function App() {
       return;
     }
     if (!auth.canWrite) {
-      alert("Tài khoản này chỉ có quyền xem.");
+      message.warning("Tài khoản này chỉ có quyền xem.");
       return;
     }
     return action?.();
@@ -1170,7 +697,7 @@ export default function App() {
 
       if (createRooms) {
         if (!startNo || !endNo || endNo < startNo) {
-          alert("Khoảng phòng không hợp lệ.");
+          message.warning("Khoảng phòng không hợp lệ.");
           return false;
         }
         const existingRoomCodes = new Set(
@@ -1180,7 +707,7 @@ export default function App() {
         );
         for (let code = startNo; code <= endNo; code += 1) {
           if (existingRoomCodes.has(String(code))) {
-            alert(`Mã phòng ${code} đã tồn tại.`);
+            message.warning(`Mã phòng ${code} đã tồn tại.`);
             return false;
           }
         }
@@ -1204,7 +731,7 @@ export default function App() {
       if (created?.id) setFloorId(created.id);
       return true;
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
       return false;
     }
   }
@@ -1216,7 +743,7 @@ export default function App() {
       await loadAllFromDb();
       setFloorId((prev) => (prev === floorId ? "" : prev));
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1235,7 +762,7 @@ export default function App() {
       await loadAllFromDb();
       return true;
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
       return false;
     }
   }
@@ -1243,7 +770,10 @@ export default function App() {
   async function updateRoomCode(floorId, roomId, newCode) {
     try {
       const nextCode = (newCode || "").trim();
-      if (!nextCode) return alert("Tên phòng không được để trống.");
+      if (!nextCode) {
+        message.warning("Tên phòng không được để trống.");
+        return;
+      }
 
       if (!token) return setLoginModal(true);
       await roomService.update(roomId, { code: nextCode }, token);
@@ -1252,10 +782,10 @@ export default function App() {
     } catch (e) {
       if (e?.response?.status === 404) {
         await loadAllFromDb();
-        alert("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
+        message.warning("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
         return false;
       }
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
       return false;
     }
   }
@@ -1269,14 +799,18 @@ export default function App() {
 
       if (Object.prototype.hasOwnProperty.call(nextPatch, "code")) {
         const c = String(nextPatch.code || "").trim();
-        if (!c) return alert("Tên phòng không được để trống.");
+        if (!c) {
+          message.warning("Tên phòng không được để trống.");
+          return;
+        }
         nextPatch.code = c;
       }
 
       if (Object.prototype.hasOwnProperty.call(nextPatch, "gender")) {
         const g = nextPatch.gender;
         if (g !== null && g !== "male" && g !== "female") {
-          return alert("Giới tính phòng không hợp lệ.");
+          message.warning("Giới tính phòng không hợp lệ.");
+          return;
         }
       }
 
@@ -1289,10 +823,10 @@ export default function App() {
     } catch (e) {
       if (e?.response?.status === 404) {
         await loadAllFromDb();
-        alert("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
+        message.warning("Phòng không còn tồn tại (dữ liệu đã thay đổi). Đã đồng bộ lại.");
         return false;
       }
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
       return false;
     }
   }
@@ -1303,7 +837,7 @@ export default function App() {
       await roomService.delete(roomId, token);
       await loadAllFromDb();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1422,7 +956,7 @@ export default function App() {
       await workerService.delete(workerId, token);
       await loadAllFromDb();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1448,7 +982,7 @@ export default function App() {
       );
       await loadAllFromDb();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1567,9 +1101,9 @@ export default function App() {
         settings: { ...state.settings, billingMonth },
       }).amount;
 
-      await stayService.update(
-        stayId,
+      await stayService.checkout(
         {
+          stay_id: stayId,
           date_out: d,
           electricity_start_reading: Number(electricityStartReading || 0),
           electricity_end_reading: Number(electricityEndReading || 0),
@@ -1578,29 +1112,65 @@ export default function App() {
           electricity_amount: electricityAmount,
           water_amount: waterAmount,
           total_amount: electricityAmount + waterAmount + roomAmount,
-          utility_paid_at: new Date().toISOString(),
           utility_paid_month: billingMonth,
         },
         token,
       );
       await loadAllFromDb();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
-  async function transferWorker({ stayId, workerId, toRoomId, transferDate }) {
+  async function transferWorker({
+    stayId,
+    workerId,
+    toRoomId,
+    transferDate,
+    fromElectricityReading,
+    fromWaterReading,
+    toElectricityReading,
+    toWaterReading,
+  }) {
+    const d = transferDate || todayISO();
+    if (!token) {
+      setLoginModal(true);
+      return false;
+    }
+
+    const fromElec = Number(fromElectricityReading);
+    const fromWater = Number(fromWaterReading);
+    const toElec = Number(toElectricityReading);
+    const toWater = Number(toWaterReading);
+    if (
+      !Number.isFinite(fromElec) ||
+      !Number.isFinite(fromWater) ||
+      !Number.isFinite(toElec) ||
+      !Number.isFinite(toWater)
+    ) {
+      message.warning("Vui lòng nhập đủ chỉ số điện/nước phòng cũ và phòng mới.");
+      return false;
+    }
+
     try {
-      const d = transferDate || todayISO();
-      if (!token) return setLoginModal(true);
-      await stayService.update(stayId, { date_out: d }, token);
-      await stayService.create(
-        { room_id: toRoomId, worker_id: workerId, date_in: d },
+      await stayService.transfer(
+        {
+          stay_id: stayId,
+          worker_id: workerId,
+          to_room_id: toRoomId,
+          transfer_date: d,
+          from_electricity_reading: fromElec,
+          from_water_reading: fromWater,
+          to_electricity_reading: toElec,
+          to_water_reading: toWater,
+        },
         token,
       );
       await loadAllFromDb();
+      return true;
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
+      return false;
     }
   }
   async function createBuilding(payload) {
@@ -1610,7 +1180,7 @@ export default function App() {
       await refreshBuildings();
       if (created?.id) setSelectedBuildingId(created.id);
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1622,7 +1192,7 @@ export default function App() {
       await refreshBuildings();
       if (selectedBuildingId === id) setSelectedBuildingId("");
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1632,7 +1202,7 @@ export default function App() {
       await buildingService.update(id, patch, token);
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1651,7 +1221,7 @@ export default function App() {
       setBuildingUsers((prev) => mergeUsers([nextUser], prev));
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1664,7 +1234,7 @@ export default function App() {
       );
       setAuthSettings({ require_approval: next?.require_approval !== false });
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1681,7 +1251,7 @@ export default function App() {
       );
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1695,7 +1265,7 @@ export default function App() {
       setBuildingUsers((prev) => prev.filter((u) => u.id !== id));
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1706,7 +1276,7 @@ export default function App() {
       await refreshBuildingMembers();
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1717,7 +1287,7 @@ export default function App() {
       await refreshBuildingMembers();
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -1728,7 +1298,7 @@ export default function App() {
       await refreshBuildingMembers();
       await refreshBuildings();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
   // ---------------------------
@@ -1764,6 +1334,37 @@ export default function App() {
     }
     return m;
   }, [state.floors]);
+
+  const currentRoomReadings = useCallback(
+    (room) => {
+      if (!room) return { electricity: "", water: "" };
+      const month = String(state.settings.billingMonth || "").slice(0, 7);
+      const pickReading = (list) => {
+        if (!Array.isArray(list) || !list.length) return "";
+        const byMonth = month
+          ? list.find((row) => String(row?.month || "").slice(0, 7) === month)
+          : null;
+        const record = byMonth || list[0];
+        const candidates = [
+          record?.end_reading,
+          record?.endReading,
+          record?.start_reading,
+          record?.startReading,
+        ];
+        for (const value of candidates) {
+          if (value == null || value === "") continue;
+          const n = Number(value);
+          if (Number.isFinite(n)) return n;
+        }
+        return "";
+      };
+      return {
+        electricity: pickReading(room.electricity),
+        water: pickReading(room.water),
+      };
+    },
+    [state.settings.billingMonth],
+  );
 
   const occupiedWorkerIds = useMemo(() => {
     const set = new Set();
@@ -2105,7 +1706,7 @@ export default function App() {
     if (currentRoomLimit <= 0) return true;
     const nextTotal = totalRooms + Number(extraRooms || 0);
     if (nextTotal <= currentRoomLimit) return true;
-    alert(`Tòa nhà giới hạn ${currentRoomLimit} phòng. Hiện có ${totalRooms}, thao tác này sẽ thành ${nextTotal}.`);
+    message.warning(`Tòa nhà giới hạn ${currentRoomLimit} phòng. Hiện có ${totalRooms}, thao tác này sẽ thành ${nextTotal}.`);
     return false;
   }
   const totalCurrentWorkers = useMemo(() => {
@@ -2139,9 +1740,67 @@ export default function App() {
     });
   }
 
+  function exportWorkerInvoice(row) {
+    if (!row?.stayId) return;
+    const worker = workerById.get(row.workerId) || {
+      id: row.workerId,
+      employeeCode: row.employeeCode,
+      fullName: row.workerName,
+    };
+    exportWorkerInvoiceSvc({
+      building: currentBuilding,
+      billingMonth: state.settings.billingMonth,
+      billingCloseDay: state.settings.billingCloseDay,
+      floorName: row.floorName,
+      roomCode: row.roomCode,
+      worker,
+      charge: {
+        roomAmount: row.roomAmount,
+        electricityAmount: row.electricityAmount,
+        waterAmount: row.waterAmount,
+      },
+      paid: !!row.paid,
+      paidAt: row.paidAt || "",
+      adminContact: state.settings.adminContact || {},
+    });
+  }
+
+  function exportRoomInvoice(roomId) {
+    if (!roomId) return;
+    let targetFloor = null;
+    let targetRoom = null;
+    for (const f of state.floors) {
+      const found = f.rooms.find((r) => r.id === roomId);
+      if (found) {
+        targetFloor = f;
+        targetRoom = found;
+        break;
+      }
+    }
+    if (!targetRoom) return;
+    const roomBilling = utilityBilling.byRoom.get(roomId);
+    const workerCharges = roomBilling?.byWorker || new Map();
+    const paymentRowByStayId = new Map(
+      workerPaymentRows.map((row) => [row.stayId, row]),
+    );
+    exportRoomInvoiceSvc({
+      building: currentBuilding,
+      billingMonth: state.settings.billingMonth,
+      billingCloseDay: state.settings.billingCloseDay,
+      floorName: targetFloor?.name || "",
+      room: targetRoom,
+      workers: state.workers,
+      workerCharges,
+      paymentRowByStayId,
+      adminContact: state.settings.adminContact || {},
+      electricity: roomBilling?.electricity || null,
+      water: roomBilling?.water || null,
+    });
+  }
+
   async function exportActivityLogs({ dateFrom, dateTo, resolveDetail }) {
     if (!dateFrom || !dateTo) {
-      alert("Chọn khoảng ngày cần xuất log.");
+      message.warning("Chọn khoảng ngày cần xuất log.");
       return;
     }
     try {
@@ -2160,7 +1819,7 @@ export default function App() {
         todayISO,
       });
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -2249,7 +1908,7 @@ export default function App() {
       }
       await loadAllFromDb();
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
     }
   }
 
@@ -2257,7 +1916,7 @@ export default function App() {
     if (!auth.isAdmin) return setLoginModal(true);
 
     if (!state.settings.canDeleteStructure) {
-      alert("Chức năng xóa tầng/phòng đang bị tắt trong Cài đặt.");
+      message.warning("Chức năng xóa tầng/phòng đang bị tắt trong Cài đặt.");
       return;
     }
 
@@ -2291,10 +1950,10 @@ export default function App() {
       if (!assertRoomLimit(requestedRoomCount(payload))) return false;
       await dataLoader.initKtx(payload, token);
       await loadAllFromDb();
-      alert("Khởi tạo KTX thành công!");
+      message.success("Khởi tạo KTX thành công!");
       return true;
     } catch (e) {
-      alert(e.message || String(e));
+      message.error(e.message || String(e));
       return false;
     }
   }
@@ -2695,6 +2354,7 @@ export default function App() {
             paidRoomAmount={paidRoomAmount}
             workerPaymentRows={workerPaymentRows}
             markWorkerUtilityPaid={markWorkerUtilityPaid}
+            exportWorkerInvoice={exportWorkerInvoice}
             openElectricityHistory={openHistory}
             activityLogs={activityLogs}
             activityLogLoading={activityLogLoading}
@@ -2858,8 +2518,8 @@ export default function App() {
               },
               guardDelete,
               transfer: ({ stayId, workerId }) => {
-                // open transfer modal with current room context
                 const fromRoomId = roomCtx?.room?.id || roomModal.roomId;
+                const fromReadings = currentRoomReadings(roomCtx?.room);
                 setTransferModal({
                   open: true,
                   stayId,
@@ -2867,11 +2527,24 @@ export default function App() {
                   fromRoomId,
                   toRoomId: "",
                   date: todayISO(),
+                  fromElectricityReading: fromReadings.electricity,
+                  fromWaterReading: fromReadings.water,
+                  toElectricityReading: "",
+                  toWaterReading: "",
                 });
               },
               utilityChargesByWorkerId:
                 utilityBilling.byRoom.get(roomCtx?.room?.id)?.byWorker ||
                 new Map(),
+              exportRoomInvoice: () => exportRoomInvoice(roomCtx?.room?.id),
+              exportWorkerInvoice: (workerId) => {
+                const stay = (roomCtx?.room?.stays || []).find(
+                  (s) => s.workerId === workerId && !s.dateOut,
+                );
+                if (!stay) return;
+                const row = workerPaymentRows.find((r) => r.stayId === stay.id);
+                if (row) exportWorkerInvoice(row);
+              },
               electricityPrice: state.settings.electricityPrice,
               waterPrice: state.settings.waterPrice,
               waterBillingMode: state.settings.waterBillingMode,
@@ -2898,7 +2571,7 @@ export default function App() {
                   );
                   await loadAllFromDb();
                 } catch (e) {
-                  alert(e.message || String(e));
+                  message.error(e.message || String(e));
                 }
               },
             }}
@@ -2950,7 +2623,7 @@ export default function App() {
                   await loadAllFromDb();
                   return true;
                 } catch (e) {
-                  alert(e.message || String(e));
+                  message.error(e.message || String(e));
                   return false;
                 }
               },
@@ -2968,12 +2641,19 @@ export default function App() {
         open={transferModal.open}
         title="Chuyển phòng"
         onClose={() =>
-          setTransferModal((m) => ({ ...m, open: false, toRoomId: "" }))
+          setTransferModal((m) => ({
+            ...m,
+            open: false,
+            toRoomId: "",
+            toElectricityReading: "",
+            toWaterReading: "",
+          }))
         }
       >
         <div className="space-y-3">
           <div className="text-sm text-slate-600">
-            Chọn phòng muốn chuyển tới và ngày chuyển.
+            Nhập chỉ số điện/nước phòng cũ (lúc rời) và phòng mới (lúc vào) để
+            chia tiền cho đúng.
           </div>
 
           <label className="block text-sm font-medium text-slate-700">
@@ -2982,9 +2662,17 @@ export default function App() {
           <select
             className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
             value={transferModal.toRoomId}
-            onChange={(e) =>
-              setTransferModal((m) => ({ ...m, toRoomId: e.target.value }))
-            }
+            onChange={(e) => {
+              const nextRoomId = e.target.value;
+              const nextRoom = nextRoomId ? roomById.get(nextRoomId) : null;
+              const toReadings = currentRoomReadings(nextRoom);
+              setTransferModal((m) => ({
+                ...m,
+                toRoomId: nextRoomId,
+                toElectricityReading: toReadings.electricity,
+                toWaterReading: toReadings.water,
+              }));
+            }}
           >
             <option value="">-- Chọn phòng --</option>
             {allRooms
@@ -3008,11 +2696,99 @@ export default function App() {
             }
           />
 
+          <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+            <div className="text-xs font-semibold text-slate-700">
+              Chỉ số phòng cũ (lúc rời)
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="block space-y-1">
+                <div className="text-xs font-medium text-slate-600">
+                  Số điện
+                </div>
+                <input
+                  type="number"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={transferModal.fromElectricityReading}
+                  onChange={(e) =>
+                    setTransferModal((m) => ({
+                      ...m,
+                      fromElectricityReading: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label className="block space-y-1">
+                <div className="text-xs font-medium text-slate-600">
+                  Số nước
+                </div>
+                <input
+                  type="number"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={transferModal.fromWaterReading}
+                  onChange={(e) =>
+                    setTransferModal((m) => ({
+                      ...m,
+                      fromWaterReading: e.target.value,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100">
+            <div className="text-xs font-semibold text-sky-700">
+              Chỉ số phòng mới (lúc vào)
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <label className="block space-y-1">
+                <div className="text-xs font-medium text-slate-600">
+                  Số điện
+                </div>
+                <input
+                  type="number"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={transferModal.toElectricityReading}
+                  onChange={(e) =>
+                    setTransferModal((m) => ({
+                      ...m,
+                      toElectricityReading: e.target.value,
+                    }))
+                  }
+                  disabled={!transferModal.toRoomId}
+                />
+              </label>
+              <label className="block space-y-1">
+                <div className="text-xs font-medium text-slate-600">
+                  Số nước
+                </div>
+                <input
+                  type="number"
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                  value={transferModal.toWaterReading}
+                  onChange={(e) =>
+                    setTransferModal((m) => ({
+                      ...m,
+                      toWaterReading: e.target.value,
+                    }))
+                  }
+                  disabled={!transferModal.toRoomId}
+                />
+              </label>
+            </div>
+          </div>
+
           <div className="flex gap-2 pt-2">
             <button
               className="flex-1 rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700"
               onClick={() =>
-                setTransferModal((m) => ({ ...m, open: false, toRoomId: "" }))
+                setTransferModal((m) => ({
+                  ...m,
+                  open: false,
+                  toRoomId: "",
+                  toElectricityReading: "",
+                  toWaterReading: "",
+                }))
               }
             >
               Hủy
@@ -3028,18 +2804,39 @@ export default function App() {
               disabled={!auth.isAdmin}
               onClick={async () => {
                 if (!transferModal.toRoomId) {
-                  alert("Bạn chưa chọn phòng chuyển tới.");
+                  message.warning("Bạn chưa chọn phòng chuyển tới.");
+                  return;
+                }
+                if (
+                  transferModal.fromElectricityReading === "" ||
+                  transferModal.fromWaterReading === "" ||
+                  transferModal.toElectricityReading === "" ||
+                  transferModal.toWaterReading === ""
+                ) {
+                  message.warning("Vui lòng nhập đủ chỉ số điện/nước phòng cũ và phòng mới.");
                   return;
                 }
 
-                await transferWorker({
+                const ok = await transferWorker({
                   stayId: transferModal.stayId,
                   workerId: transferModal.workerId,
                   toRoomId: transferModal.toRoomId,
                   transferDate: transferModal.date || todayISO(),
+                  fromElectricityReading: transferModal.fromElectricityReading,
+                  fromWaterReading: transferModal.fromWaterReading,
+                  toElectricityReading: transferModal.toElectricityReading,
+                  toWaterReading: transferModal.toWaterReading,
                 });
 
-                setTransferModal((m) => ({ ...m, open: false, toRoomId: "" }));
+                if (ok) {
+                  setTransferModal((m) => ({
+                    ...m,
+                    open: false,
+                    toRoomId: "",
+                    toElectricityReading: "",
+                    toWaterReading: "",
+                  }));
+                }
               }}
             >
               Xác nhận chuyển
@@ -3257,14 +3054,14 @@ export default function App() {
             onConfirm={async () => {
               const identity = auth.user?.username;
               if (!identity) {
-                alert("Tài khoản đăng nhập chưa có username.");
+                message.warning("Tài khoản đăng nhập chưa có username.");
                 return;
               }
               try {
                 await authService.login(identity, deletePass);
                 await deletePassModal.onDelete?.();
               } catch {
-                alert("Mật khẩu đăng nhập không đúng.");
+                message.error("Mật khẩu đăng nhập không đúng.");
                 return;
               } finally {
                 setDeletePass("");
