@@ -278,6 +278,8 @@ function addEvent(events, date, label) {
 export function buildUtilityReadingRows({ room, period, record, workerById, type = "electricity" }) {
   const readings = readingsToMap(record, period, room, type);
   const events = new Map();
+  const arrivals = new Map();
+  const departures = new Map();
   addEvent(events, period.start, "Đầu kỳ");
   addEvent(events, period.end, "Cuối kỳ");
 
@@ -285,6 +287,16 @@ export function buildUtilityReadingRows({ room, period, record, workerById, type
     const name = workerById?.get?.(stay.workerId)?.fullName || "NLĐ";
     const dateIn = normalizeDate(stay.dateIn);
     const dateOut = normalizeDate(stay.dateOut);
+    if (dateIn && dateIn > period.start && dateIn < period.end) {
+      const rows = arrivals.get(dateIn) || [];
+      rows.push(stay);
+      arrivals.set(dateIn, rows);
+    }
+    if (dateOut && dateOut > period.start && dateOut < period.end) {
+      const rows = departures.get(dateOut) || [];
+      rows.push(stay);
+      departures.set(dateOut, rows);
+    }
     if (dateIn && dateIn > period.start && dateIn < period.end) {
       addEvent(events, dateIn, `Vào: ${name}`);
     }
@@ -299,6 +311,8 @@ export function buildUtilityReadingRows({ room, period, record, workerById, type
       date,
       label: [...labels].join("; "),
       reading: readings.get(date) ?? "",
+      arrivals: arrivals.get(date) || [],
+      departures: departures.get(date) || [],
     }));
 }
 
@@ -309,6 +323,58 @@ function stayOverlapsInterval(stay, intervalStart, intervalEnd, period) {
   const effectiveStart = stayStart > period.start ? stayStart : period.start;
   const effectiveEnd = stayEnd < period.end ? stayEnd : period.end;
   return effectiveStart < intervalEnd && effectiveEnd > intervalStart;
+}
+
+export function buildUtilitySegments({ room, period, record, workerById, type = "electricity", pricePerUnit = 0, noSplit = false }) {
+  const rows = buildUtilityReadingRows({ room, period, record, workerById, type });
+  const segments = [];
+
+  for (let i = 0; i < rows.length - 1; i += 1) {
+    const startRow = rows[i];
+    const endRow = rows[i + 1];
+    const startReading = numberOrBlank(startRow.reading);
+    const endReading = numberOrBlank(endRow.reading);
+    const hasReadings = startReading !== "" && endReading !== "";
+    const used = hasReadings ? Number(endReading) - Number(startReading) : null;
+    const occupantsMap = new Map();
+
+    for (const stay of room?.stays || []) {
+      if (stayOverlapsInterval(stay, startRow.date, endRow.date, period)) {
+        occupantsMap.set(stay.workerId, stay);
+      }
+    }
+
+    const occupants = [...occupantsMap.entries()]
+      .filter(([workerId]) => !!workerId)
+      .map(([workerId, stay]) => ({
+        workerId,
+        stayId: stay?.id || "",
+        stay,
+        worker: workerById?.get?.(workerId) || null,
+      }));
+    const unitsPerOccupant = hasReadings && used > 0 && occupants.length
+      ? (noSplit ? used : used / occupants.length)
+      : 0;
+
+    segments.push({
+      startDate: startRow.date,
+      endDate: endRow.date,
+      startLabel: startRow.label,
+      endLabel: endRow.label,
+      startReading,
+      endReading,
+      hasReadings,
+      used,
+      occupants,
+      occupantCount: occupants.length,
+      unitsPerOccupant,
+      amountPerOccupant: unitsPerOccupant * Number(pricePerUnit || 0),
+      startRow,
+      endRow,
+    });
+  }
+
+  return { rows, segments };
 }
 
 export function findUtilityRecord(room, type, billingMonth) {
@@ -358,7 +424,7 @@ export function getUtilityCheckoutBounds({ room, stay, type = "electricity", bil
   };
 }
 
-export function calculateRoomUtility({ room, type = "electricity", settings = {} }) {
+export function calculateRoomUtility({ room, type = "electricity", settings = {}, workerById }) {
   const config = UTILITY_CONFIG[type] || UTILITY_CONFIG.electricity;
   const period = settings.periodStart && settings.periodEnd
     ? {
@@ -373,7 +439,15 @@ export function calculateRoomUtility({ room, type = "electricity", settings = {}
   const record = settings.periodStart && settings.periodEnd
     ? null
     : findUtilityRecord(room, type, period.month);
-  const rows = buildUtilityReadingRows({ room, period, record, type });
+  const { rows, segments } = buildUtilitySegments({
+    room,
+    period,
+    record,
+    workerById,
+    type,
+    pricePerUnit,
+    noSplit,
+  });
   const readingMap = new Map(rows.map((row) => [row.date, numberOrBlank(row.reading)]));
   const warnings = [];
   const unitsByWorkerId = new Map();
@@ -383,33 +457,25 @@ export function calculateRoomUtility({ room, type = "electricity", settings = {}
     if (readingMap.get(row.date) === "") warnings.push(`Thiếu chỉ số ngày ${row.date}.`);
   }
 
-  for (let i = 0; i < rows.length - 1; i += 1) {
-    const startDate = rows[i].date;
-    const endDate = rows[i + 1].date;
-    const startReading = readingMap.get(startDate);
-    const endReading = readingMap.get(endDate);
-    if (startReading === "" || endReading === "") continue;
+  for (const segment of segments) {
+    const startDate = segment.startDate;
+    const endDate = segment.endDate;
+    if (!segment.hasReadings) continue;
 
-    const used = Number(endReading) - Number(startReading);
+    const used = Number(segment.used || 0);
     if (used < 0) {
       warnings.push(`Chỉ số ngày ${endDate} nhỏ hơn ngày ${startDate}.`);
       continue;
     }
     if (used === 0) continue;
 
-    const occupantsMap = new Map();
-    for (const stay of room?.stays || []) {
-      if (stayOverlapsInterval(stay, startDate, endDate, period)) {
-        occupantsMap.set(stay.workerId, stay);
-      }
-    }
-    const occupants = [...occupantsMap.keys()].filter(Boolean);
+    const occupants = segment.occupants.map((occupant) => occupant.workerId).filter(Boolean);
     if (!occupants.length) {
       warnings.push(`Không có NLĐ trong đoạn ${startDate} - ${endDate}.`);
       continue;
     }
 
-    const sharedUnits = noSplit ? used : used / occupants.length;
+    const sharedUnits = segment.unitsPerOccupant;
     for (const workerId of occupants) {
       unitsByWorkerId.set(workerId, (unitsByWorkerId.get(workerId) || 0) + sharedUnits);
       rawAmountByWorkerId.set(
@@ -432,6 +498,7 @@ export function calculateRoomUtility({ room, type = "electricity", settings = {}
     period,
     record,
     rows,
+    segments,
     warnings,
     pricePerUnit,
     unitsByWorkerId,
@@ -474,8 +541,8 @@ export function calculateUtilityBilling({ floors = [], workers = [], settings = 
 
   for (const floor of floors || []) {
     for (const room of floor.rooms || []) {
-      const electricity = calculateRoomUtility({ room, type: "electricity", settings });
-      const water = calculateRoomUtility({ room, type: "water", settings });
+      const electricity = calculateRoomUtility({ room, type: "electricity", settings, workerById });
+      const water = calculateRoomUtility({ room, type: "water", settings, workerById });
       const roomWorkers = new Map();
       const roomRent = {
         period: getRoomRentPeriod(settings),

@@ -18,6 +18,7 @@ import {
   LoaderCircle,
   Zap,
   FileDown,
+  Undo2,
 } from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
@@ -25,7 +26,10 @@ import { formatDate } from "../../services/dateFormat";
 import {
   calculateRoomRentForStay,
   calculateRoomUtility,
+  findUtilityRecord,
+  getBillingPeriod,
   getUtilityCheckoutBounds,
+  readingsToMap,
 } from "../../services/utilityBilling";
 import {
   decodeQrFromImageFile,
@@ -93,6 +97,7 @@ export default function RoomModal({
     waterStartReading: "",
     electricityEndReading: "",
     waterEndReading: "",
+    editingDeparture: false,
   });
 
   const resetAddForm = () => {
@@ -196,6 +201,25 @@ export default function RoomModal({
     };
   };
 
+  const openDepartureEditor = (stay) => {
+    if (!stay?.id) return;
+    const worker = workerById?.get?.(stay.workerId);
+    const dateOutValue = stay.dateOut || stay.date_out || todayISO();
+    const readings = getCheckOutReadings(stay, dateOutValue);
+    setCheckOutCtx({
+      open: true,
+      stayId: stay.id,
+      workerId: stay.workerId,
+      workerName: worker?.fullName || worker?.name || "",
+      dateOut: dateOutValue,
+      electricityStartReading: readings.electricityStartReading,
+      waterStartReading: readings.waterStartReading,
+      electricityEndReading: readings.electricityEndReading,
+      waterEndReading: readings.waterEndReading,
+      editingDeparture: true,
+    });
+  };
+
   const checkOutAmount = useMemo(() => {
     const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
     const workerId = checkOutCtx.workerId || stay?.workerId;
@@ -282,6 +306,44 @@ export default function RoomModal({
       totalAmount: electricityAmount + waterAmount + roomAmount,
     };
   }, [actions, checkOutCtx, room, workerById]);
+
+  const checkOutErrors = useMemo(() => {
+    const errors = {};
+    if (!checkOutCtx.dateOut || !room) return errors;
+
+    const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
+    const closeDay = actions?.billingCloseDay || 1;
+    const period = getBillingPeriod(billingMonth, closeDay);
+
+    const segmentStartAt = (type) => {
+      const record = findUtilityRecord(room, type, period.month);
+      const map = readingsToMap(record, period, room, type);
+      const dates = [...map.keys()].filter((d) => d < checkOutCtx.dateOut).sort();
+      const nearest = dates[dates.length - 1];
+      return nearest != null ? Number(map.get(nearest)) : null;
+    };
+
+    const elecSegStart = segmentStartAt("electricity");
+    const waterSegStart = segmentStartAt("water");
+    const elecEnd = Number(checkOutCtx.electricityEndReading || 0);
+    const waterEnd = Number(checkOutCtx.waterEndReading || 0);
+
+    if (
+      checkOutCtx.electricityEndReading !== "" &&
+      elecSegStart != null &&
+      elecEnd < elecSegStart
+    ) {
+      errors.electricity = `Số điện khi rời (${elecEnd}) không được nhỏ hơn số điện đầu giai đoạn (${elecSegStart}).`;
+    }
+    if (
+      checkOutCtx.waterEndReading !== "" &&
+      waterSegStart != null &&
+      waterEnd < waterSegStart
+    ) {
+      errors.water = `Số nước khi rời (${waterEnd}) không được nhỏ hơn số nước đầu giai đoạn (${waterSegStart}).`;
+    }
+    return errors;
+  }, [checkOutCtx.dateOut, checkOutCtx.electricityEndReading, checkOutCtx.waterEndReading, room, actions?.billingMonth, actions?.billingCloseDay]);
 
   const applyQrPayload = (payload) => {
     if (!payload) return false;
@@ -508,49 +570,37 @@ export default function RoomModal({
               {current.length ? (
                 current.map((s) => {
                   const w = workerById?.get(s.workerId);
-                  const charge =
-                    actions?.utilityChargesByWorkerId?.get?.(s.workerId) || {};
-                  const roomAmount = Number(charge.roomAmount || 0);
-                  const electricityAmount = Number(charge.electricityAmount || 0);
-                  const waterAmount = Number(charge.waterAmount || 0);
-                  const totalAmount = roomAmount + electricityAmount + waterAmount;
                   return (
                     <div
                       key={s.id}
                       className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5"
                     >
-                      <button
-                        className="w-full text-left"
-                        onClick={() => actions?.onViewWorker?.(w?.id)}
-                      >
-                        <div className="text-sm font-semibold leading-5 text-slate-900">
-                          {w?.employeeCode ? (
-                            <span className="mr-1 font-bold">{w.employeeCode}</span>
-                          ) : null}
-                          <span>{w?.fullName || w?.name || s.workerId}</span>
-                        </div>
-                        <div className="mt-1 text-xs text-slate-600">
-                          Vào: {formatDate(s.dateIn)}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Phòng: {roomAmount.toLocaleString("vi-VN")}đ - Điện: {electricityAmount.toLocaleString("vi-VN")}đ - Nước: {waterAmount.toLocaleString("vi-VN")}đ
-                        </div>
-                        <div className="mt-0.5 text-xs font-semibold text-slate-700">
-                          Tổng cần thu: {totalAmount.toLocaleString("vi-VN")}đ
-                        </div>
-                      </button>
-
-                      <div className="mt-2 grid grid-cols-3 gap-2">
+                      <div className="flex items-start justify-between gap-2">
                         <button
-                          className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                          className="min-w-0 text-left"
+                          onClick={() => actions?.onViewWorker?.(w?.id)}
+                        >
+                          <div className="text-sm font-semibold leading-5 text-slate-900">
+                            {w?.employeeCode ? (
+                              <span className="mr-1 font-bold">{w.employeeCode}</span>
+                            ) : null}
+                            <span>{w?.fullName || w?.name || s.workerId}</span>
+                          </div>
+                          <div className="mt-1 text-xs text-slate-600">
+                            Vào: {formatDate(s.dateIn)}
+                          </div>
+                        </button>
+                        <button
+                          className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-slate-500"
                           onClick={() => setInvoiceModal({ open: true, stayId: s.id })}
                           title="Xem phiếu thanh toán"
                         >
-                          <span className="inline-flex items-center justify-center gap-1.5">
-                            <FileDown className="h-4 w-4" />
-                            Phiếu
-                          </span>
+                          <FileDown className="h-3.5 w-3.5" />
+                          Phiếu
                         </button>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-2 gap-2">
                         {actions?.transfer ? (
                           <button
                             className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
@@ -588,6 +638,7 @@ export default function RoomModal({
                                 waterStartReading: readings.waterStartReading,
                                 electricityEndReading: readings.electricityEndReading,
                                 waterEndReading: readings.waterEndReading,
+                                editingDeparture: false,
                               });
                             })
                           }
@@ -614,8 +665,9 @@ export default function RoomModal({
               </div>
               <div className="mt-2 space-y-2">
                 {recentDepartures.length ? (
-                  recentDepartures.map((s) => {
+                  recentDepartures.map((s, idx) => {
                     const w = workerById?.get(s.workerId);
+                    const name = w?.fullName || w?.name || s.workerId;
                     return (
                       <div
                         key={s.id}
@@ -623,12 +675,41 @@ export default function RoomModal({
                       >
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-slate-700">
-                            {w?.fullName || w?.name || s.workerId}
+                            {name}
                           </div>
                         </div>
                         <div className="shrink-0 text-xs font-semibold text-slate-600">
                           {formatDate(s.dateOut, "?")}
                         </div>
+                        {auth?.isAdmin && idx === 0 ? (
+                          <button
+                            className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-xl bg-white px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200"
+                            onClick={() =>
+                              requireAdmin(() => {
+                                if (
+                                  !window.confirm(
+                                    `Hoàn tác ${name} rời phòng? Ngày rời và số điện/nước cuối sẽ bị xoá, tiền điện/nước cùng kỳ sẽ được tính lại.`,
+                                  )
+                                ) return;
+                                actions.undoDeparture({ stayId: s.id });
+                              })
+                            }
+                            title="Hoàn tác rời phòng"
+                          >
+                            <Undo2 className="h-3.5 w-3.5" />
+                            Hoàn tác
+                          </button>
+                        ) : null}
+                        {auth?.isAdmin ? (
+                          <button
+                            className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-xl bg-white px-2 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200"
+                            onClick={() => requireAdmin(() => openDepartureEditor(s))}
+                            title="Sửa thông tin rời phòng"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                            Sửa
+                          </button>
+                        ) : null}
                       </div>
                     );
                   })
@@ -1135,13 +1216,14 @@ export default function RoomModal({
 
       <Modal
         open={checkOutCtx.open}
-        title="Chọn ngày rời đi"
+        title={checkOutCtx.editingDeparture ? "Sửa thông tin rời phòng" : "Chọn ngày rời đi"}
         onClose={() =>
           setCheckOutCtx((prev) => ({
             ...prev,
             open: false,
             stayId: null,
             workerId: null,
+            editingDeparture: false,
           }))
         }
       >
@@ -1205,6 +1287,16 @@ export default function RoomModal({
               type="number"
             />
           </div>
+          {checkOutErrors.electricity ? (
+            <div className="rounded-2xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {checkOutErrors.electricity}
+            </div>
+          ) : null}
+          {checkOutErrors.water ? (
+            <div className="rounded-2xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {checkOutErrors.water}
+            </div>
+          ) : null}
           <div className="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100">
             <div className="text-xs font-medium text-sky-700">Thành tiền</div>
             <div className="mt-1 text-2xl font-bold text-slate-900">
@@ -1223,17 +1315,24 @@ export default function RoomModal({
                   open: false,
                   stayId: null,
                   workerId: null,
+                  editingDeparture: false,
                 }))
               }
             >
               Hủy
             </button>
             <button
-              className="flex-1 rounded-2xl bg-[rgb(44_120_159)] px-4 py-3 text-sm font-semibold text-white"
+              disabled={Object.keys(checkOutErrors).length > 0}
+              className={clsx(
+                "flex-1 rounded-2xl px-4 py-3 text-sm font-semibold",
+                Object.keys(checkOutErrors).length > 0
+                  ? "bg-slate-100 text-slate-400"
+                  : "bg-[rgb(44_120_159)] text-white",
+              )}
               onClick={() =>
                 requireAdmin(async () => {
-                  if (!actions?.checkOut) {
-                    alert("Chưa nối actions.checkOut");
+                  if (checkOutCtx.editingDeparture ? !actions?.updateDeparture : !actions?.checkOut) {
+                    alert(checkOutCtx.editingDeparture ? "Chưa nối actions.updateDeparture" : "Chưa nối actions.checkOut");
                     return;
                   }
                   if (!checkOutCtx.dateOut) {
@@ -1251,7 +1350,7 @@ export default function RoomModal({
                     );
                     return;
                   }
-                  await actions.checkOut({
+                  const payload = {
                     stayId: checkOutCtx.stayId,
                     dateOut: checkOutCtx.dateOut,
                     electricityStartReading: Number(
@@ -1264,17 +1363,27 @@ export default function RoomModal({
                       checkOutCtx.waterStartReading || 0,
                     ),
                     waterEndReading: Number(checkOutCtx.waterEndReading || 0),
-                  });
+                    electricityAmount: checkOutAmount.electricityAmount,
+                    waterAmount: checkOutAmount.waterAmount,
+                    roomAmount: checkOutAmount.roomAmount,
+                    totalAmount: checkOutAmount.totalAmount,
+                  };
+                  if (checkOutCtx.editingDeparture) {
+                    await actions.updateDeparture(payload);
+                  } else {
+                    await actions.checkOut(payload);
+                  }
                   setCheckOutCtx((prev) => ({
                     ...prev,
                     open: false,
                     stayId: null,
                     workerId: null,
+                    editingDeparture: false,
                   }));
                 })
               }
             >
-              Xác nhận
+              {checkOutCtx.editingDeparture ? "Lưu chỉnh sửa" : "Xác nhận"}
             </button>
           </div>
         </div>
@@ -1300,6 +1409,7 @@ export default function RoomModal({
         requireAdmin={requireAdmin}
         actions={{
           upsertUtility: actions?.upsertUtility,
+          editDeparture: openDepartureEditor,
         }}
       />
 

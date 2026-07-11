@@ -1122,6 +1122,135 @@ export default function App() {
     }
   }
 
+  async function undoDeparture({ stayId }) {
+    try {
+      if (!token) return setLoginModal(true);
+      if (!stayId) throw new Error("Thiếu stayId.");
+
+      let ctx = null;
+      for (const f of state.floors) {
+        for (const r of f.rooms) {
+          const st = (r.stays || []).find((x) => x.id === stayId);
+          if (st) { ctx = { room: r, stay: st }; break; }
+        }
+        if (ctx) break;
+      }
+      if (!ctx?.stay) throw new Error("Không tìm thấy lượt ở để hoàn tác.");
+      if (!ctx.stay.dateOut) throw new Error("Lượt ở này chưa rời phòng.");
+
+      const workerId = ctx.stay.workerId;
+      const dateOutOfTarget = String(ctx.stay.dateOut || "");
+
+      let otherOpen = false;
+      let isTransfer = false;
+      for (const f of state.floors) {
+        for (const r of f.rooms) {
+          for (const st of r.stays || []) {
+            if (st.id === stayId) continue;
+            if (st.workerId !== workerId) continue;
+            if (!st.dateOut) {
+              otherOpen = true;
+              if (r.id !== ctx.room.id && String(st.dateIn || "") <= dateOutOfTarget) {
+                isTransfer = true;
+              }
+            }
+          }
+        }
+      }
+      if (isTransfer) {
+        throw new Error(
+          "NLĐ đã chuyển sang phòng khác. Vui lòng cho rời phòng hiện tại trước khi hoàn tác.",
+        );
+      }
+      if (otherOpen) {
+        throw new Error("NLĐ này đã có lượt ở đang mở ở phòng khác, không thể hoàn tác.");
+      }
+
+      await stayService.update(
+        stayId,
+        {
+          date_out: null,
+          electricity_end_reading: null,
+          water_end_reading: null,
+          electricity_amount: 0,
+          water_amount: 0,
+          total_amount: 0,
+          utility_paid_at: null,
+          utility_paid_month: "",
+        },
+        token,
+      );
+
+      const targetMonth = String(ctx.stay.utilityPaidMonth || "").trim();
+      if (targetMonth) {
+        const patchedRoom = {
+          ...ctx.room,
+          stays: (ctx.room.stays || []).map((st) =>
+            st.id === stayId
+              ? {
+                  ...st,
+                  dateOut: null,
+                  electricityEndReading: null,
+                  waterEndReading: null,
+                  electricityAmount: 0,
+                  waterAmount: 0,
+                  totalAmount: 0,
+                  utilityPaidMonth: "",
+                  utilityPaidAt: null,
+                }
+              : st,
+          ),
+        };
+
+        const period = getBillingPeriod(targetMonth, state.settings.billingCloseDay || 1);
+        const settingsForPeriod = {
+          ...state.settings,
+          billingMonth: targetMonth,
+          periodStart: period.start,
+          periodEnd: period.end,
+        };
+        const eCalc = calculateRoomUtility({ room: patchedRoom, type: "electricity", settings: settingsForPeriod });
+        const wCalc = calculateRoomUtility({ room: patchedRoom, type: "water", settings: settingsForPeriod });
+
+        for (const st of patchedRoom.stays) {
+          if (st.id === stayId) continue;
+          if (!st.dateOut) continue;
+          if (String(st.utilityPaidMonth || "") !== targetMonth) continue;
+
+          const eAmount = eCalc.amountByWorkerId.get(st.workerId) || 0;
+          const wAmount = wCalc.amountByWorkerId.get(st.workerId) || 0;
+          const rentAmount = calculateRoomRentForStay({
+            stay: st,
+            worker: workerById.get(st.workerId),
+            settings: settingsForPeriod,
+          }).amount;
+          const newTotal = eAmount + wAmount + rentAmount;
+
+          if (
+            Number(st.electricityAmount || 0) === Number(eAmount) &&
+            Number(st.waterAmount || 0) === Number(wAmount) &&
+            Number(st.totalAmount || 0) === Number(newTotal)
+          ) continue;
+
+          await stayService.update(
+            st.id,
+            {
+              electricity_amount: Number(eAmount || 0),
+              water_amount: Number(wAmount || 0),
+              total_amount: Number(newTotal || 0),
+            },
+            token,
+          );
+        }
+      }
+
+      await loadAllFromDb();
+      message.success("Đã hoàn tác rời phòng.");
+    } catch (e) {
+      message.error(e.message || String(e));
+    }
+  }
+
   async function transferWorker({
     stayId,
     workerId,
@@ -2502,6 +2631,32 @@ export default function App() {
                   ...payload,
                   dateOut: payload?.dateOut || todayISO(),
                 });
+              },
+              undoDeparture: async (payload) => {
+                await undoDeparture(payload || {});
+              },
+              updateDeparture: async (payload) => {
+                try {
+                  if (!token) return setLoginModal(true);
+                  await stayService.update(
+                    payload.stayId,
+                    {
+                      date_out: payload.dateOut || todayISO(),
+                      electricity_start_reading: Number(payload.electricityStartReading || 0),
+                      electricity_end_reading: Number(payload.electricityEndReading || 0),
+                      water_start_reading: Number(payload.waterStartReading || 0),
+                      water_end_reading: Number(payload.waterEndReading || 0),
+                      electricity_amount: Number(payload.electricityAmount || 0),
+                      water_amount: Number(payload.waterAmount || 0),
+                      total_amount: Number(payload.totalAmount || 0),
+                      utility_paid_month: state.settings.billingMonth || String(payload.dateOut || todayISO()).slice(0, 7),
+                    },
+                    token,
+                  );
+                  await loadAllFromDb();
+                } catch (e) {
+                  message.error(e.message || String(e));
+                }
               },
               // new manual check-in actions
               addWorker: async (w) => {

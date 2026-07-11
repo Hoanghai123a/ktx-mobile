@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildUtilitySegments,
   calculateRoomRentForStay,
   calculateRoomUtility,
   calculateUtilityBilling,
@@ -209,6 +210,76 @@ test("room utility is split by occupants in each reading interval", () => {
   assert.equal(result.unitsByWorkerId.get("w2"), 15);
   assert.equal(result.amountByWorkerId.get("w1"), 85000);
   assert.equal(result.amountByWorkerId.get("w2"), 15000);
+});
+
+test("utility segments expose readings and occupants for each billing stage", () => {
+  const period = { month: "2026-06", start: "2026-05-25", end: "2026-06-25", closeDay: 25 };
+  const room = {
+    id: "r1",
+    electricity: [{ month: "2026-06", start_reading: 100, end_reading: 200 }],
+    stays: [
+      { id: "s1", workerId: "w1", dateIn: "2026-05-01" },
+      {
+        id: "s2",
+        workerId: "w2",
+        dateIn: "2026-06-10",
+        dateOut: "2026-06-20",
+        electricityStartReading: 150,
+        electricityEndReading: 180,
+      },
+    ],
+  };
+
+  const { rows, segments } = buildUtilitySegments({
+    room,
+    period,
+    record: room.electricity[0],
+    type: "electricity",
+    pricePerUnit: 1000,
+  });
+
+  assert.deepEqual(rows.map((row) => row.date), [
+    "2026-05-25",
+    "2026-06-10",
+    "2026-06-20",
+    "2026-06-25",
+  ]);
+  assert.deepEqual(segments.map((segment) => segment.used), [50, 30, 20]);
+  assert.deepEqual(segments.map((segment) => segment.occupantCount), [1, 2, 1]);
+  assert.equal(segments[1].unitsPerOccupant, 15);
+  assert.equal(segments[1].endRow.departures[0].id, "s2");
+});
+
+test("utility segments keep missing and negative readings visible", () => {
+  const period = { month: "2026-06", start: "2026-05-25", end: "2026-06-25", closeDay: 25 };
+  const missingRoom = {
+    id: "r1",
+    electricity: [{ month: "2026-06", start_reading: 100, readings: [{ date: "2026-05-25", reading: 100 }] }],
+    stays: [{ id: "s1", workerId: "w1", dateIn: "2026-05-01" }],
+  };
+  const negativeRoom = {
+    id: "r2",
+    electricity: [{ month: "2026-06", start_reading: 100, end_reading: 90 }],
+    stays: [{ id: "s1", workerId: "w1", dateIn: "2026-05-01" }],
+  };
+
+  const missing = buildUtilitySegments({
+    room: missingRoom,
+    period,
+    record: missingRoom.electricity[0],
+    type: "electricity",
+  });
+  const negative = buildUtilitySegments({
+    room: negativeRoom,
+    period,
+    record: negativeRoom.electricity[0],
+    type: "electricity",
+  });
+
+  assert.equal(missing.segments[0].hasReadings, false);
+  assert.equal(missing.segments[0].used, null);
+  assert.equal(negative.segments[0].hasReadings, true);
+  assert.equal(negative.segments[0].used, -10);
 });
 
 test("water no_split charges each occupant full interval usage", () => {
