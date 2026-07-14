@@ -119,6 +119,7 @@ export function buildCheckoutBillingPeriods({
   dateOut,
   billingCloseDay = 1,
   payments = [],
+  fromBillingMonth = "",
 } = {}) {
   const dateIn = normalizeDate(stay?.dateIn ?? stay?.date_in);
   const leaveDate = normalizeDate(dateOut ?? stay?.dateOut ?? stay?.date_out);
@@ -143,8 +144,12 @@ export function buildCheckoutBillingPeriods({
     if (legacyMonth) legacyMonths.push(legacyMonth);
   }
   const legacyThroughMonth = legacyMonths.sort().at(-1) || "";
-  const firstMonth = getBillingMonthForDate(dateIn, billingCloseDay);
+  const naturalFirstMonth = getBillingMonthForDate(dateIn, billingCloseDay);
   const lastMonth = getBillingMonthForDate(leaveDate, billingCloseDay);
+  const floorMonth = String(fromBillingMonth || "").slice(0, 7);
+  const firstMonth = /^\d{4}-\d{2}$/.test(floorMonth) && floorMonth > naturalFirstMonth && floorMonth <= lastMonth
+    ? floorMonth
+    : naturalFirstMonth;
   const result = [];
 
   for (let month = firstMonth; month <= lastMonth; month = addMonthsToMonth(month, 1)) {
@@ -699,6 +704,7 @@ export function calculateStayCheckoutSettlement({
     stay,
     dateOut: leaveDate,
     billingCloseDay: settings.billingCloseDay || 1,
+    fromBillingMonth: settings.billingMonth,
     payments,
   });
   const electricityOverrides = new Map(readingOverridesToEntries(readingOverrides.electricity));

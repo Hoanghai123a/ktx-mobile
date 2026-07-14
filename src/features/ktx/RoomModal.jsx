@@ -215,6 +215,7 @@ export default function RoomModal({
       waterEndReading: checkOutCtx.waterEndReading,
       readingOverrides: checkOutCtx.readingOverrides,
       settings: {
+      billingMonth: actions?.billingMonth,
       billingCloseDay: actions?.billingCloseDay,
       electricityPrice: actions?.electricityPrice,
       waterPrice: actions?.waterPrice,
@@ -231,6 +232,7 @@ export default function RoomModal({
     electricity: firstDuePeriod?.electricity?.rows?.[0]?.reading ?? checkOutCtx.electricityStartReading,
     water: firstDuePeriod?.water?.rows?.[0]?.reading ?? checkOutCtx.waterStartReading,
   };
+  const boundaryFloorDate = checkOutSettlement.duePeriods?.[0]?.startDate || "";
   const missingBoundaryReadings = (checkOutSettlement.missingReadings || [])
     .filter((row) => row.date !== checkOutCtx.dateOut);
   const checkoutBoundaryInputs = (() => {
@@ -240,7 +242,9 @@ export default function RoomModal({
         if (date !== checkOutCtx.dateOut) map.set(`${type}:${date}`, { type, date });
       }
     }
-    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
+    return [...map.values()]
+      .filter((row) => !boundaryFloorDate || row.date >= boundaryFloorDate)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
   })();
 
   const setCheckoutBoundaryReading = (type, date, value) => {
@@ -262,7 +266,14 @@ export default function RoomModal({
     const stay = (room.stays || []).find((row) => row.id === checkOutCtx.stayId);
     if (stay?.dateIn && checkOutCtx.dateOut < stay.dateIn) errors.dateOut = "Ngày rời không được trước ngày vào.";
     if ((checkOutSettlement.missingReadings || []).length) errors.missing = "Cần nhập đủ các chỉ số còn thiếu.";
-    if ((checkOutSettlement.negativeReadings || []).length) errors.negative = "Có chỉ số cuối nhỏ hơn chỉ số đầu giai đoạn.";
+    if ((checkOutSettlement.negativeReadings || []).length) {
+      errors.negative = (checkOutSettlement.negativeReadings || [])
+        .map((row) => {
+          const label = row.type === "water" ? "Nước" : "Điện";
+          return `${label} kỳ ${row.billingMonth}: chỉ số ngày ${formatDate(row.endDate)} (${row.endReading}) nhỏ hơn ngày ${formatDate(row.startDate)} (${row.startReading}).`;
+        })
+        .join(" ");
+    }
     return errors;
   }, [checkOutCtx.dateOut, checkOutCtx.stayId, checkOutSettlement.missingReadings, checkOutSettlement.negativeReadings, room]);
 

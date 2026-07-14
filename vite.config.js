@@ -40,7 +40,7 @@ function computeAppVersion(shouldBump) {
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const appPort = Number(env.VITE_PORT || 5174);
+  const appPort = Number(process.env.PORT || env.VITE_PORT || 5174);
   const pocketBaseUrl = env.VITE_POCKETBASE_PROXY_TARGET || "http://127.0.0.1:8091";
   const appVersion = computeAppVersion(command === "build");
   const proxy = {

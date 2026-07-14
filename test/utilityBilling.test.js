@@ -607,6 +607,37 @@ test("checkout periods ignore the selected UI month and split at close-day bound
   );
 });
 
+test("checkout periods skip months older than the current billing month", () => {
+  const periods = buildCheckoutBillingPeriods({
+    stay: { id: "s1", dateIn: "2026-04-06" },
+    dateOut: "2026-07-14",
+    billingCloseDay: 10,
+    fromBillingMonth: "2026-07",
+  });
+
+  assert.deepEqual(
+    periods.map((item) => [item.billingMonth, item.startDate, item.endDate]),
+    [
+      ["2026-07", "2026-06-10", "2026-07-10"],
+      ["2026-08", "2026-07-10", "2026-07-14"],
+    ],
+  );
+});
+
+test("checkout floor month is ignored when it would drop the whole stay", () => {
+  const periods = buildCheckoutBillingPeriods({
+    stay: { id: "s1", dateIn: "2026-04-06" },
+    dateOut: "2026-05-14",
+    billingCloseDay: 10,
+    fromBillingMonth: "2026-09",
+  });
+
+  assert.deepEqual(
+    periods.map((item) => item.billingMonth),
+    ["2026-04", "2026-05", "2026-06"],
+  );
+});
+
 function crossMonthCheckoutFixture() {
   const stay = {
     id: "s1",
