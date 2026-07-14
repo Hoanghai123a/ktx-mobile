@@ -1,0 +1,236 @@
+[
+  {
+    "id": "pbc_631030571",
+    "listRule": "@request.auth.id != \"\" && (@request.auth.role = \"admin\" || building_id.owner_id = @request.auth.id || (@collection.building_members:access.user_id ?= @request.auth.id && @collection.building_members:access.building_id ?= building_id && @collection.building_members:access.active ?= true))",
+    "viewRule": "@request.auth.id != \"\" && (@request.auth.role = \"admin\" || building_id.owner_id = @request.auth.id || (@collection.building_members:access.user_id ?= @request.auth.id && @collection.building_members:access.building_id ?= building_id && @collection.building_members:access.active ?= true))",
+    "createRule": "@request.auth.id != \"\" && (@request.auth.role = \"admin\" || building_id.owner_id = @request.auth.id || (@collection.building_members:access.user_id ?= @request.auth.id && @collection.building_members:access.building_id ?= building_id && @collection.building_members:access.active ?= true && (@collection.building_members:access.role ?= \"admin\" || @collection.building_members:access.role ?= \"manager\")))",
+    "updateRule": "@request.auth.id != \"\" && (@request.auth.role = \"admin\" || building_id.owner_id = @request.auth.id || (@collection.building_members:access.user_id ?= @request.auth.id && @collection.building_members:access.building_id ?= building_id && @collection.building_members:access.active ?= true && (@collection.building_members:access.role ?= \"admin\" || @collection.building_members:access.role ?= \"manager\"))) && @request.body.building_id:changed = false && @request.body.stay_id:changed = false && @request.body.room_id:changed = false && @request.body.worker_id:changed = false && @request.body.type:changed = false && @request.body.billing_month:changed = false",
+    "deleteRule": "@request.auth.id != \"\" && (@request.auth.role = \"admin\" || building_id.owner_id = @request.auth.id || (@collection.building_members:access.user_id ?= @request.auth.id && @collection.building_members:access.building_id ?= building_id && @collection.building_members:access.active ?= true && (@collection.building_members:access.role ?= \"admin\" || @collection.building_members:access.role ?= \"manager\")))",
+    "name": "payments",
+    "type": "base",
+    "fields": [
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_4269428799",
+        "hidden": false,
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "building_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_699377420",
+        "hidden": false,
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "stay_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_3085411453",
+        "hidden": false,
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "room_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "cascadeDelete": true,
+        "collectionId": "pbc_696123946",
+        "hidden": false,
+        "maxSelect": 1,
+        "minSelect": 0,
+        "name": "worker_id",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "relation"
+      },
+      {
+        "hidden": false,
+        "maxSelect": 1,
+        "name": "type",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "stay_billing"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "max": 7,
+        "min": 7,
+        "name": "billing_month",
+        "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+        "presentable": true,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "max": "",
+        "min": "",
+        "name": "period_start",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "date"
+      },
+      {
+        "hidden": false,
+        "max": "",
+        "min": "",
+        "name": "period_end",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "date"
+      },
+      {
+        "hidden": false,
+        "max": null,
+        "min": 0,
+        "name": "electricity_amount",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "max": null,
+        "min": 0,
+        "name": "water_amount",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "max": null,
+        "min": 0,
+        "name": "room_amount",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "max": null,
+        "min": 0,
+        "name": "amount",
+        "onlyInt": true,
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "hidden": false,
+        "maxSize": 1048576,
+        "name": "breakdown",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      },
+      {
+        "hidden": false,
+        "maxSelect": 1,
+        "name": "source",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "select",
+        "values": [
+          "monthly",
+          "checkout",
+          "legacy_watermark"
+        ]
+      },
+      {
+        "hidden": false,
+        "max": "",
+        "min": "",
+        "name": "paid_at",
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "date"
+      },
+      {
+        "hidden": false,
+        "maxSelect": 1,
+        "name": "payment_method",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "select",
+        "values": [
+          "cash",
+          "transfer",
+          "other"
+        ]
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "max": 2000,
+        "min": 0,
+        "name": "note",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "name": "created",
+        "onCreate": true,
+        "onUpdate": false,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      },
+      {
+        "hidden": false,
+        "name": "updated",
+        "onCreate": true,
+        "onUpdate": true,
+        "presentable": false,
+        "system": false,
+        "type": "autodate"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX `idx_payments_stay_billing` ON `payments` (`stay_id`, `billing_month`, `type`)",
+      "CREATE INDEX `idx_payments_building_paid` ON `payments` (`building_id`, `paid_at`)",
+      "CREATE INDEX `idx_payments_worker_paid` ON `payments` (`worker_id`, `paid_at`)",
+      "CREATE INDEX `idx_payments_room_month` ON `payments` (`room_id`, `billing_month`)"
+    ],
+    "system": false
+  }
+]

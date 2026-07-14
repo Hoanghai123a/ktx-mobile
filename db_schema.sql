@@ -157,14 +157,41 @@ ALTER TABLE water_records
 -- 8. Thanh toán tổng hợp (Payments - Mở rộng)
 CREATE TABLE IF NOT EXISTS payments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    building_id uuid REFERENCES buildings(id) ON DELETE CASCADE,
+    stay_id uuid REFERENCES stays(id) ON DELETE CASCADE,
     room_id uuid REFERENCES rooms(id) ON DELETE CASCADE,
     worker_id uuid REFERENCES workers(id),
     amount numeric NOT NULL,
     type text, -- 'rent', 'electricity', 'water', 'deposit'
+    billing_month text,
+    period_start date,
+    period_end date,
+    electricity_amount numeric DEFAULT 0,
+    water_amount numeric DEFAULT 0,
+    room_amount numeric DEFAULT 0,
+    breakdown jsonb DEFAULT '{}'::jsonb,
+    source text DEFAULT 'monthly', -- 'monthly', 'checkout', 'legacy_watermark'
+    paid_at timestamp with time zone,
     payment_method text, -- 'cash', 'transfer'
     note text,
     created_at timestamp with time zone DEFAULT now()
 );
+
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS building_id uuid REFERENCES buildings(id) ON DELETE CASCADE;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS stay_id uuid REFERENCES stays(id) ON DELETE CASCADE;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS billing_month text;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS period_start date;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS period_end date;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS electricity_amount numeric DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS water_amount numeric DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS room_amount numeric DEFAULT 0;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS breakdown jsonb DEFAULT '{}'::jsonb;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS source text DEFAULT 'monthly';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS paid_at timestamp with time zone;
+
+CREATE UNIQUE INDEX IF NOT EXISTS payments_stay_billing_unique
+    ON payments (stay_id, billing_month, type)
+    WHERE stay_id IS NOT NULL AND billing_month IS NOT NULL AND type = 'stay_billing';
 
 -- 9. Ghi chú chung (Notes - Tương tự SmartNote)
 CREATE TABLE IF NOT EXISTS general_notes (

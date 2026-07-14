@@ -76,6 +76,32 @@ async function pbRequest(collection, suffix = "", options = {}) {
   return data;
 }
 
+async function pbBatch(requests, signal) {
+  let res;
+  try {
+    res = await fetch(`${PB_URL}/api/batch`, {
+      method: "POST",
+      signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ requests }),
+    });
+  } catch (err) {
+    throw makeError(0, { error: `${err?.message || "Failed to fetch"}: POST ${PB_URL}/api/batch` });
+  }
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    if (res.status === 403 && String(data?.message || "").includes("Batch requests are not allowed")) {
+      throw makeError(403, { error: "PocketBase chưa bật Batch requests. Bật tại Settings > Application trước khi thu tiền rời phòng." });
+    }
+    throw makeError(res.status, data);
+  }
+  return data;
+}
+
 function escapeFilter(value) {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -354,6 +380,29 @@ function stayOut(s) {
   };
 }
 
+function paymentOut(row) {
+  return {
+    id: row.id,
+    buildingId: row.building_id || "",
+    stayId: row.stay_id || "",
+    roomId: row.room_id || "",
+    workerId: row.worker_id || "",
+    type: row.type || "",
+    billingMonth: String(row.billing_month || "").slice(0, 7),
+    periodStart: dateOnly(row.period_start) || "",
+    periodEnd: dateOnly(row.period_end) || "",
+    electricityAmount: Number(row.electricity_amount || 0),
+    waterAmount: Number(row.water_amount || 0),
+    roomAmount: Number(row.room_amount || 0),
+    amount: Number(row.amount || 0),
+    breakdown: row.breakdown || {},
+    source: row.source || "monthly",
+    paidAt: row.paid_at || row.created || null,
+    paymentMethod: row.payment_method || "",
+    note: row.note || "",
+  };
+}
+
 function normalizeStay(s) {
   return {
     ...s,
@@ -568,7 +617,7 @@ async function deleteRowsByFilter(collection, filter, signal) {
 
 async function deleteBuildingCascade(buildingId, signal) {
   const filter = anyEq("building_id", buildingId);
-  for (const collection of ["activity_logs", "general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors", "app_settings"]) {
+  for (const collection of ["activity_logs", "payments", "general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors", "app_settings"]) {
     await deleteRowsByFilter(collection, filter, signal);
   }
   await deleteRowsByFilter("building_members", filter, signal);
@@ -581,7 +630,7 @@ async function deleteUserCascade(userId, signal) {
 }
 
 async function deleteRoomCascade(roomId, signal) {
-  for (const collection of ["electricities", "water_records", "stays"]) {
+  for (const collection of ["payments", "electricities", "water_records", "stays"]) {
     try {
       const rows = await pbList(collection, { filter: eq("room_id", roomId) }, signal);
       for (const row of rows) await pbRequest(collection, `/${row.id}`, { method: "DELETE", signal });
@@ -594,13 +643,14 @@ async function deleteRoomCascade(roomId, signal) {
 
 async function loadAll(signal) {
   if (!currentBuildingId()) return { floors: [], workers: [] };
-  const [floorsData, roomsData, workersData, staysData, elecData, waterData] = await Promise.all([
+  const [floorsData, roomsData, workersData, staysData, elecData, waterData, paymentsData] = await Promise.all([
     pbList("floors", { filter: buildingFilter(), sort: "+sort" }, signal),
     pbList("rooms", { filter: buildingFilter(), sort: "+sort" }, signal),
     pbList("workers", { filter: buildingFilter(), sort: "+employee_code,+full_name" }, signal),
     pbList("stays", { filter: buildingFilter(), sort: "-date_in" }, signal),
     pbList("electricities", { filter: buildingFilter(), sort: "-month" }, signal),
     safeList("water_records", { filter: buildingFilter(), sort: "-month" }, signal),
+    safeList("payments", { filter: buildingFilter(), sort: "-paid_at,-created" }, signal),
   ]);
 
   const staysByRoom = new Map();
@@ -643,6 +693,7 @@ async function loadAll(signal) {
       rooms: roomsByFloor.get(f.id) || [],
     })),
     workers: workersData.map(workerOut),
+    payments: paymentsData.map(paymentOut),
   };
 }
 
@@ -702,6 +753,12 @@ async function handleGet(url, signal) {
   if (path.startsWith("/water-records/room/")) {
     const roomId = path.split("/")[3];
     return pbList("water_records", { filter: combineFilters(eq("room_id", roomId), buildingFilter()), sort: "-month" }, signal);
+  }
+  if (path === "/payments/") {
+    const filters = [buildingFilter()];
+    if (u.searchParams.get("stay_id")) filters.push(eq("stay_id", u.searchParams.get("stay_id")));
+    if (u.searchParams.get("billing_month")) filters.push(eq("billing_month", u.searchParams.get("billing_month")));
+    return (await safeList("payments", { filter: combineFilters(...filters), sort: "-paid_at,-created" }, signal)).map(paymentOut);
   }
   if (path === "/activity-logs/") {
     const filters = [buildingFilter()];
@@ -1037,7 +1094,7 @@ async function handlePost(url, data, signal) {
   if (path === "/wipe-database/") {
     if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
     const filter = anyEq("building_id", building_id);
-    for (const c of ["general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors"]) {
+    for (const c of ["payments", "general_notes", "water_records", "electricities", "stays", "workers", "rooms", "floors"]) {
       const rows = await pbList(c, { filter, sort: "-created" }, signal);
       for (const row of rows) await pbRequest(c, `/${row.id}`, { method: "DELETE", signal });
     }
@@ -1162,23 +1219,83 @@ async function handlePost(url, data, signal) {
     const utilityPaidMonth = String(data?.utility_paid_month || "").slice(0, 7);
     const oldStay = await pbRequest("stays", `/${stayId}`, { signal });
     if (!oldStay?.id) throw makeError(404, { error: "Không tìm thấy lượt ở cần checkout." });
-    if (oldStay.date_out) throw makeError(409, { error: "Lượt ở này đã đóng trước đó." });
-    const updated = await pbRequest("stays", `/${stayId}`, {
-      method: "PATCH",
-      body: {
-        date_out: dateValue(dateOut),
-        electricity_start_reading: elecStart,
-        electricity_end_reading: elecEnd,
-        water_start_reading: waterStart,
-        water_end_reading: waterEnd,
-        electricity_amount: electricityAmount,
-        water_amount: waterAmount,
-        total_amount: totalAmount,
-        utility_paid_at: new Date().toISOString(),
-        utility_paid_month: utilityPaidMonth,
-      },
-      signal,
-    });
+    if (oldStay.date_out && !data?.editing) throw makeError(409, { error: "Lượt ở này đã đóng trước đó." });
+    const paidAt = new Date().toISOString();
+    const stayPayload = {
+      date_out: dateValue(dateOut),
+      electricity_start_reading: elecStart,
+      electricity_end_reading: elecEnd,
+      water_start_reading: waterStart,
+      water_end_reading: waterEnd,
+      electricity_amount: electricityAmount,
+      water_amount: waterAmount,
+      total_amount: totalAmount,
+      utility_paid_at: paidAt,
+      utility_paid_month: utilityPaidMonth,
+    };
+    const utilityRecords = Array.isArray(data?.utility_records) ? data.utility_records : [];
+    const paymentRecords = Array.isArray(data?.payment_records) ? data.payment_records : [];
+    const deletePaymentIds = Array.isArray(data?.delete_payment_ids) ? data.delete_payment_ids.filter(Boolean) : [];
+    let updated;
+    if (utilityRecords.length || paymentRecords.length || deletePaymentIds.length) {
+      const requests = [];
+      for (const item of utilityRecords) {
+        const collection = item?.collection === "water_records" ? "water_records" : "electricities";
+        const body = {
+          ...item.data,
+          building_id,
+          room_id: item?.data?.room_id || oldStay.room_id,
+          start_reading: Number(item?.data?.start_reading || 0),
+          end_reading: Number(item?.data?.end_reading || 0),
+          readings: item?.data?.readings || [],
+          paid: !!item?.data?.paid,
+        };
+        requests.push({
+          method: item?.id ? "PATCH" : "POST",
+          url: `/api/collections/${collection}/records${item?.id ? `/${item.id}` : ""}`,
+          body,
+        });
+      }
+      for (const id of deletePaymentIds) {
+        requests.push({ method: "DELETE", url: `/api/collections/payments/records/${id}` });
+      }
+      for (const item of paymentRecords) {
+        const body = {
+          ...item.data,
+          building_id,
+          stay_id: stayId,
+          room_id: item?.data?.room_id || oldStay.room_id,
+          worker_id: item?.data?.worker_id || oldStay.worker_id,
+          type: "stay_billing",
+          billing_month: String(item?.data?.billing_month || "").slice(0, 7),
+          period_start: dateValue(item?.data?.period_start),
+          period_end: dateValue(item?.data?.period_end),
+          electricity_amount: Number(item?.data?.electricity_amount || 0),
+          water_amount: Number(item?.data?.water_amount || 0),
+          room_amount: Number(item?.data?.room_amount || 0),
+          amount: Number(item?.data?.amount || 0),
+          paid_at: item?.data?.paid_at || paidAt,
+        };
+        requests.push({
+          method: item?.id ? "PATCH" : "POST",
+          url: `/api/collections/payments/records${item?.id ? `/${item.id}` : ""}`,
+          body,
+        });
+      }
+      requests.push({
+        method: "PATCH",
+        url: `/api/collections/stays/records/${stayId}`,
+        body: stayPayload,
+      });
+      const result = await pbBatch(requests, signal);
+      updated = result?.at?.(-1)?.body || result?.[result.length - 1]?.body;
+    } else {
+      updated = await pbRequest("stays", `/${stayId}`, {
+        method: "PATCH",
+        body: stayPayload,
+        signal,
+      });
+    }
     let workerName = "";
     let roomCode = "";
     try {
@@ -1212,6 +1329,100 @@ async function handlePost(url, data, signal) {
     return existing
       ? pbRequest("water_records", `/${existing.id}`, { method: "PATCH", body: payload, signal })
       : pbRequest("water_records", "", { method: "POST", body: payload, signal });
+  }
+  if (path === "/undo-checkout/") {
+    if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
+    const stayId = String(data?.stay_id || "").trim();
+    if (!stayId) throw makeError(400, { error: "Thiếu stay_id để hoàn tác." });
+    const paymentIds = Array.isArray(data?.payment_ids) ? data.payment_ids.filter(Boolean) : [];
+    const requests = paymentIds.map((id) => ({
+      method: "DELETE",
+      url: `/api/collections/payments/records/${id}`,
+    }));
+    requests.push({
+      method: "PATCH",
+      url: `/api/collections/stays/records/${stayId}`,
+      body: {
+        date_out: null,
+        electricity_end_reading: null,
+        water_end_reading: null,
+        electricity_amount: 0,
+        water_amount: 0,
+        total_amount: 0,
+        utility_paid_at: null,
+        utility_paid_month: "",
+      },
+    });
+    const result = await pbBatch(requests, signal);
+    return normalizeStay(result?.at?.(-1)?.body || result?.[result.length - 1]?.body || {});
+  }
+  if (path === "/payments/") {
+    const payload = {
+      ...data,
+      building_id,
+      type: data.type || "stay_billing",
+      billing_month: String(data.billing_month || "").slice(0, 7),
+      period_start: dateValue(data.period_start),
+      period_end: dateValue(data.period_end),
+      electricity_amount: Number(data.electricity_amount || 0),
+      water_amount: Number(data.water_amount || 0),
+      room_amount: Number(data.room_amount || 0),
+      amount: Number(data.amount || 0),
+      breakdown: data.breakdown || {},
+      source: data.source || "monthly",
+      paid_at: data.paid_at || new Date().toISOString(),
+    };
+    delete payload.id;
+    delete payload.stay_patch;
+    delete payload.legacy_payment;
+    const existing = data.id
+      ? { id: data.id }
+      : await pbFirst("payments", {
+          filter: combineFilters(
+            eq("stay_id", data.stay_id),
+            eq("billing_month", payload.billing_month),
+            eq("type", payload.type),
+            buildingFilter(),
+          ),
+        }, signal);
+    if (data.stay_patch && data.stay_id) {
+      const stayPatch = { ...data.stay_patch };
+      if (Object.prototype.hasOwnProperty.call(stayPatch, "date_out")) stayPatch.date_out = dateValue(stayPatch.date_out);
+      const requests = [];
+      if (data.legacy_payment) {
+        requests.push({
+          method: "POST",
+          url: "/api/collections/payments/records",
+          body: {
+            ...data.legacy_payment,
+            building_id,
+            stay_id: data.stay_id,
+            room_id: data.legacy_payment.room_id || data.room_id,
+            worker_id: data.legacy_payment.worker_id || data.worker_id,
+            type: "stay_billing",
+            period_start: dateValue(data.legacy_payment.period_start),
+            period_end: dateValue(data.legacy_payment.period_end),
+          },
+        });
+      }
+      const paymentResultIndex = requests.length;
+      requests.push({
+        method: existing?.id ? "PATCH" : "POST",
+        url: `/api/collections/payments/records${existing?.id ? `/${existing.id}` : ""}`,
+        body: payload,
+      });
+      requests.push({
+          method: "PATCH",
+          url: `/api/collections/stays/records/${data.stay_id}`,
+          body: stayPatch,
+      });
+      const result = await pbBatch(requests, signal);
+      return paymentOut(result?.[paymentResultIndex]?.body || {});
+    }
+    const row = existing?.id
+      ? await pbRequest("payments", `/${existing.id}`, { method: "PATCH", body: payload, signal })
+      : await pbRequest("payments", "", { method: "POST", body: payload, signal });
+    return paymentOut(row);
   }
   if (path === "/notes/") return pbRequest("general_notes", "", { method: "POST", body: { ...data, building_id }, signal });
   throw makeError(404, { error: `Unsupported POST ${path}` });
@@ -1272,6 +1483,7 @@ async function handlePatch(url, data, signal) {
   }
   if (/^\/electricities\/[^/]+\/pay\/?$/.test(path)) return pbRequest("electricities", `/${path.split("/")[2]}`, { method: "PATCH", body: { paid: true, paid_at: new Date().toISOString() }, signal });
   if (/^\/water-records\/[^/]+\/pay\/?$/.test(path)) return pbRequest("water_records", `/${path.split("/")[2]}`, { method: "PATCH", body: { paid: true, paid_at: new Date().toISOString() }, signal });
+  if (/^\/payments\/[^/]+\/?$/.test(path)) return paymentOut(await pbRequest("payments", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal }));
   if (/^\/notes\/[^/]+\/?$/.test(path)) return pbRequest("general_notes", `/${path.split("/")[2]}`, { method: "PATCH", body: data, signal });
   throw makeError(404, { error: `Unsupported PATCH ${path}` });
 }
@@ -1301,7 +1513,7 @@ async function handleDelete(url, signal) {
     await deleteRoomCascade(path.split("/")[2], signal);
     return { message: "Deleted successfully" };
   }
-  const map = { workers: "workers", stays: "stays", electricities: "electricities", "water-records": "water_records", notes: "general_notes" };
+  const map = { workers: "workers", stays: "stays", electricities: "electricities", "water-records": "water_records", payments: "payments", notes: "general_notes" };
   const [, route, id] = path.split("/");
   if (map[route] && id) {
     await pbRequest(map[route], `/${id}`, { method: "DELETE", signal });

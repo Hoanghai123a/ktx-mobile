@@ -74,6 +74,101 @@ export function getBillingPeriod(billingMonth, closeDay = 1) {
   };
 }
 
+export function getBillingMonthForDate(value, closeDay = 1) {
+  const date = normalizeDate(value);
+  if (!date) return normalizeBillingMonth(value);
+  const month = date.slice(0, 7);
+  const period = getBillingPeriod(month, closeDay);
+  return date > period.end ? addMonthsToMonth(month, 1) : month;
+}
+
+function paymentMonth(payment) {
+  return String(payment?.billingMonth ?? payment?.billing_month ?? "").slice(0, 7);
+}
+
+function paymentSource(payment) {
+  return String(payment?.source || "");
+}
+
+export function isStayBillingMonthPaid({ stay, payments = [], billingMonth } = {}) {
+  const month = String(billingMonth || "").slice(0, 7);
+  if (!month) return false;
+  const relevant = (payments || []).filter((payment) => {
+    const stayId = payment?.stayId ?? payment?.stay_id;
+    return !stay?.id || !stayId || stayId === stay.id;
+  });
+  if (relevant.some((payment) => paymentMonth(payment) === month && paymentSource(payment) !== "legacy_watermark")) {
+    return true;
+  }
+  const legacyThrough = relevant
+    .filter((payment) => paymentSource(payment) === "legacy_watermark")
+    .map(paymentMonth)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  if (legacyThrough) return month <= legacyThrough;
+  if (!relevant.length && (stay?.utilityPaidAt ?? stay?.utility_paid_at)) {
+    const stored = String(stay?.utilityPaidMonth ?? stay?.utility_paid_month ?? "").slice(0, 7);
+    return !!stored && month <= stored;
+  }
+  return false;
+}
+
+export function buildCheckoutBillingPeriods({
+  stay,
+  dateOut,
+  billingCloseDay = 1,
+  payments = [],
+} = {}) {
+  const dateIn = normalizeDate(stay?.dateIn ?? stay?.date_in);
+  const leaveDate = normalizeDate(dateOut ?? stay?.dateOut ?? stay?.date_out);
+  if (!dateIn || !leaveDate || leaveDate < dateIn) return [];
+
+  const relevantPayments = (payments || []).filter((payment) => {
+    const stayId = payment?.stayId ?? payment?.stay_id;
+    return !stay?.id || !stayId || stayId === stay.id;
+  });
+  const exactPaidMonths = new Set(
+    relevantPayments
+      .filter((payment) => paymentSource(payment) !== "checkout" && paymentSource(payment) !== "legacy_watermark")
+      .map(paymentMonth)
+      .filter(Boolean),
+  );
+  const legacyMonths = relevantPayments
+    .filter((payment) => paymentSource(payment) === "legacy_watermark")
+    .map(paymentMonth)
+    .filter(Boolean);
+  if (!relevantPayments.length && (stay?.utilityPaidAt ?? stay?.utility_paid_at)) {
+    const legacyMonth = String(stay?.utilityPaidMonth ?? stay?.utility_paid_month ?? "").slice(0, 7);
+    if (legacyMonth) legacyMonths.push(legacyMonth);
+  }
+  const legacyThroughMonth = legacyMonths.sort().at(-1) || "";
+  const firstMonth = getBillingMonthForDate(dateIn, billingCloseDay);
+  const lastMonth = getBillingMonthForDate(leaveDate, billingCloseDay);
+  const result = [];
+
+  for (let month = firstMonth; month <= lastMonth; month = addMonthsToMonth(month, 1)) {
+    const period = getBillingPeriod(month, billingCloseDay);
+    const startDate = dateIn > period.start ? dateIn : period.start;
+    const endDate = leaveDate < period.end ? leaveDate : period.end;
+    if (startDate >= endDate) continue;
+    const paid = exactPaidMonths.has(month) || (!!legacyThroughMonth && month <= legacyThroughMonth);
+    const payment = relevantPayments.find((row) => paymentMonth(row) === month && paymentSource(row) !== "checkout") || null;
+    result.push({
+      billingMonth: month,
+      period,
+      startDate,
+      endDate,
+      partial: startDate !== period.start || endDate !== period.end,
+      paid,
+      payment,
+      legacyPaid: !exactPaidMonths.has(month) && !!legacyThroughMonth && month <= legacyThroughMonth,
+    });
+  }
+
+  return result;
+}
+
 function roomMonthlyAmount(settings = {}) {
   return Math.max(
     0,
@@ -206,6 +301,49 @@ export function parseReadings(value) {
     }
   }
   return [];
+}
+
+function readingOverridesToEntries(value) {
+  if (value instanceof Map) return [...value.entries()];
+  return Object.entries(value || {});
+}
+
+export function collectRoomUtilityReadings({
+  room,
+  type = "electricity",
+  billingCloseDay = 1,
+  overrides,
+} = {}) {
+  const config = UTILITY_CONFIG[type] || UTILITY_CONFIG.electricity;
+  const map = new Map();
+  const records = Array.isArray(room?.[config.roomKey]) ? room[config.roomKey] : [];
+
+  for (const record of records) {
+    for (const row of parseReadings(record?.readings)) {
+      const date = normalizeDate(row?.date);
+      const reading = numberOrBlank(row?.reading);
+      if (date && reading !== "") map.set(date, Number(reading));
+    }
+    const month = String(record?.month || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const period = getBillingPeriod(month, billingCloseDay);
+    const start = numberOrBlank(record?.start_reading ?? record?.startReading);
+    const end = numberOrBlank(record?.end_reading ?? record?.endReading);
+    if (start !== "" && !map.has(period.start)) map.set(period.start, Number(start));
+    const hasExplicitEnd = !parseReadings(record?.readings).length || parseReadings(record?.readings)
+      .some((row) => normalizeDate(row?.date) === period.end);
+    if (end !== "" && hasExplicitEnd && !map.has(period.end)) map.set(period.end, Number(end));
+  }
+
+  for (const [rawDate, rawReading] of readingOverridesToEntries(overrides)) {
+    const date = normalizeDate(rawDate);
+    const reading = numberOrBlank(rawReading);
+    if (!date) continue;
+    if (reading === "") map.delete(date);
+    else map.set(date, Number(reading));
+  }
+
+  return map;
 }
 
 export function mergeMonthlyReadings({ readings, period, startReading, endReading }) {
@@ -436,9 +574,11 @@ export function calculateRoomUtility({ room, type = "electricity", settings = {}
     : getBillingPeriod(settings.billingMonth, settings.billingCloseDay || 1);
   const pricePerUnit = Number(settings[config.priceKey] || 0);
   const noSplit = type === "water" && settings.waterBillingMode === "no_split";
-  const record = settings.periodStart && settings.periodEnd
-    ? null
-    : findUtilityRecord(room, type, period.month);
+  const record = settings.utilityRecord ?? (
+    settings.periodStart && settings.periodEnd
+      ? null
+      : findUtilityRecord(room, type, period.month)
+  );
   const { rows, segments } = buildUtilitySegments({
     room,
     period,
@@ -507,6 +647,193 @@ export function calculateRoomUtility({ room, type = "electricity", settings = {}
     totalAmount,
     totalRawAmount,
     paid: !!record?.paid,
+  };
+}
+
+export function mergeUtilityReadingRows(readings, rows) {
+  const map = new Map();
+  for (const row of parseReadings(readings)) {
+    const date = normalizeDate(row?.date);
+    const reading = numberOrBlank(row?.reading);
+    if (date && reading !== "") map.set(date, Number(reading));
+  }
+  for (const row of rows || []) {
+    const date = normalizeDate(row?.date);
+    const reading = numberOrBlank(row?.reading);
+    if (date && reading !== "") map.set(date, Number(reading));
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, reading]) => ({ date, reading }));
+}
+
+function utilityRecordForPeriod(readings, period) {
+  return {
+    month: period.month,
+    readings: [...readings.entries()]
+      .filter(([date]) => date >= period.start && date <= period.end)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, reading]) => ({ date, reading })),
+  };
+}
+
+function storedPaymentAmount(payment, field) {
+  const snake = field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  return Number(payment?.[field] ?? payment?.[snake] ?? 0) || 0;
+}
+
+export function calculateStayCheckoutSettlement({
+  room,
+  stay,
+  dateOut,
+  payments = [],
+  settings = {},
+  workerById,
+  electricityEndReading = "",
+  waterEndReading = "",
+  readingOverrides = {},
+} = {}) {
+  const leaveDate = normalizeDate(dateOut ?? stay?.dateOut ?? stay?.date_out);
+  const workerId = stay?.workerId ?? stay?.worker_id;
+  const periods = buildCheckoutBillingPeriods({
+    stay,
+    dateOut: leaveDate,
+    billingCloseDay: settings.billingCloseDay || 1,
+    payments,
+  });
+  const electricityOverrides = new Map(readingOverridesToEntries(readingOverrides.electricity));
+  const waterOverrides = new Map(readingOverridesToEntries(readingOverrides.water));
+  if (leaveDate && numberOrBlank(electricityEndReading) !== "") {
+    electricityOverrides.set(leaveDate, Number(electricityEndReading));
+  }
+  if (leaveDate && numberOrBlank(waterEndReading) !== "") {
+    waterOverrides.set(leaveDate, Number(waterEndReading));
+  }
+  const electricityReadings = collectRoomUtilityReadings({
+    room,
+    type: "electricity",
+    billingCloseDay: settings.billingCloseDay || 1,
+    overrides: electricityOverrides,
+  });
+  const waterReadings = collectRoomUtilityReadings({
+    room,
+    type: "water",
+    billingCloseDay: settings.billingCloseDay || 1,
+    overrides: waterOverrides,
+  });
+  const patchedStay = {
+    ...stay,
+    dateOut: leaveDate,
+    electricityEndReading: numberOrBlank(electricityEndReading),
+    waterEndReading: numberOrBlank(waterEndReading),
+  };
+  const patchedRoom = {
+    ...room,
+    stays: (room?.stays || []).map((row) => row.id === stay?.id ? patchedStay : row),
+  };
+  const duePeriods = [];
+  const paidPeriods = [];
+  const missingMap = new Map();
+  const negativeMap = new Map();
+
+  for (const item of periods) {
+    if (item.paid) {
+      const electricityAmount = storedPaymentAmount(item.payment, "electricityAmount");
+      const waterAmount = storedPaymentAmount(item.payment, "waterAmount");
+      const roomAmount = storedPaymentAmount(item.payment, "roomAmount");
+      paidPeriods.push({
+        ...item,
+        electricityAmount,
+        waterAmount,
+        roomAmount,
+        totalAmount: Number(item.payment?.amount ?? electricityAmount + waterAmount + roomAmount) || 0,
+      });
+      continue;
+    }
+
+    const periodSettings = {
+      ...settings,
+      billingMonth: item.billingMonth,
+      periodStart: item.startDate,
+      periodEnd: item.endDate,
+    };
+    const electricity = calculateRoomUtility({
+      room: patchedRoom,
+      type: "electricity",
+      settings: {
+        ...periodSettings,
+        utilityRecord: utilityRecordForPeriod(electricityReadings, item.period),
+      },
+      workerById,
+    });
+    const water = calculateRoomUtility({
+      room: patchedRoom,
+      type: "water",
+      settings: {
+        ...periodSettings,
+        utilityRecord: utilityRecordForPeriod(waterReadings, item.period),
+      },
+      workerById,
+    });
+    for (const [type, calculation] of [["electricity", electricity], ["water", water]]) {
+      for (const row of calculation.rows || []) {
+        if (numberOrBlank(row.reading) !== "") continue;
+        const key = `${type}:${row.date}`;
+        missingMap.set(key, { type, date: row.date, label: row.label, billingMonth: item.billingMonth });
+      }
+      for (const segment of calculation.segments || []) {
+        if (segment.hasReadings && Number(segment.used) < 0) {
+          const key = `${type}:${segment.startDate}:${segment.endDate}`;
+          negativeMap.set(key, {
+            type,
+            startDate: segment.startDate,
+            endDate: segment.endDate,
+            startReading: segment.startReading,
+            endReading: segment.endReading,
+            billingMonth: item.billingMonth,
+          });
+        }
+      }
+    }
+    const electricityAmount = Number(electricity.amountByWorkerId.get(workerId) || 0);
+    const waterAmount = Number(water.amountByWorkerId.get(workerId) || 0);
+    const rent = calculateRoomRentForStay({
+      stay: patchedStay,
+      worker: workerById?.get?.(workerId),
+      settings: { ...settings, billingMonth: item.billingMonth },
+    });
+    const roomAmount = Number(rent.amount || 0);
+    duePeriods.push({
+      ...item,
+      electricity,
+      water,
+      rent,
+      electricityAmount,
+      waterAmount,
+      roomAmount,
+      totalAmount: electricityAmount + waterAmount + roomAmount,
+    });
+  }
+
+  const totals = duePeriods.reduce(
+    (sum, item) => ({
+      electricityAmount: sum.electricityAmount + item.electricityAmount,
+      waterAmount: sum.waterAmount + item.waterAmount,
+      roomAmount: sum.roomAmount + item.roomAmount,
+      totalAmount: sum.totalAmount + item.totalAmount,
+    }),
+    { electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0 },
+  );
+
+  return {
+    dateOut: leaveDate,
+    periods,
+    duePeriods,
+    paidPeriods,
+    missingReadings: [...missingMap.values()].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type)),
+    negativeReadings: [...negativeMap.values()],
+    complete: missingMap.size === 0 && negativeMap.size === 0,
+    ...totals,
   };
 }
 

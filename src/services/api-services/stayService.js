@@ -10,6 +10,7 @@ export const stayService = {
   delete: (id, token) => api.delete(`${baseUrl}${id}/`, token),
   transfer: (data, token) => api.post("/transfer-stay/", data, token),
   checkout: (data, token) => api.post("/checkout-stay/", data, token),
+  undoCheckout: (data, token) => api.post("/undo-checkout/", data, token),
 };
 
 export default stayService;

@@ -19,18 +19,13 @@ import {
   Zap,
   FileDown,
   Undo2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import ElectricityModal from "./ElectricityModal";
 import { roomGenderLabel } from "../../services/roomGender";
 import { formatDate } from "../../services/dateFormat";
-import {
-  calculateRoomRentForStay,
-  calculateRoomUtility,
-  findUtilityRecord,
-  getBillingPeriod,
-  getUtilityCheckoutBounds,
-  readingsToMap,
-} from "../../services/utilityBilling";
+import { calculateStayCheckoutSettlement } from "../../services/utilityBilling";
 import {
   decodeQrFromImageFile,
   parseWorkerQr,
@@ -97,8 +92,10 @@ export default function RoomModal({
     waterStartReading: "",
     electricityEndReading: "",
     waterEndReading: "",
+    readingOverrides: { electricity: {}, water: {} },
     editingDeparture: false,
   });
+  const [showPaidCheckoutPeriods, setShowPaidCheckoutPeriods] = useState(false);
 
   const resetAddForm = () => {
     setSelectedWorkerId(null);
@@ -169,37 +166,16 @@ export default function RoomModal({
 
   const normalizePhone10 = (value) => String(value || "").replace(/\D/g, "").slice(0, 10);
 
-  const stayEndReading = (stay, type) => {
-    if (!stay?.dateOut && !stay?.date_out) return "";
-    const prefix = type === "water" ? "water" : "electricity";
-    return readingValue(stay?.[`${prefix}EndReading`] ?? stay?.[`${prefix}_end_reading`]);
-  };
-
-  const getCheckOutReadings = (stay, dateOutValue = todayISO()) => {
-    const billingMonth = actions?.billingMonth || String(dateOutValue || todayISO()).slice(0, 7);
-    const electricity = getUtilityCheckoutBounds({
-      room,
-      stay,
-      type: "electricity",
-      billingMonth,
-      billingCloseDay: actions?.billingCloseDay || 1,
-      dateOut: dateOutValue,
-    });
-    const water = getUtilityCheckoutBounds({
-      room,
-      stay,
-      type: "water",
-      billingMonth,
-      billingCloseDay: actions?.billingCloseDay || 1,
-      dateOut: dateOutValue,
-    });
-    return {
-      electricityStartReading: electricity.startReading,
-      waterStartReading: water.startReading,
-      electricityEndReading: electricity.endSource === "room" ? electricity.endReading : stayEndReading(stay, "electricity"),
-      waterEndReading: water.endSource === "room" ? water.endReading : stayEndReading(stay, "water"),
-    };
-  };
+  const getCheckOutReadings = (stay) => ({
+    electricityStartReading: readingValue(stay?.electricityStartReading ?? stay?.electricity_start_reading),
+    waterStartReading: readingValue(stay?.waterStartReading ?? stay?.water_start_reading),
+    electricityEndReading: stay?.dateOut || stay?.date_out
+      ? readingValue(stay?.electricityEndReading ?? stay?.electricity_end_reading)
+      : "",
+    waterEndReading: stay?.dateOut || stay?.date_out
+      ? readingValue(stay?.waterEndReading ?? stay?.water_end_reading)
+      : "",
+  });
 
   const openDepartureEditor = (stay) => {
     if (!stay?.id) return;
@@ -216,134 +192,79 @@ export default function RoomModal({
       waterStartReading: readings.waterStartReading,
       electricityEndReading: readings.electricityEndReading,
       waterEndReading: readings.waterEndReading,
+      readingOverrides: { electricity: {}, water: {} },
       editingDeparture: true,
     });
   };
 
-  const checkOutAmount = useMemo(() => {
+  const checkOutSettlement = useMemo(() => {
     const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
-    const workerId = checkOutCtx.workerId || stay?.workerId;
-    const hasBase = stay && workerId && checkOutCtx.dateOut;
-    if (!hasBase) return { electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0 };
-
-    const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
-    const canCalcElectricity = checkOutCtx.electricityStartReading !== "" && checkOutCtx.electricityEndReading !== "";
-    const canCalcWater = checkOutCtx.waterStartReading !== "" && checkOutCtx.waterEndReading !== "";
-    const electricityBounds = getUtilityCheckoutBounds({
+    if (!stay || !checkOutCtx.dateOut) {
+      return {
+        duePeriods: [], paidPeriods: [], missingReadings: [], negativeReadings: [],
+        electricityAmount: 0, waterAmount: 0, roomAmount: 0, totalAmount: 0,
+      };
+    }
+    return calculateStayCheckoutSettlement({
       room,
-      stay: {
-        ...stay,
-        dateOut: checkOutCtx.dateOut,
-        electricityStartReading: Number(checkOutCtx.electricityStartReading || 0),
-        electricityEndReading: Number(checkOutCtx.electricityEndReading || 0),
-      },
-      type: "electricity",
-      billingMonth,
-      billingCloseDay: actions?.billingCloseDay || 1,
+      stay,
       dateOut: checkOutCtx.dateOut,
-    });
-    const waterBounds = getUtilityCheckoutBounds({
-      room,
-      stay: {
-        ...stay,
-        dateOut: checkOutCtx.dateOut,
-        waterStartReading: Number(checkOutCtx.waterStartReading || 0),
-        waterEndReading: Number(checkOutCtx.waterEndReading || 0),
-      },
-      type: "water",
-      billingMonth,
-      billingCloseDay: actions?.billingCloseDay || 1,
-      dateOut: checkOutCtx.dateOut,
-    });
-    const patchedStay = {
-      ...stay,
-      dateIn: canCalcElectricity ? electricityBounds.effectiveStartDate : waterBounds.effectiveStartDate,
-      dateOut: canCalcElectricity ? electricityBounds.effectiveEndDate : waterBounds.effectiveEndDate,
-      electricityStartReading: canCalcElectricity ? Number(electricityBounds.startReading || 0) : "",
-      electricityEndReading: canCalcElectricity ? Number(electricityBounds.endReading || 0) : "",
-      waterStartReading: canCalcWater ? Number(waterBounds.startReading || 0) : "",
-      waterEndReading: canCalcWater ? Number(waterBounds.endReading || 0) : "",
-    };
-    const patchedRoom = {
-      ...room,
-      stays: (room?.stays || []).map((s) => (s.id === stay.id ? patchedStay : s)),
-    };
-    const settings = {
-      billingMonth,
+      payments: actions?.payments || [],
+      workerById,
+      electricityEndReading: checkOutCtx.electricityEndReading,
+      waterEndReading: checkOutCtx.waterEndReading,
+      readingOverrides: checkOutCtx.readingOverrides,
+      settings: {
       billingCloseDay: actions?.billingCloseDay,
       electricityPrice: actions?.electricityPrice,
       waterPrice: actions?.waterPrice,
       waterBillingMode: actions?.waterBillingMode,
-      periodStart: electricityBounds.effectiveStartDate,
-      periodEnd: electricityBounds.effectiveEndDate,
-    };
-    const electricity = canCalcElectricity
-      ? calculateRoomUtility({ room: patchedRoom, type: "electricity", settings })
-      : null;
-    const water = canCalcWater
-      ? calculateRoomUtility({
-          room: patchedRoom,
-          type: "water",
-          settings: { ...settings, periodStart: waterBounds.effectiveStartDate, periodEnd: waterBounds.effectiveEndDate },
-        })
-      : null;
-    const electricityAmount = electricity?.amountByWorkerId.get(workerId) || 0;
-    const waterAmount = water?.amountByWorkerId.get(workerId) || 0;
-    const roomAmount = calculateRoomRentForStay({
-      stay: { ...stay, dateOut: checkOutCtx.dateOut },
-      worker: workerById?.get?.(workerId),
-      settings: {
-        billingMonth,
-        billingCloseDay: actions?.billingCloseDay,
         roomMonthlyPrice: actions?.roomMonthlyPrice,
         roomBillingMode: actions?.roomBillingMode,
       },
-    }).amount;
-    return {
-      electricityAmount,
-      waterAmount,
-      roomAmount,
-      totalAmount: electricityAmount + waterAmount + roomAmount,
-    };
+    });
   }, [actions, checkOutCtx, room, workerById]);
+
+  const checkOutAmount = checkOutSettlement;
+  const firstDuePeriod = checkOutSettlement.duePeriods?.[0];
+  const checkoutStartReadings = {
+    electricity: firstDuePeriod?.electricity?.rows?.[0]?.reading ?? checkOutCtx.electricityStartReading,
+    water: firstDuePeriod?.water?.rows?.[0]?.reading ?? checkOutCtx.waterStartReading,
+  };
+  const missingBoundaryReadings = (checkOutSettlement.missingReadings || [])
+    .filter((row) => row.date !== checkOutCtx.dateOut);
+  const checkoutBoundaryInputs = (() => {
+    const map = new Map(missingBoundaryReadings.map((row) => [`${row.type}:${row.date}`, row]));
+    for (const type of ["electricity", "water"]) {
+      for (const date of Object.keys(checkOutCtx.readingOverrides?.[type] || {})) {
+        if (date !== checkOutCtx.dateOut) map.set(`${type}:${date}`, { type, date });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.date.localeCompare(b.date) || a.type.localeCompare(b.type));
+  })();
+
+  const setCheckoutBoundaryReading = (type, date, value) => {
+    setCheckOutCtx((prev) => ({
+      ...prev,
+      readingOverrides: {
+        ...prev.readingOverrides,
+        [type]: {
+          ...(prev.readingOverrides?.[type] || {}),
+          [date]: value,
+        },
+      },
+    }));
+  };
 
   const checkOutErrors = useMemo(() => {
     const errors = {};
     if (!checkOutCtx.dateOut || !room) return errors;
-
-    const billingMonth = actions?.billingMonth || String(checkOutCtx.dateOut).slice(0, 7);
-    const closeDay = actions?.billingCloseDay || 1;
-    const period = getBillingPeriod(billingMonth, closeDay);
-
-    const segmentStartAt = (type) => {
-      const record = findUtilityRecord(room, type, period.month);
-      const map = readingsToMap(record, period, room, type);
-      const dates = [...map.keys()].filter((d) => d < checkOutCtx.dateOut).sort();
-      const nearest = dates[dates.length - 1];
-      return nearest != null ? Number(map.get(nearest)) : null;
-    };
-
-    const elecSegStart = segmentStartAt("electricity");
-    const waterSegStart = segmentStartAt("water");
-    const elecEnd = Number(checkOutCtx.electricityEndReading || 0);
-    const waterEnd = Number(checkOutCtx.waterEndReading || 0);
-
-    if (
-      checkOutCtx.electricityEndReading !== "" &&
-      elecSegStart != null &&
-      elecEnd < elecSegStart
-    ) {
-      errors.electricity = `Số điện khi rời (${elecEnd}) không được nhỏ hơn số điện đầu giai đoạn (${elecSegStart}).`;
-    }
-    if (
-      checkOutCtx.waterEndReading !== "" &&
-      waterSegStart != null &&
-      waterEnd < waterSegStart
-    ) {
-      errors.water = `Số nước khi rời (${waterEnd}) không được nhỏ hơn số nước đầu giai đoạn (${waterSegStart}).`;
-    }
+    const stay = (room.stays || []).find((row) => row.id === checkOutCtx.stayId);
+    if (stay?.dateIn && checkOutCtx.dateOut < stay.dateIn) errors.dateOut = "Ngày rời không được trước ngày vào.";
+    if ((checkOutSettlement.missingReadings || []).length) errors.missing = "Cần nhập đủ các chỉ số còn thiếu.";
+    if ((checkOutSettlement.negativeReadings || []).length) errors.negative = "Có chỉ số cuối nhỏ hơn chỉ số đầu giai đoạn.";
     return errors;
-  }, [checkOutCtx.dateOut, checkOutCtx.electricityEndReading, checkOutCtx.waterEndReading, room, actions?.billingMonth, actions?.billingCloseDay]);
+  }, [checkOutCtx.dateOut, checkOutCtx.stayId, checkOutSettlement.missingReadings, checkOutSettlement.negativeReadings, room]);
 
   const applyQrPayload = (payload) => {
     if (!payload) return false;
@@ -638,6 +559,7 @@ export default function RoomModal({
                                 waterStartReading: readings.waterStartReading,
                                 electricityEndReading: readings.electricityEndReading,
                                 waterEndReading: readings.waterEndReading,
+                                readingOverrides: { electricity: {}, water: {} },
                                 editingDeparture: false,
                               });
                             })
@@ -1238,26 +1160,27 @@ export default function RoomModal({
             value={checkOutCtx.dateOut}
             onChange={(v) => {
               const stay = (room?.stays || []).find((s) => s.id === checkOutCtx.stayId);
-              const readings = getCheckOutReadings(stay, v);
+              const readings = getCheckOutReadings(stay);
               setCheckOutCtx((prev) => ({
                 ...prev,
                 dateOut: v,
                 electricityStartReading: readings.electricityStartReading,
                 waterStartReading: readings.waterStartReading,
-                electricityEndReading: readings.electricityEndReading,
-                waterEndReading: readings.waterEndReading,
+                electricityEndReading: "",
+                waterEndReading: "",
+                readingOverrides: { electricity: {}, water: {} },
               }));
             }}
             type="date"
           />
           <div className="grid grid-cols-2 gap-2">
             <TextField
-              label="Số điện đầu"
-              value={checkOutCtx.electricityStartReading}
+              label="Số điện đầu chặng"
+              value={checkoutStartReadings.electricity}
               onChange={() => {}}
               type="number"
               disabled
-              title="Chỉ số đầu được lấy từ lúc vào phòng, không thể sửa tại bước rời đi."
+              title="Chỉ số đầu của kỳ chưa thanh toán đầu tiên."
             />
             <TextField
               label="Số điện khi rời"
@@ -1271,12 +1194,12 @@ export default function RoomModal({
               type="number"
             />
             <TextField
-              label="Số nước đầu"
-              value={checkOutCtx.waterStartReading}
+              label="Số nước đầu chặng"
+              value={checkoutStartReadings.water}
               onChange={() => {}}
               type="number"
               disabled
-              title="Chỉ số đầu được lấy từ lúc vào phòng, không thể sửa tại bước rời đi."
+              title="Chỉ số đầu của kỳ chưa thanh toán đầu tiên."
             />
             <TextField
               label="Số nước khi rời"
@@ -1287,14 +1210,76 @@ export default function RoomModal({
               type="number"
             />
           </div>
-          {checkOutErrors.electricity ? (
-            <div className="rounded-2xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              {checkOutErrors.electricity}
+          {checkoutBoundaryInputs.length ? (
+            <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-xs font-semibold text-amber-900">Bổ sung chỉ số tại ngày chốt</div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {checkoutBoundaryInputs.map((row) => (
+                  <TextField
+                    key={`${row.type}-${row.date}`}
+                    label={`${row.type === "water" ? "Nước" : "Điện"} ngày ${formatDate(row.date)}`}
+                    value={checkOutCtx.readingOverrides?.[row.type]?.[row.date] ?? ""}
+                    onChange={(value) => setCheckoutBoundaryReading(row.type, row.date, value)}
+                    type="number"
+                  />
+                ))}
+              </div>
             </div>
           ) : null}
-          {checkOutErrors.water ? (
-            <div className="rounded-2xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              {checkOutErrors.water}
+          {Object.keys(checkOutErrors).length ? (
+            <div className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {checkOutErrors.dateOut || checkOutErrors.negative || checkOutErrors.missing}
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-slate-900">Các kỳ cần thanh toán</div>
+              <div className="text-xs text-slate-500">{checkOutSettlement.duePeriods?.length || 0} kỳ</div>
+            </div>
+            {(checkOutSettlement.duePeriods || []).map((item) => (
+              <div key={item.billingMonth} className="rounded-xl border border-slate-200 bg-white p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Kỳ {item.billingMonth}</div>
+                    <div className="mt-0.5 text-xs text-slate-500">
+                      {formatDate(item.startDate)} - {formatDate(item.endDate)}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-sm font-bold text-slate-900">
+                    {Number(item.totalAmount || 0).toLocaleString("vi-VN")}đ
+                  </div>
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-slate-600">
+                  <div>Phòng<br /><b className="text-slate-800">{Number(item.roomAmount || 0).toLocaleString("vi-VN")}đ</b></div>
+                  <div>Điện<br /><b className="text-slate-800">{Number(item.electricityAmount || 0).toLocaleString("vi-VN")}đ</b></div>
+                  <div>Nước<br /><b className="text-slate-800">{Number(item.waterAmount || 0).toLocaleString("vi-VN")}đ</b></div>
+                </div>
+              </div>
+            ))}
+            {!checkOutSettlement.duePeriods?.length ? (
+              <div className="rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">Không còn kỳ chưa thanh toán.</div>
+            ) : null}
+          </div>
+          {checkOutSettlement.paidPeriods?.length ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                onClick={() => setShowPaidCheckoutPeriods((value) => !value)}
+              >
+                <span>Đã kiểm tra {checkOutSettlement.paidPeriods.length} kỳ đã thanh toán</span>
+                {showPaidCheckoutPeriods ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              {showPaidCheckoutPeriods ? (
+                <div className="border-t border-slate-200 px-3 py-2 text-xs text-slate-600">
+                  {checkOutSettlement.paidPeriods.map((item) => (
+                    <div key={item.billingMonth} className="flex justify-between gap-2 py-1">
+                      <span>Kỳ {item.billingMonth}</span>
+                      <span>{formatDate(item.startDate)} - {formatDate(item.endDate)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100">
@@ -1340,9 +1325,7 @@ export default function RoomModal({
                     return;
                   }
                   if (
-                    checkOutCtx.electricityStartReading === "" ||
                     checkOutCtx.electricityEndReading === "" ||
-                    checkOutCtx.waterStartReading === "" ||
                     checkOutCtx.waterEndReading === ""
                   ) {
                     alert(
@@ -1367,12 +1350,12 @@ export default function RoomModal({
                     waterAmount: checkOutAmount.waterAmount,
                     roomAmount: checkOutAmount.roomAmount,
                     totalAmount: checkOutAmount.totalAmount,
+                    readingOverrides: checkOutCtx.readingOverrides,
                   };
-                  if (checkOutCtx.editingDeparture) {
-                    await actions.updateDeparture(payload);
-                  } else {
-                    await actions.checkOut(payload);
-                  }
+                  const saved = checkOutCtx.editingDeparture
+                    ? await actions.updateDeparture(payload)
+                    : await actions.checkOut(payload);
+                  if (saved === false) return;
                   setCheckOutCtx((prev) => ({
                     ...prev,
                     open: false,

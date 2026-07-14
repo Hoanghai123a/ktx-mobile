@@ -15,6 +15,7 @@ export function loadPersistedState() {
     return {
       floors: [],
       workers: [],
+      payments: [],
       settings: DEFAULT_SETTINGS,
     };
   }
@@ -25,6 +26,7 @@ export function loadPersistedState() {
       return {
         floors: [],
         workers: [],
+        payments: [],
         settings: DEFAULT_SETTINGS,
       };
     }
@@ -32,16 +34,18 @@ export function loadPersistedState() {
     const parsed = JSON.parse(raw);
     const floors = Array.isArray(parsed?.floors) ? parsed.floors : [];
     const workers = Array.isArray(parsed?.workers) ? parsed.workers : [];
+    const payments = Array.isArray(parsed?.payments) ? parsed.payments : [];
     const settings =
       parsed?.settings && typeof parsed.settings === "object"
         ? { ...DEFAULT_SETTINGS, ...parsed.settings }
         : DEFAULT_SETTINGS;
 
-    return { floors, workers, settings };
+    return { floors, workers, payments, settings };
   } catch {
     return {
       floors: [],
       workers: [],
+      payments: [],
       settings: DEFAULT_SETTINGS,
     };
   }

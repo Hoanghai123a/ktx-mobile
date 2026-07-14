@@ -2,11 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildCheckoutBillingPeriods,
   buildUtilitySegments,
+  calculateStayCheckoutSettlement,
   calculateRoomRentForStay,
   calculateRoomUtility,
   calculateUtilityBilling,
+  getBillingMonthForDate,
   getUtilityCheckoutBounds,
+  isStayBillingMonthPaid,
   mergeMonthlyReadings,
 } from "../src/services/utilityBilling.js";
 
@@ -572,4 +576,139 @@ test("billing chains readings across many months long-term", () => {
   assert.equal(december.amountByWorkerId.get("w1"), 30000);
   assert.equal(december.warnings.length, 0);
   assert.equal(room.electricity.length, 12);
+});
+
+test("billing month for a date follows the configured close day", () => {
+  assert.equal(getBillingMonthForDate("2026-08-10", 10), "2026-08");
+  assert.equal(getBillingMonthForDate("2026-08-11", 10), "2026-09");
+  assert.equal(getBillingMonthForDate("2026-02-28", 31), "2026-02");
+});
+
+test("checkout periods ignore the selected UI month and split at close-day boundaries", () => {
+  const periods = buildCheckoutBillingPeriods({
+    stay: {
+      id: "s1",
+      dateIn: "2026-06-01",
+      utilityPaidAt: "2026-07-10T08:00:00.000Z",
+      utilityPaidMonth: "2026-07",
+    },
+    dateOut: "2026-08-13",
+    billingCloseDay: 10,
+  });
+
+  assert.deepEqual(
+    periods.map((item) => [item.billingMonth, item.startDate, item.endDate, item.paid]),
+    [
+      ["2026-06", "2026-06-01", "2026-06-10", true],
+      ["2026-07", "2026-06-10", "2026-07-10", true],
+      ["2026-08", "2026-07-10", "2026-08-10", false],
+      ["2026-09", "2026-08-10", "2026-08-13", false],
+    ],
+  );
+});
+
+function crossMonthCheckoutFixture() {
+  const stay = {
+    id: "s1",
+    workerId: "w1",
+    dateIn: "2026-06-01",
+    electricityStartReading: 40,
+    waterStartReading: 4,
+    utilityPaidAt: "2026-07-10T08:00:00.000Z",
+    utilityPaidMonth: "2026-07",
+  };
+  return {
+    stay,
+    room: {
+      id: "r1",
+      stays: [stay],
+      electricity: [
+        { month: "2026-07", start_reading: 50, end_reading: 100, readings: [{ date: "2026-06-10", reading: 50 }, { date: "2026-07-10", reading: 100 }] },
+        { month: "2026-08", start_reading: 100, end_reading: 115, readings: [{ date: "2026-07-10", reading: 100 }, { date: "2026-08-10", reading: 115 }] },
+        { month: "2026-09", start_reading: 115, end_reading: 115, readings: [{ date: "2026-08-10", reading: 115 }] },
+      ],
+      water: [
+        { month: "2026-07", start_reading: 5, end_reading: 10, readings: [{ date: "2026-06-10", reading: 5 }, { date: "2026-07-10", reading: 10 }] },
+        { month: "2026-08", start_reading: 10, end_reading: 13, readings: [{ date: "2026-07-10", reading: 10 }, { date: "2026-08-10", reading: 13 }] },
+        { month: "2026-09", start_reading: 13, end_reading: 13, readings: [{ date: "2026-08-10", reading: 13 }] },
+      ],
+    },
+  };
+}
+
+test("checkout settlement charges every unpaid period through the departure date", () => {
+  const { room, stay } = crossMonthCheckoutFixture();
+  const result = calculateStayCheckoutSettlement({
+    room,
+    stay,
+    dateOut: "2026-08-13",
+    electricityEndReading: 120,
+    waterEndReading: 14,
+    settings: {
+      billingMonth: "2026-07",
+      billingCloseDay: 10,
+      electricityPrice: 1000,
+      waterPrice: 2000,
+      roomMonthlyPrice: 0,
+    },
+    workerById: new Map([["w1", { id: "w1" }]]),
+  });
+
+  assert.deepEqual(result.duePeriods.map((item) => item.billingMonth), ["2026-08", "2026-09"]);
+  assert.equal(result.electricityAmount, 20000);
+  assert.equal(result.waterAmount, 8000);
+  assert.equal(result.totalAmount, 28000);
+  assert.equal(result.complete, true);
+  assert.equal(result.duePeriods[1].electricity.rows.at(-1).reading, 120);
+});
+
+test("checkout settlement skips exact paid periods but recalculates checkout rows", () => {
+  const { room, stay } = crossMonthCheckoutFixture();
+  const result = calculateStayCheckoutSettlement({
+    room,
+    stay,
+    dateOut: "2026-08-13",
+    electricityEndReading: 120,
+    waterEndReading: 14,
+    payments: [
+      { stay_id: "s1", billing_month: "2026-07", source: "legacy_watermark" },
+      { stay_id: "s1", billing_month: "2026-08", source: "monthly", amount: 18000 },
+      { stay_id: "s1", billing_month: "2026-09", source: "checkout", amount: 999999 },
+    ],
+    settings: { billingCloseDay: 10, electricityPrice: 1000, waterPrice: 2000 },
+    workerById: new Map([["w1", { id: "w1" }]]),
+  });
+
+  assert.deepEqual(result.duePeriods.map((item) => item.billingMonth), ["2026-09"]);
+  assert.equal(result.totalAmount, 7000);
+});
+
+test("checkout settlement requires a missing intermediate close-day reading", () => {
+  const { room, stay } = crossMonthCheckoutFixture();
+  room.electricity = room.electricity.filter((row) => row.month !== "2026-08" && row.month !== "2026-09");
+  const result = calculateStayCheckoutSettlement({
+    room,
+    stay,
+    dateOut: "2026-08-13",
+    electricityEndReading: 120,
+    waterEndReading: 14,
+    settings: { billingCloseDay: 10, electricityPrice: 1000, waterPrice: 2000 },
+  });
+
+  assert.equal(result.complete, false);
+  assert.ok(result.missingReadings.some((row) => row.type === "electricity" && row.date === "2026-08-10"));
+});
+
+test("payment ledger supports exact gaps and a legacy paid-through watermark", () => {
+  const stay = { id: "s1", utilityPaidAt: "2026-07-10T08:00:00.000Z", utilityPaidMonth: "2026-07" };
+  assert.equal(isStayBillingMonthPaid({ stay, billingMonth: "2026-06" }), true);
+  assert.equal(isStayBillingMonthPaid({ stay, billingMonth: "2026-08" }), false);
+
+  const payments = [
+    { stay_id: "s1", billing_month: "2026-07", source: "legacy_watermark" },
+    { stay_id: "s1", billing_month: "2026-09", source: "monthly" },
+  ];
+  assert.equal(isStayBillingMonthPaid({ stay, payments, billingMonth: "2026-06" }), true);
+  assert.equal(isStayBillingMonthPaid({ stay, payments, billingMonth: "2026-08" }), false);
+  assert.equal(isStayBillingMonthPaid({ stay, payments, billingMonth: "2026-09" }), true);
 });
