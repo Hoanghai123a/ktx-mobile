@@ -1923,6 +1923,7 @@ export default function App() {
       floors: state.floors,
       workerById,
       billingMonth: state.settings.billingMonth,
+      billingCloseDay: state.settings.billingCloseDay,
       utilityBilling,
       workerPaymentRows,
       todayISO,

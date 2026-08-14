@@ -7,6 +7,7 @@ import {
   Home,
   History,
   RefreshCw,
+  Search,
   UserRound,
   Users,
   Zap,
@@ -14,6 +15,7 @@ import {
 
 import Pill from "../../components/ui/Pill";
 import Modal from "../../components/ui/Modal";
+import { filterWorkerPaymentRows } from "../../services/paymentSearch";
 
 function Money({ value }) {
   return `${Number(value || 0).toLocaleString("vi-VN")}đ`;
@@ -129,6 +131,7 @@ export default function StatsView({
   const [logExportOpen, setLogExportOpen] = useState(false);
   const [logDateFrom, setLogDateFrom] = useState(defaultLogDateFrom);
   const [logDateTo, setLogDateTo] = useState(() => dateInputValue());
+  const [paymentQuery, setPaymentQuery] = useState("");
   const electricityTotal = (pendingElectricityAmount || 0) + (paidElectricityAmount || 0);
   const waterTotal = (pendingWaterAmount || 0) + (paidWaterAmount || 0);
   const roomTotal = (pendingRoomAmount || 0) + (paidRoomAmount || 0);
@@ -141,6 +144,11 @@ export default function StatsView({
     ],
     [electricityTotal, roomTotal, waterTotal],
   );
+  const filteredPaymentRows = useMemo(
+    () => filterWorkerPaymentRows(workerPaymentRows, paymentQuery),
+    [paymentQuery, workerPaymentRows],
+  );
+  const visiblePaymentRows = filteredPaymentRows.slice(0, 80);
 
   useEffect(() => {
     if (section === "logs") loadActivityLogs?.();
@@ -341,9 +349,30 @@ export default function StatsView({
 
           <div className="mt-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
             <div className="text-sm font-semibold">Thu tiền theo từng NLĐ</div>
+            <div className="mt-3 flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2">
+              <Search className="h-4 w-4 shrink-0 text-slate-400" />
+              <input
+                type="search"
+                value={paymentQuery}
+                onChange={(event) => setPaymentQuery(event.target.value)}
+                placeholder="Tìm theo tên hoặc mã nhân viên"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+              />
+              {paymentQuery ? (
+                <button
+                  type="button"
+                  className="shrink-0 rounded-xl px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  onClick={() => setPaymentQuery("")}
+                >
+                  Xóa
+                </button>
+              ) : null}
+            </div>
             <div className="mt-3 space-y-2">
-              {workerPaymentRows.length ? (
-                workerPaymentRows.slice(0, 80).map((row) => (
+              {!workerPaymentRows.length ? (
+                <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">Chưa có NLĐ cần thu tiền.</div>
+              ) : visiblePaymentRows.length ? (
+                visiblePaymentRows.map((row) => (
                   <div key={row.stayId} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -375,7 +404,7 @@ export default function StatsView({
                   </div>
                 ))
               ) : (
-                <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">Chưa có NLĐ cần thu tiền.</div>
+                <div className="rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">Không tìm thấy NLĐ phù hợp.</div>
               )}
             </div>
           </div>
