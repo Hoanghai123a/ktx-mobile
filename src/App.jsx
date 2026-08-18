@@ -44,6 +44,7 @@ import { DEFAULT_SETTINGS } from "./constants/defaultSettings";
 import { useAppBootstrap } from "./hooks/useAppBootstrap";
 import { useBrandManifest } from "./hooks/useBrandManifest";
 import { loadPersistedState, savePersistedState } from "./services/persistence";
+import { formatDate } from "./services/dateFormat";
 import {
   calculateRoomRentForStay,
   calculateRoomUtility,
@@ -1028,6 +1029,8 @@ export default function App() {
           room_id: roomId,
           worker_id: workerId,
           date_in: d,
+          initial_date_in: d,
+          transfer_date: null,
           electricity_start_reading: Number(electricityStartReading || 0),
           water_start_reading: Number(waterStartReading || 0),
         },
@@ -1718,6 +1721,9 @@ export default function App() {
             roomCode: r.code,
             dateIn: st.dateIn,
             dateOut: st.dateOut,
+            initialDateIn: st.initialDateIn || st.dateIn,
+            transferDate: st.transferDate || "",
+            freeRoomDays: Number(w?.freeRoomDays || 0),
             active,
             paid,
             paidMonth: st.utilityPaidMonth || "",
@@ -1937,6 +1943,10 @@ export default function App() {
       employeeCode: row.employeeCode,
       fullName: row.workerName,
     };
+    const stay = state.floors
+      .flatMap((floor) => floor.rooms)
+      .flatMap((room) => room.stays || [])
+      .find((item) => item.id === row.stayId) || row;
     exportWorkerInvoiceSvc({
       building: currentBuilding,
       billingMonth: state.settings.billingMonth,
@@ -1944,6 +1954,7 @@ export default function App() {
       floorName: row.floorName,
       roomCode: row.roomCode,
       worker,
+      stay,
       charge: {
         roomAmount: row.roomAmount,
         electricityAmount: row.electricityAmount,
@@ -2762,6 +2773,8 @@ export default function App() {
               transfer: ({ stayId, workerId }) => {
                 const fromRoomId = roomCtx?.room?.id || roomModal.roomId;
                 const fromReadings = currentRoomReadings(roomCtx?.room);
+                const currentStay = (roomCtx?.room?.stays || []).find((item) => item.id === stayId);
+                const currentWorker = workerById.get(workerId);
                 setTransferModal({
                   open: true,
                   stayId,
@@ -2769,6 +2782,8 @@ export default function App() {
                   fromRoomId,
                   toRoomId: "",
                   date: todayISO(),
+                  initialDateIn: currentStay?.initialDateIn || currentStay?.dateIn || "",
+                  freeRoomDays: Number(currentWorker?.freeRoomDays || 0),
                   fromElectricityReading: fromReadings.electricity,
                   fromWaterReading: fromReadings.water,
                   toElectricityReading: "",
@@ -2938,6 +2953,25 @@ export default function App() {
               setTransferModal((m) => ({ ...m, date: e.target.value }))
             }
           />
+
+          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
+            <div>
+              <div className="text-xs font-semibold text-emerald-800">
+                Ngày vào KTX
+              </div>
+              <div className="mt-1 text-sm font-semibold text-slate-800">
+                {formatDate(transferModal.initialDateIn, "—")}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-emerald-800">
+                Số ngày ở miễn phí
+              </div>
+              <div className="mt-1 text-sm font-semibold text-slate-800">
+                {Number(transferModal.freeRoomDays || 0)} ngày
+              </div>
+            </div>
+          </div>
 
           <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
             <div className="text-xs font-semibold text-slate-700">

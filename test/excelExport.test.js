@@ -11,7 +11,10 @@ const field = {
   employeeCode: "M\u00e3 nh\u00e2n vi\u00ean",
   total: "T\u1ed5ng ti\u1ec1n",
   status: "Tr\u1ea1ng th\u00e1i",
-  leaveDate: "Ng\u00e0y ngh\u1ec9",
+  leaveDate: "Ng\u00e0y r\u1eddi",
+  initialDate: "Ng\u00e0y v\u00e0o",
+  roomDate: "Ng\u00e0y v\u00e0o ph\u00f2ng",
+  transferDate: "Ng\u00e0y chuy\u1ec3n ph\u00f2ng",
 };
 
 function exportFixture(stays) {
@@ -55,6 +58,9 @@ test("payment export includes every stay overlapping the billing period", () => 
   assert.deepEqual(rows.map((row) => row[field.employeeCode]), ["NV1", "NV2"]);
   assert.equal(rows[0][field.leaveDate], "");
   assert.equal(rows[1][field.leaveDate], "20/08/2026");
+  assert.equal(rows[0][field.initialDate], "01/07/2026");
+  assert.equal(rows[0][field.roomDate], "01/07/2026");
+  assert.equal(rows[0][field.transferDate], "");
 });
 
 test("payment export keeps zero-charge stays in the result", () => {

@@ -62,8 +62,10 @@ export function buildPaymentExportRows({
           "Phòng": room.code,
           "Mã nhân viên": worker?.employeeCode || paymentRow?.employeeCode || "",
           "Họ tên": worker?.fullName || paymentRow?.workerName || "(không rõ)",
-          "Ngày vào": formatDate(stay.dateIn, ""),
-          "Ngày nghỉ": formatDate(stay.dateOut, ""),
+          "Ngày vào": formatDate(stay.initialDateIn || stay.initial_date_in || stay.dateIn, ""),
+          "Ngày vào phòng": formatDate(stay.dateIn || stay.date_in, ""),
+          "Ngày chuyển phòng": formatDate(stay.transferDate || stay.transfer_date, ""),
+          "Ngày rời": formatDate(stay.dateOut || stay.date_out, ""),
           "Số ngày ở miễn phí": Number(worker?.freeRoomDays || 0),
           "Tiền phòng": roomFee,
           "Tiền điện": electricityFee,
@@ -135,14 +137,16 @@ export function exportExcel({ floors, workers, workerById, stats, todayISO }) {
           "Số CCCD": w?.identityNumber || "",
           "Tiền điện": Number(w?.electricityFee || 0),
           "Tiền nước": Number(w?.waterFee || 0),
-          "Số ngày ở Free": Number(w?.freeRoomDays || 0),
+          "Số ngày ở miễn phí": Number(w?.freeRoomDays || 0),
           "Ngày sinh": formatDate(w?.dob, ""),
           "Quê quán": w?.hometown || "",
           "Số điện thoại": w?.phone || "",
           "Người tuyển": w?.recruiter || "",
           "Ghi chú": w?.note || "",
-          "Ngày vào": formatDate(st.dateIn, ""),
-          "Ngày rời": formatDate(st.dateOut, ""),
+          "Ngày vào": formatDate(st.initialDateIn || st.initial_date_in || st.dateIn, ""),
+          "Ngày vào phòng": formatDate(st.dateIn || st.date_in, ""),
+          "Ngày chuyển phòng": formatDate(st.transferDate || st.transfer_date, ""),
+          "Ngày rời": formatDate(st.dateOut || st.date_out, ""),
           "Đang ở": st.dateOut ? "Không" : "Có",
         });
       }
@@ -239,6 +243,7 @@ function workerInvoiceRows({
   floorName,
   roomCode,
   worker,
+  stay = {},
   charge,
   paid,
   paidAt,
@@ -265,6 +270,11 @@ function workerInvoiceRows({
     ["Quê quán", worker?.hometown || "—"],
     ["Ngày sinh", formatDate(worker?.dob, "—")],
     ["Người tuyển", worker?.recruiter || "—"],
+    ["Ngày vào KTX", formatDate(stay?.initialDateIn || stay?.initial_date_in || stay?.dateIn, "—")],
+    ["Ngày vào phòng", formatDate(stay?.dateIn || stay?.date_in, "—")],
+    ["Ngày chuyển phòng", formatDate(stay?.transferDate || stay?.transfer_date, "")],
+    ["Ngày rời", formatDate(stay?.dateOut || stay?.date_out, "")],
+    ["Số ngày ở miễn phí", Number(stay?.freeRoomDays ?? worker?.freeRoomDays ?? 0)],
     [],
     ["Khoản thu", "Số tiền (VNĐ)"],
     ["Tiền phòng", roomAmount],
@@ -308,6 +318,7 @@ export function exportWorkerInvoice({
   paid = false,
   paidAt = "",
   adminContact = {},
+  stay = {},
 }) {
   const rows = workerInvoiceRows({
     building,
@@ -320,6 +331,7 @@ export function exportWorkerInvoice({
     paid,
     paidAt,
     adminContact,
+    stay,
   });
   const sheet = applyInvoiceSheet(rows);
   const wb = XLSX.utils.book_new();
@@ -342,7 +354,8 @@ export function exportRoomInvoice({
   electricity = null,
   water = null,
 }) {
-  const stays = (room?.stays || []).filter((s) => !s.dateOut);
+  const billingPeriod = getBillingPeriod(billingMonth, billingCloseDay);
+  const stays = (room?.stays || []).filter((stay) => stayOverlapsPaymentPeriod(stay, billingPeriod));
   const rows = [];
   const period = periodLabel(billingMonth, billingCloseDay);
   const readingValue = (value) => {
@@ -382,7 +395,7 @@ export function exportRoomInvoice({
   const detailTitleRowIdx = rows.length;
   rows.push(["CHI TIẾT THANH TOÁN TỪNG NGƯỜI"]);
   const detailHeaderRowIdx = rows.length;
-  rows.push(["Mã NLĐ", "Họ tên", "SĐT", "Tiền phòng", "Tiền điện", "Tiền nước", "Tổng (VNĐ)", "Trạng thái"]);
+  rows.push(["Mã NLĐ", "Họ tên", "SĐT", "Ngày vào KTX", "Ngày vào phòng", "Ngày chuyển phòng", "Ngày rời", "Số ngày miễn phí", "Tiền phòng", "Tiền điện", "Tiền nước", "Tổng (VNĐ)", "Trạng thái"]);
   const detailDataStartRowIdx = rows.length;
   let totalRoom = 0;
   let totalElectricity = 0;
@@ -404,6 +417,11 @@ export function exportRoomInvoice({
       worker?.employeeCode || "—",
       worker?.fullName || "(không rõ)",
       worker?.phone || "—",
+      formatDate(stay.initialDateIn || stay.initial_date_in || stay.dateIn, "—"),
+      formatDate(stay.dateIn || stay.date_in, "—"),
+      formatDate(stay.transferDate || stay.transfer_date, ""),
+      formatDate(stay.dateOut || stay.date_out, ""),
+      Number(worker?.freeRoomDays || 0),
       roomAmount,
       electricityAmount,
       waterAmount,
@@ -411,7 +429,7 @@ export function exportRoomInvoice({
       paymentRow?.paid ? "Đã thu" : "Chưa thu",
     ]);
   }
-  rows.push(["TỔNG", "", "", totalRoom, totalElectricity, totalWater, totalAmount, ""]);
+  rows.push(["TỔNG", "", "", "", "", "", "", "", totalRoom, totalElectricity, totalWater, totalAmount, ""]);
   if (adminContact?.name || adminContact?.phone || adminContact?.zalo) {
     rows.push([]);
     rows.push(["Liên hệ admin"]);
@@ -423,21 +441,16 @@ export function exportRoomInvoice({
   }
   const sheet = XLSX.utils.aoa_to_sheet(rows);
   sheet["!cols"] = [
-    { wch: 14 },
-    { wch: 24 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 16 },
-    { wch: 12 },
+    { wch: 14 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+    { wch: 14 }, { wch: 14 }, { wch: 12 },
   ];
   const totalRowIdx = detailDataStartRowIdx + stays.length;
   sheet["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } },
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 12 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 12 } },
     { s: { r: 7, c: 0 }, e: { r: 7, c: 5 } },
-    { s: { r: detailTitleRowIdx, c: 0 }, e: { r: detailTitleRowIdx, c: 7 } },
+    { s: { r: detailTitleRowIdx, c: 0 }, e: { r: detailTitleRowIdx, c: 12 } },
     { s: { r: totalRowIdx, c: 0 }, e: { r: totalRowIdx, c: 2 } },
   ];
   sheet["!sheetViews"] = [{ showGridLines: false, RTL: false }];
@@ -485,18 +498,18 @@ export function exportRoomInvoice({
     setStyle(10, c, isNumCol ? centerNumStyle : centerStyle);
   }
   setStyle(detailTitleRowIdx, 0, centerBoldStyle);
-  for (let c = 0; c < 8; c += 1) {
+  for (let c = 0; c < 13; c += 1) {
     setStyle(detailHeaderRowIdx, c, centerBoldStyle);
   }
   for (let r = detailDataStartRowIdx; r <= totalRowIdx; r += 1) {
-    for (const c of [3, 4, 5, 6]) {
+    for (const c of [7, 8, 9, 10, 11]) {
       setStyle(r, c, r === totalRowIdx ? centerBoldNumStyle : centerNumStyle);
     }
     if (r === totalRowIdx) {
       setStyle(r, 0, centerBoldStyle);
-      setStyle(r, 7, centerStyle);
+      setStyle(r, 12, centerStyle);
     } else {
-      setStyle(r, 7, centerStyle);
+      setStyle(r, 12, centerStyle);
     }
   }
 

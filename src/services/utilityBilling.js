@@ -42,6 +42,19 @@ function diffDays(startDate, endDate) {
   return Math.max(0, Math.round((endTime - startTime) / 86400000));
 }
 
+function addDays(dateValue, days) {
+  const parts = parseDateParts(dateValue);
+  if (!parts) return "";
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + Number(days || 0)));
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
+function overlappingDays(startDate, endDate, otherStart, otherEnd) {
+  const start = startDate > otherStart ? startDate : otherStart;
+  const end = endDate < otherEnd ? endDate : otherEnd;
+  return start < end ? diffDays(start, end) : 0;
+}
+
 function clampDay(year, month, day) {
   return Math.min(Math.max(Number(day || 1), 1), daysInMonth(year, month));
 }
@@ -220,10 +233,11 @@ export function calculateRoomRentForStay({ stay, worker, settings = {} }) {
   const period = getRoomRentPeriod(settings);
   const dateIn = normalizeDate(stay?.dateIn ?? stay?.date_in);
   const dateOut = normalizeDate(stay?.dateOut ?? stay?.date_out);
+  const initialDateIn = normalizeDate(stay?.initialDateIn ?? stay?.initial_date_in) || dateIn;
+  const freeDaysTotal = freeRoomDays(worker, stay);
   const endParts = parseDateParts(period.end);
   const rateMonthDays = endParts ? daysInMonth(endParts.year, endParts.month) : 30;
   const dailyAmount = rateMonthDays > 0 ? monthlyAmount / rateMonthDays : 0;
-  const freeDays = freeRoomDays(worker, stay);
 
   if (!monthlyAmount || !dateIn) {
     return {
@@ -231,7 +245,8 @@ export function calculateRoomRentForStay({ stay, worker, settings = {} }) {
       startDate: "",
       endDate: "",
       days: 0,
-      freeDays,
+      freeDays: 0,
+      freeDaysTotal,
       chargedDays: 0,
       monthlyAmount,
       dailyAmount,
@@ -248,6 +263,10 @@ export function calculateRoomRentForStay({ stay, worker, settings = {} }) {
   const stayEnd = dateOut || periodEnd;
   const endDate = stayEnd < periodEnd ? stayEnd : periodEnd;
   const days = startDate < endDate ? diffDays(startDate, endDate) : 0;
+  const freeWindowEnd = addDays(initialDateIn, freeDaysTotal);
+  const freeDays = initialDateIn && freeWindowEnd
+    ? overlappingDays(startDate, endDate, initialDateIn, freeWindowEnd)
+    : 0;
   const chargedDays = Math.max(0, days - freeDays);
   const rawAmount = Math.min(monthlyAmount, Math.max(0, chargedDays * dailyAmount));
   const amount = Math.min(monthlyAmount, roundUpToThousand(rawAmount));
@@ -258,6 +277,7 @@ export function calculateRoomRentForStay({ stay, worker, settings = {} }) {
     endDate,
     days,
     freeDays,
+    freeDaysTotal,
     chargedDays,
     monthlyAmount,
     dailyAmount,

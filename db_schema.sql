@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS stays (
     room_id uuid REFERENCES rooms(id) ON DELETE CASCADE,
     date_in date NOT NULL,
     date_out date,
+    initial_date_in date,
+    transfer_date date,
     electricity_start_reading numeric DEFAULT 0,
     water_start_reading numeric DEFAULT 0,
     electricity_end_reading numeric DEFAULT 0,
@@ -87,6 +89,12 @@ CREATE TABLE IF NOT EXISTS stays (
     utility_paid_month text,
     created_at timestamp with time zone DEFAULT now()
 );
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS initial_date_in date;
+
+ALTER TABLE stays
+    ADD COLUMN IF NOT EXISTS transfer_date date;
 
 ALTER TABLE stays
     ADD COLUMN IF NOT EXISTS electricity_start_reading numeric DEFAULT 0;

@@ -438,9 +438,46 @@ test("room rent honors free days and monthly cap", () => {
   assert.equal(afterFreeDays.startDate, "2026-05-25");
   assert.equal(afterFreeDays.endDate, "2026-06-25");
   assert.equal(afterFreeDays.days, 31);
-  assert.equal(afterFreeDays.freeDays, 26);
-  assert.equal(afterFreeDays.chargedDays, 5);
-  assert.equal(afterFreeDays.amount, 500000);
+  assert.equal(afterFreeDays.freeDays, 21);
+  assert.equal(afterFreeDays.freeDaysTotal, 26);
+  assert.equal(afterFreeDays.chargedDays, 10);
+  assert.equal(afterFreeDays.amount, 1000000);
+});
+
+
+test("room transfer keeps one continuous free-day window", () => {
+  const settings = {
+    billingMonth: "2026-06",
+    billingCloseDay: 25,
+    roomMonthlyPrice: 3000000,
+    roomBillingMode: "postpaid",
+  };
+  const worker = { id: "w1", freeRoomDays: 10 };
+  const oldRoom = calculateRoomRentForStay({
+    stay: {
+      workerId: "w1",
+      dateIn: "2026-05-20",
+      initialDateIn: "2026-05-20",
+      dateOut: "2026-05-27",
+    },
+    worker,
+    settings,
+  });
+  const newRoom = calculateRoomRentForStay({
+    stay: {
+      workerId: "w1",
+      dateIn: "2026-05-27",
+      initialDateIn: "2026-05-20",
+      transferDate: "2026-05-27",
+    },
+    worker,
+    settings,
+  });
+
+  assert.equal(oldRoom.freeDays, 2);
+  assert.equal(newRoom.freeDays, 3);
+  assert.equal(oldRoom.freeDays + newRoom.freeDays, 5);
+  assert.equal(newRoom.chargedDays, 26);
 });
 
 test("utility billing includes room rent in worker totals", () => {

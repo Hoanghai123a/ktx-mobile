@@ -367,6 +367,8 @@ function stayOut(s) {
     roomId: s.room_id,
     dateIn: dateOnly(s.date_in),
     dateOut: dateOnly(s.date_out),
+    initialDateIn: dateOnly(s.initial_date_in) || dateOnly(s.date_in),
+    transferDate: dateOnly(s.transfer_date),
     electricityStartReading: s.electricity_start_reading == null ? null : Number(s.electricity_start_reading),
     waterStartReading: s.water_start_reading == null ? null : Number(s.water_start_reading),
     electricityEndReading: s.electricity_end_reading == null ? null : Number(s.electricity_end_reading),
@@ -408,6 +410,10 @@ function normalizeStay(s) {
     ...s,
     date_in: dateOnly(s.date_in),
     date_out: dateOnly(s.date_out),
+    initial_date_in: dateOnly(s.initial_date_in) || dateOnly(s.date_in),
+    transfer_date: dateOnly(s.transfer_date),
+    initialDateIn: dateOnly(s.initial_date_in) || dateOnly(s.date_in),
+    transferDate: dateOnly(s.transfer_date),
     electricity_start_reading: s.electricity_start_reading == null ? null : Number(s.electricity_start_reading),
     water_start_reading: s.water_start_reading == null ? null : Number(s.water_start_reading),
     electricity_end_reading: s.electricity_end_reading == null ? null : Number(s.electricity_end_reading),
@@ -1117,7 +1123,18 @@ async function handlePost(url, data, signal) {
   if (path === "/stays/") {
     const activeRows = await pbList("stays", { filter: combineFilters(eq("worker_id", data.worker_id), buildingFilter()), sort: "-date_in" }, signal);
     if (!data.date_out && activeRows.some((s) => !s.date_out)) throw makeError(409, { error: "NLĐ đang có lượt ở hiện tại (date_out = null)." });
-    return normalizeStay(await pbRequest("stays", "", { method: "POST", body: { ...data, building_id, date_in: dateValue(data.date_in), date_out: dateValue(data.date_out) }, signal }));
+    const dateIn = dateOnly(data.date_in);
+    const dateOut = dateOnly(data.date_out);
+    if (!dateIn) throw makeError(400, { error: "Thiếu ngày vào." });
+    if (dateOut && dateOut < dateIn) throw makeError(400, { error: "Ngày rời không được trước ngày vào." });
+    return normalizeStay(await pbRequest("stays", "", { method: "POST", body: {
+      ...data,
+      building_id,
+      date_in: dateValue(dateIn),
+      date_out: dateValue(dateOut),
+      initial_date_in: dateValue(data.initial_date_in || dateIn),
+      transfer_date: dateValue(data.transfer_date),
+    }, signal }));
   }
   if (path === "/transfer-stay/") {
     if (!building_id) throw makeError(400, { error: "Chưa chọn tòa nhà." });
@@ -1137,6 +1154,9 @@ async function handlePost(url, data, signal) {
     const oldStay = await pbRequest("stays", `/${stayId}`, { signal });
     if (!oldStay?.id) throw makeError(404, { error: "Không tìm thấy lượt ở cần chuyển." });
     if (oldStay.date_out) throw makeError(409, { error: "Lượt ở này đã đóng, không thể chuyển." });
+    if (oldStay.date_in && transferDate < dateOnly(oldStay.date_in)) {
+      throw makeError(400, { error: "Ngày chuyển không được trước ngày vào phòng hiện tại." });
+    }
     const oldRoom = oldStay.room_id ? await pbRequest("rooms", `/${oldStay.room_id}`, { signal }) : null;
     const newRoom = await pbRequest("rooms", `/${toRoomId}`, { signal });
     if (!newRoom?.id) throw makeError(404, { error: "Không tìm thấy phòng đích." });
@@ -1165,6 +1185,8 @@ async function handlePost(url, data, signal) {
           worker_id: oldStay.worker_id,
           date_in: dateValue(transferDate),
           date_out: null,
+          initial_date_in: dateValue(oldStay.initial_date_in || oldStay.date_in || transferDate),
+          transfer_date: dateValue(transferDate),
           electricity_start_reading: toElec,
           water_start_reading: toWater,
         },
@@ -1479,6 +1501,11 @@ async function handlePatch(url, data, signal) {
     const payload = { ...data };
     if (Object.prototype.hasOwnProperty.call(payload, "date_in")) payload.date_in = dateValue(payload.date_in);
     if (Object.prototype.hasOwnProperty.call(payload, "date_out")) payload.date_out = dateValue(payload.date_out);
+    if (Object.prototype.hasOwnProperty.call(payload, "initial_date_in")) payload.initial_date_in = dateValue(payload.initial_date_in);
+    if (Object.prototype.hasOwnProperty.call(payload, "transfer_date")) payload.transfer_date = dateValue(payload.transfer_date);
+    if (payload.date_in && payload.date_out && dateOnly(payload.date_out) < dateOnly(payload.date_in)) {
+      throw makeError(400, { error: "Ngày rời không được trước ngày vào." });
+    }
     return normalizeStay(await pbRequest("stays", `/${path.split("/")[2]}`, { method: "PATCH", body: payload, signal }));
   }
   if (/^\/electricities\/[^/]+\/pay\/?$/.test(path)) return pbRequest("electricities", `/${path.split("/")[2]}`, { method: "PATCH", body: { paid: true, paid_at: new Date().toISOString() }, signal });
