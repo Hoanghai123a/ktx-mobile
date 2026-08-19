@@ -99,7 +99,7 @@ if (!existsSync(root)) {
   process.exit(1);
 }
 
-createServer((req, res) => {
+const server = createServer((req, res) => {
   if (
     req.url === pocketBasePrefix ||
     req.url.startsWith(`${pocketBasePrefix}/`) ||
@@ -117,7 +117,27 @@ createServer((req, res) => {
     res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
     return res.end("Bad request");
   }
-}).listen(port, host, () => {
+});
+
+server.listen(port, host, () => {
   console.log(`KTX frontend listening on http://${host}:${port}`);
   console.log(`PocketBase proxy target: ${pocketBaseUrl.origin}`);
 });
+
+let isShuttingDown = false;
+function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`${signal} received. Closing HTTP server...`);
+  server.close((error) => {
+    if (error) {
+      console.error("HTTP server shutdown failed:", error);
+      process.exit(1);
+    }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 9000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
@@ -92,16 +92,15 @@ log "build-version.json: day=$VERSION_DAY count=$VERSION_COUNT"
 log "Building production bundle."
 npm run build:only
 
-if pm2 describe "$PM2_APP_NAME" >/dev/null 2>&1; then
-  log "Restarting PM2 app $PM2_APP_NAME."
-  pm2 restart "$PM2_APP_NAME" --update-env
-else
-  log "Starting PM2 app from ecosystem config."
-  pm2 start ecosystem.config.cjs --update-env
-fi
+log "Starting or restarting PM2 app from ecosystem config."
+pm2 startOrRestart ecosystem.config.cjs --update-env
 
-log "Saving PM2 process list."
-pm2 save >/dev/null
+log "Saving PM2 process list for reboot recovery."
+pm2 save --force >/dev/null
+
+if ! pm2 jlist | node -e 'let s=""; process.stdin.on("data", c => s += c).on("end", () => { const apps = JSON.parse(s); const app = apps.find(item => item.name === process.argv[1]); process.exit(app?.pm2_env?.status === "online" ? 0 : 1); });' "$PM2_APP_NAME"; then
+  fail "PM2 app $PM2_APP_NAME is not online after restart."
+fi
 
 log "Checking web health: $APP_HEALTH_URL"
 curl --fail --silent --show-error "$APP_HEALTH_URL" >/dev/null

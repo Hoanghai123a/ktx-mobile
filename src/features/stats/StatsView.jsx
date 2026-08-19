@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
+  ChevronRight,
   Droplets,
   FileDown,
   Home,
@@ -99,6 +100,67 @@ function logDetail(row, lookup) {
   return entity || "Log";
 }
 
+const LOG_FIELD_LABELS = {
+  source: "Nguồn",
+  uid: "UID",
+  worker_id: "Mã NLĐ",
+  room_id: "Mã phòng",
+  stay_id: "Mã lượt ở",
+  full_name: "Họ và tên",
+  fullName: "Họ và tên",
+  employee_code: "Mã nhân viên",
+  employeeCode: "Mã nhân viên",
+  worker_name_snapshot: "Tên NLĐ",
+  worker_employee_code_snapshot: "Mã nhân viên NLĐ",
+  worker_cccd_snapshot: "Số CCCD",
+  worker_gender_snapshot: "Giới tính",
+  worker_date_of_birth_snapshot: "Ngày sinh",
+  worker_address_snapshot: "Địa chỉ",
+  hometown_snapshot: "Quê quán",
+  worker_tax_code_snapshot: "Mã số thuế",
+  cccd_issue_date: "Ngày cấp CCCD",
+  cccd_version: "Phiên bản CCCD",
+  recruiter_staff: "Nhân viên tuyển dụng",
+  recruiter_partner: "Đối tác tuyển dụng",
+  main_house: "Nhà chính",
+  join_date: "Ngày vào làm",
+  leave_date: "Ngày nghỉ",
+  date_in: "Ngày vào",
+  date_out: "Ngày rời",
+  month: "Tháng",
+  paid: "Đã thanh toán",
+  status: "Trạng thái",
+  tags: "Nhãn",
+  note: "Ghi chú",
+};
+
+function logActionLabel(row) {
+  return [row?.action || "Cập nhật", row?.entity || "dữ liệu"]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function logFieldLabel(field) {
+  if (LOG_FIELD_LABELS[field]) return LOG_FIELD_LABELS[field];
+  return String(field || "Trường dữ liệu")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/_/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function formatLogValue(value) {
+  if (value === null || value === undefined || value === "") return "Không có";
+  if (typeof value === "boolean") return value ? "Có" : "Không";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
 export default function StatsView({
   stats,
   recruiterStats,
@@ -129,6 +191,7 @@ export default function StatsView({
 }) {
   const [section, setSection] = useState("workers");
   const [logExportOpen, setLogExportOpen] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
   const [logDateFrom, setLogDateFrom] = useState(defaultLogDateFrom);
   const [logDateTo, setLogDateTo] = useState(() => dateInputValue());
   const [paymentQuery, setPaymentQuery] = useState("");
@@ -443,26 +506,26 @@ export default function StatsView({
               visibleActivityLogs.map((row) => {
                 const detail = logDetail(row, activityLogLookup);
                 return (
-                <div key={row.id} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <button
+                    key={row.id}
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
+                    onClick={() => setSelectedLog(row)}
+                    aria-label={`Xem chi tiết ${logActionLabel(row)}`}
+                  >
+                    <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-semibold text-slate-900">
-                        {row.summary || `${row.action || "Cập nhật"} ${row.entity || "dữ liệu"}`}
+                        {logActionLabel(row)}
                       </div>
                       <div className="mt-0.5 truncate text-xs text-slate-500">
-                        {row.userName || "Không rõ user"} · {formatLogTime(row.created)}
+                        {row.userName || "Không rõ người thực hiện"} · {formatLogTime(row.created) || "Không rõ thời gian"}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-slate-600">
+                        {detail || row.summary || "Không có thông tin đối tượng"}
                       </div>
                     </div>
-                    <div className="shrink-0 rounded-2xl bg-slate-100 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600">
-                      {row.action || row.method || "Log"}
-                    </div>
-                  </div>
-                  {detail ? (
-                    <div className="mt-2 text-xs text-slate-500">
-                      {detail}
-                    </div>
-                  ) : null}
-                </div>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+                  </button>
                 );
               })
             ) : (
@@ -471,6 +534,79 @@ export default function StatsView({
           </div>
         </div>
       )}
+
+      <Modal
+        open={!!selectedLog}
+        title="Chi tiết chỉnh sửa"
+        onClose={() => setSelectedLog(null)}
+        zIndex="z-[70]"
+      >
+        {selectedLog ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-slate-50 p-3">
+              <div className="text-sm font-semibold text-slate-900">
+                {logActionLabel(selectedLog)}
+              </div>
+              <div className="mt-1 text-xs leading-5 text-slate-500">
+                {selectedLog.userName || "Không rõ người thực hiện"} · {formatLogTime(selectedLog.created) || "Không rõ thời gian"}
+              </div>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              <div>
+                <div className="text-xs font-medium text-slate-500">Loại dữ liệu</div>
+                <div className="mt-1 break-words text-slate-900">{selectedLog.entity || "Không xác định"}</div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-slate-500">Đối tượng</div>
+                <div className="mt-1 break-words text-slate-900">
+                  {logDetail(selectedLog, activityLogLookup) || "Không có thông tin"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-slate-500">Nội dung</div>
+                <div className="mt-1 break-words text-slate-900">{selectedLog.summary || "Không có nội dung"}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-sm font-semibold text-slate-900">Các trường thay đổi</div>
+              {Object.entries(selectedLog.changes || {}).length ? (
+                <div className="mt-2 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                  {Object.entries(selectedLog.changes || {}).map(([field, value]) => (
+                    <div key={field} className="px-3 py-2.5">
+                      <div className="text-xs font-medium text-slate-500">{logFieldLabel(field)}</div>
+                      <div className="mt-1 whitespace-pre-wrap break-words text-sm leading-5 text-slate-900">
+                        {formatLogValue(value)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-2 rounded-2xl bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                  Không có dữ liệu thay đổi.
+                </div>
+              )}
+            </div>
+
+            {selectedLog.method || selectedLog.path ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Thông tin kỹ thuật</div>
+                {selectedLog.method ? (
+                  <div className="mt-2 text-xs text-slate-600">
+                    Phương thức: <span className="font-medium text-slate-900">{selectedLog.method}</span>
+                  </div>
+                ) : null}
+                {selectedLog.path ? (
+                  <div className="mt-1 break-all text-xs text-slate-600">
+                    Đường dẫn: <span className="font-medium text-slate-900">{selectedLog.path}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={logExportOpen}
