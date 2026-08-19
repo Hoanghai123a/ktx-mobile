@@ -14,7 +14,7 @@ Du an da co san:
 
 - `ecosystem.config.cjs`: cwd tuyet doi theo thu muc du an, tu restart khi crash, restart delay/backoff, gioi han memory va dong ket noi an toan khi deploy.
 - `deploy_app.sh`: start/restart theo ecosystem, kiem tra app da online, luu process list bang `pm2 save --force`.
-- `setup_pm2_startup.sh`: dang ky PM2 voi systemd de tu chay lai sau khi server reboot; systemd cung tu restart PM2 daemon neu daemon loi.
+- `setup_pm2_startup.sh`: dang ky PM2 voi systemd de tu chay lai sau khi server reboot; kem cau hinh tuong thich de tranh service bi treo o trang thai `activating` do PM2 PIDFile.
 
 ### 1. Cai dat mot lan tren server
 

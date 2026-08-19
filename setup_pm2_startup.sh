@@ -41,18 +41,29 @@ else
   sudo env "PATH=$PATH" "$PM2_BIN" startup systemd -u "$PM2_USER" --hp "$PM2_USER_HOME" >/tmp/pm2-startup.log
 fi
 
-# Let systemd restart the PM2 daemon when it fails.
+# Make the generated PM2 service reliable on systems that cannot track
+# /root/.pm2/pm2.pid, and restart the bootstrap command if it fails.
 OVERRIDE_DIR="/etc/systemd/system/${SERVICE_NAME}.service.d"
-OVERRIDE_FILE="${OVERRIDE_DIR}/restart.conf"
-TEMP_OVERRIDE="$(mktemp)"
-trap 'rm -f "$TEMP_OVERRIDE"' EXIT
-cat > "$TEMP_OVERRIDE" <<'EOF'
+RESTART_OVERRIDE="${OVERRIDE_DIR}/restart.conf"
+PIDFILE_OVERRIDE="${OVERRIDE_DIR}/pidfile.conf"
+TEMP_RESTART="$(mktemp)"
+TEMP_PIDFILE="$(mktemp)"
+trap 'rm -f "$TEMP_RESTART" "$TEMP_PIDFILE"' EXIT
+cat > "$TEMP_RESTART" <<'EOF'
 [Service]
 Restart=on-failure
 RestartSec=5s
 EOF
+cat > "$TEMP_PIDFILE" <<'EOF'
+[Service]
+PIDFile=
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=30
+EOF
 run_as_root mkdir -p "$OVERRIDE_DIR"
-run_as_root install -m 0644 "$TEMP_OVERRIDE" "$OVERRIDE_FILE"
+run_as_root install -m 0644 "$TEMP_RESTART" "$RESTART_OVERRIDE"
+run_as_root install -m 0644 "$TEMP_PIDFILE" "$PIDFILE_OVERRIDE"
 run_as_root systemctl daemon-reload
 run_as_root systemctl enable --now "$SERVICE_NAME"
 
